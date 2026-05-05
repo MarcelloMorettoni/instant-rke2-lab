@@ -31,6 +31,7 @@ to a working `kubectl get nodes`.
 - **Hubble** + Hubble UI for flow visibility
 - 3 Ubuntu 24.04 VMs provisioned by cloud-init, static IPs on `virbr0`
 - A kubeconfig on the host that talks to the API server through `virbr0`
+- A few examples to run slinky on `slinky-lab` folder
 
 ## Requirements
 
