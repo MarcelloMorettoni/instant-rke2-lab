@@ -1,0 +1,6 @@
+# slurm-operator chart overrides.
+# Defaults are fine for a lab; left here so you can crank verbosity etc.
+# Default chart: https://github.com/SlinkyProject/slurm-operator/blob/main/helm/slurm-operator/values.yaml
+
+# Example: bump operator log verbosity
+# logLevel: 4

@@ -1,0 +1,6 @@
+.state/
+images/
+vms/
+*.swp
+.claude
+CLAUDE.md

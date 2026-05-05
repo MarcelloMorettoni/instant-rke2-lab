@@ -1,0 +1,26 @@
+# Override values for the bundled rke2-cilium HelmChart.
+# RKE2 picks this up because the file lives in:
+#   /var/lib/rancher/rke2/server/manifests/
+# Variables ${...} are substituted by 30-bootstrap-rke2.sh before upload.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-cilium
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    kubeProxyReplacement: true
+    k8sServiceHost: ${CP_IP}
+    k8sServicePort: 6443
+    bpf:
+      masquerade: true
+    ipam:
+      mode: kubernetes
+    operator:
+      replicas: 1
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: ${CILIUM_HUBBLE_UI}

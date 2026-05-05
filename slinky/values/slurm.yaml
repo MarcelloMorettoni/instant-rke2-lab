@@ -1,0 +1,61 @@
+# slurm chart overrides for the instant-rke2-lab (2 worker nodes).
+# Default chart values: https://github.com/SlinkyProject/slurm-operator/blob/main/helm/slurm/values.yaml
+
+# Two slurmd pods, one per worker node. Anti-affinity prevents both from
+# stacking on the same worker.
+nodesets:
+  slinky:
+    enabled: true
+    replicas: 2
+    scalingMode: StatefulSet
+    podSpec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: slurmd
+                topologyKey: kubernetes.io/hostname
+
+# Login pod for sbatch / squeue / sinfo. ClusterIP since we have no LB.
+loginsets:
+  slinky:
+    enabled: true
+    replicas: 1
+    service:
+      type: ClusterIP
+
+# Two partitions over the same NodeSet so we can demo priority-tier scheduling
+# without needing more nodes.
+partitions:
+  general:
+    enabled: true
+    nodesets: ["ALL"]
+    configMap:
+      Default: "YES"
+      MaxTime: "UNLIMITED"
+      State: "UP"
+      PriorityTier: "1"
+  priority:
+    enabled: true
+    nodesets: ["ALL"]
+    configMap:
+      MaxTime: "UNLIMITED"
+      State: "UP"
+      PriorityTier: "10"
+
+# Controller persistence is on by default (4Gi PVC). install.sh installs
+# local-path-provisioner and marks it default — you can override here.
+controller:
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    resources:
+      requests:
+        storage: 2Gi
+
+# Accounting (slurmdbd) is off by default; flip on if you want sacct history.
+accounting:
+  enabled: false
