@@ -2,10 +2,10 @@ SHELL := /usr/bin/env bash
 S := scripts
 
 .PHONY: help all prereqs image vms cluster kubeconfig verify destroy status \
-        ssh-cp1 ssh-w1 ssh-w2 slinky slinky-uninstall
+        ssh-cp1 ssh-w1 ssh-w2
 
 help:
-	@echo "Slinky — RKE2 + Cilium lab on libvirt/KVM"
+	@echo "instant-rke2-lab — RKE2 + Cilium on libvirt/KVM"
 	@echo
 	@echo "  make all         End-to-end: prereqs → image → vms → cluster → kubeconfig → verify"
 	@echo "  make prereqs     Install KVM/libvirt/kubectl, set up storage pool & SSH key"
@@ -17,6 +17,8 @@ help:
 	@echo "  make destroy     Tear down VMs, disks, and lab state"
 	@echo "  make status      Show libvirt + node status"
 	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2   SSH to a VM"
+	@echo
+	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
 all: prereqs image vms cluster kubeconfig verify
 
@@ -58,9 +60,3 @@ ssh-w1:
 
 ssh-w2:
 	@ssh -i .state/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@192.168.122.13
-
-slinky:
-	cd slinky && ./install.sh
-
-slinky-uninstall:
-	cd slinky && ./uninstall.sh

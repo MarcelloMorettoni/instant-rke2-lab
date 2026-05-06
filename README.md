@@ -117,10 +117,9 @@ RKE2_VERSION="v1.35.4+rke2r1"
 KUBECTL_REPO_CHANNEL="v1.35"
 ```
 
-By default `SLINKY_ROOT` is auto-detected as the repo directory, so you can
-clone to `~/instant-rke2-lab` (or anywhere else) and it just works. Override
-with `SLINKY_ROOT=/some/path make all` if you want VM disks somewhere
-specific (e.g. a fast NVMe under `/data`).
+The repo is self-contained — clone it anywhere and it works. VM disks default
+to `vms/` inside the repo. If you want them on a different mount point (e.g. a
+fast NVMe), set `VM_DIR` in `config.env` before running `make all`.
 
 ## Operations
 
@@ -189,7 +188,7 @@ Each VM gets a NoCloud seed ISO with:
 ```
 .
 ├── Makefile                # all the entry points
-├── config.env              # tunables (sizes, IPs, RKE2 channel, Cilium values)
+├── config.env              # tunables (sizes, IPs, RKE2 channel, Cilium flags)
 ├── scripts/
 │   ├── lib.sh              # logging, ssh wrappers, sudo detection
 │   ├── 00-host-prep.sh
@@ -200,7 +199,8 @@ Each VM gets a NoCloud seed ISO with:
 │   ├── 50-verify.sh
 │   └── 99-destroy.sh
 ├── manifests/
-│   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig (templated)
+│   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
+├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
 └── .state/                       # generated, gitignored: ssh_key, kubeconfig, node-token
 ```
 
@@ -225,10 +225,26 @@ warning during `systemctl enable --now rke2-server` is cosmetic.
 
 ```bash
 make destroy
-sudo virsh pool-destroy slinky && sudo virsh pool-undefine slinky
+sudo virsh pool-destroy rke2-lab && sudo virsh pool-undefine rke2-lab
 sudo apt purge qemu-kvm libvirt-daemon-system libvirt-clients virtinst cloud-image-utils
 sudo deluser $USER libvirt && sudo deluser $USER kvm
 ```
+
+## Optional: Slinky (SLURM on Kubernetes)
+
+The `./slinky/` folder contains a self-contained [Slinky](https://github.com/SlinkyProject/slurm-operator)
+installation — SchedMD's SLURM operator for Kubernetes — along with scheduling
+and MPI job examples targeting the two worker nodes.
+
+It is **not part of `make all`**. Once your cluster is up, install it manually:
+
+```bash
+cd slinky
+./install.sh          # deploys slurm-operator + a 2-node SLURM cluster
+./scripts/submit.sh examples/01-hello.sbatch
+```
+
+See [`slinky/README.md`](./slinky/README.md) for the full walkthrough.
 
 ## Security note
 

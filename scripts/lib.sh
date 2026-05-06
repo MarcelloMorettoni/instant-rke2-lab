@@ -15,8 +15,8 @@ die()  { err "$*"; exit 1; }
 
 # Locate repo root and load config
 __LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SLINKY_ROOT_DETECTED="$(cd "${__LIB_DIR}/.." && pwd)"
-source "${SLINKY_ROOT_DETECTED}/config.env"
+LAB_ROOT_DETECTED="$(cd "${__LIB_DIR}/.." && pwd)"
+source "${LAB_ROOT_DETECTED}/config.env"
 
 # Use sudo for libvirt iff user isn't in the libvirt group yet
 if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx libvirt; then

@@ -44,7 +44,7 @@ YAML
 
 log "Installing Cilium HelmChartConfig"
 # Render manifest with envsubst-style substitution from this shell
-CILIUM_TPL="${SLINKY_ROOT}/manifests/rke2-cilium-config.yaml"
+CILIUM_TPL="${LAB_ROOT}/manifests/rke2-cilium-config.yaml"
 [[ -f "${CILIUM_TPL}" ]] || die "Missing manifest template: ${CILIUM_TPL}"
 RENDERED="$(CP_IP="${CP_IP}" CILIUM_HUBBLE_UI="${CILIUM_HUBBLE_UI}" \
   envsubst '${CP_IP} ${CILIUM_HUBBLE_UI}' < "${CILIUM_TPL}")"
