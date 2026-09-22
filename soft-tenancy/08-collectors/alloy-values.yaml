@@ -1,0 +1,285 @@
+# grafana/alloy: the platform's collector, one pod per node.
+#
+# It PULLS every signal it can, so tenants never choose their tenant ID:
+#   logs      container log files on the node's disk      -> Loki
+#   metrics   /metrics of pods that opt in (annotations)  -> Mimir
+#   profiles  /debug/pprof of pods that opt in            -> Pyroscope
+# The tenant comes from the namespace name, which only the platform controls
+# (step 01 ties tenant-X / tenant-X-* to tenant X). Traces are the one signal
+# apps must push: they go to per-tenant OTLP receivers (otlp-receivers.yaml).
+controller:
+  type: daemonset
+  tolerations:
+    - operator: Exists          # every node, control plane included
+
+# The chart's default ClusterRole can read every Secret (and pods/log) in the
+# cluster. Discovering pods is all this collector needs.
+rbac:
+  create: false
+
+extraObjects:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: alloy-pod-discovery
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "list", "watch"]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: alloy-pod-discovery
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: alloy-pod-discovery
+    subjects:
+      - kind: ServiceAccount
+        name: alloy
+        namespace: observability
+
+alloy:
+  mounts:
+    varlog: true                # hostPath /var/log (read-only) -> /var/log/pods/*
+  configMap:
+    create: true
+    content: |
+      // ================================================================
+      // 1. Discover the pods on THIS node (K8S_NODE_NAME comes from the chart)
+      // ================================================================
+      discovery.kubernetes "pods" {
+        role = "pod"
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("K8S_NODE_NAME")
+        }
+      }
+
+      // Every container's log file, labelled with where it came from.
+      discovery.relabel "logs" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+        // /var/log/pods/<namespace>_<pod>_<uid>/<container>/<n>.log
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          target_label  = "__path__"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+      }
+
+      // Pods that opt in with prometheus.io/scrape="true" + prometheus.io/port.
+      discovery.relabel "metrics" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+          regex         = "true"
+          action        = "keep"
+        }
+        // Only the container port the annotation names.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_port"]
+          target_label  = "__tmp_port"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          target_label  = "__tmp_port"
+          action        = "keepequal"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+          regex         = "(.+)"
+          target_label  = "__metrics_path__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+
+      // Pods that opt in with profiles.grafana.com/scrape="true" + profiles.grafana.com/port.
+      discovery.relabel "profiles" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_scrape"]
+          regex         = "true"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_profiles_grafana_com_port"]
+          target_label  = "__tmp_port"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          target_label  = "__tmp_port"
+          action        = "keepequal"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        // Same name as the app's OpenTelemetry service.name (container name),
+        // so Grafana can jump from a span to that service's profile.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "service_name"
+        }
+      }
+
+      // ================================================================
+      // 2. One pipeline per tenant. THE tenancy decision lives here.
+      //    Adding tenant-c = one more block at the bottom.
+      // ================================================================
+      declare "tenant_pipeline" {
+        argument "id" {
+          comment = "Tenant ID written to Loki, Mimir and Pyroscope (X-Scope-OrgID)"
+        }
+        argument "keep" {
+          comment = "Regex of the namespaces that belong to this tenant"
+        }
+        argument "drop" {
+          comment  = "Regex of namespaces to leave out"
+          optional = true
+          default  = ""
+        }
+        argument "log_targets" { }
+        argument "metric_targets" { }
+        argument "profile_targets" { }
+
+        // ---- logs
+        discovery.relabel "logs" {
+          targets = argument.log_targets.value
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.keep.value
+            action        = "keep"
+          }
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.drop.value
+            action        = "drop"
+          }
+        }
+        local.file_match "logs" {
+          path_targets = discovery.relabel.logs.output
+        }
+        loki.source.file "logs" {
+          targets    = local.file_match.logs.targets
+          forward_to = [loki.process.logs.receiver]
+        }
+        loki.process "logs" {
+          stage.cri { }
+          forward_to = [loki.write.loki.receiver]
+        }
+        loki.write "loki" {
+          endpoint {
+            url       = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+            tenant_id = argument.id.value
+          }
+        }
+
+        // ---- metrics
+        discovery.relabel "metrics" {
+          targets = argument.metric_targets.value
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.keep.value
+            action        = "keep"
+          }
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.drop.value
+            action        = "drop"
+          }
+        }
+        prometheus.scrape "metrics" {
+          targets         = discovery.relabel.metrics.output
+          scrape_interval = "30s"
+          forward_to      = [prometheus.remote_write.mimir.receiver]
+        }
+        prometheus.remote_write "mimir" {
+          endpoint {
+            url     = "http://mimir.observability.svc.cluster.local:8080/api/v1/push"
+            headers = { "X-Scope-OrgID" = argument.id.value }
+          }
+        }
+
+        // ---- profiles
+        discovery.relabel "profiles" {
+          targets = argument.profile_targets.value
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.keep.value
+            action        = "keep"
+          }
+          rule {
+            source_labels = ["namespace"]
+            regex         = argument.drop.value
+            action        = "drop"
+          }
+        }
+        pyroscope.scrape "profiles" {
+          targets    = discovery.relabel.profiles.output
+          forward_to = [pyroscope.write.pyroscope.receiver]
+        }
+        pyroscope.write "pyroscope" {
+          endpoint {
+            url     = "http://pyroscope.observability.svc.cluster.local:4040"
+            headers = { "X-Scope-OrgID" = argument.id.value }
+          }
+        }
+      }
+
+      tenant_pipeline "tenant_a" {
+        id              = "tenant-a"
+        keep            = "tenant-a(-.+)?"
+        log_targets     = discovery.relabel.logs.output
+        metric_targets  = discovery.relabel.metrics.output
+        profile_targets = discovery.relabel.profiles.output
+      }
+
+      tenant_pipeline "tenant_b" {
+        id              = "tenant-b"
+        keep            = "tenant-b(-.+)?"
+        log_targets     = discovery.relabel.logs.output
+        metric_targets  = discovery.relabel.metrics.output
+        profile_targets = discovery.relabel.profiles.output
+      }
+
+      // Everything that isn't a tenant: the platform's own tenant, never a customer's.
+      tenant_pipeline "platform" {
+        id              = "platform"
+        keep            = ".+"
+        drop            = "tenant-a(-.+)?|tenant-b(-.+)?"
+        log_targets     = discovery.relabel.logs.output
+        metric_targets  = discovery.relabel.metrics.output
+        profile_targets = discovery.relabel.profiles.output
+      }

@@ -19,8 +19,14 @@ die()  { err "$*"; exit 1; }
 LOKI_CHART_VERSION="7.3.0"          # Loki 3.6
 ALLOY_CHART_VERSION="1.12.1"        # Alloy 1.19
 GRAFANA_CHART_VERSION="13.2.5"      # Grafana 13.2 (chart moved to grafana-community)
+TEMPO_CHART_VERSION="3.0.0"         # Tempo 3.0 (grafana-community/tempo, monolithic)
+PYROSCOPE_CHART_VERSION="2.3.1"     # Pyroscope 2.3
+MIMIR_VERSION="3.2.1"               # Mimir 3.2, plain manifest (06-observability-backends/mimir.yaml)
+KGATEWAY_VERSION="v2.4.5"           # ingress (Gateway API implementation, Envoy-based)
+GATEWAY_API_VERSION="v1.6.1"        # standard-channel CRDs kgateway 2.4 is built against
 
 OBS_NS="observability"
+GW_NS="kgateway-system"
 
 # Generated secrets live next to the lab's other state: gitignored, mode 600.
 CREDS_DIR="${ST_CREDS_DIR:-${LAB_ROOT}/.state/soft-tenancy}"
@@ -50,14 +56,14 @@ ensure_default_storageclass() {
   kubectl annotate sc local-path storageclass.kubernetes.io/is-default-class=true --overwrite
 }
 
-# One random password per Loki tenant and per Grafana user, created once.
+# One random password per observability tenant (read gateway) and per Grafana user, created once.
 ensure_credentials() {
   if [[ ! -f "$CREDS_FILE" ]]; then
     command -v openssl >/dev/null || die "openssl is needed to generate credentials"
     mkdir -p "$CREDS_DIR" && chmod 700 "$CREDS_DIR"
     (
       umask 077
-      for v in LOKI_PW_TENANT_A LOKI_PW_TENANT_B LOKI_PW_PLATFORM \
+      for v in OBS_PW_TENANT_A OBS_PW_TENANT_B OBS_PW_PLATFORM \
                GRAFANA_PW_ALICE GRAFANA_PW_BOB GRAFANA_PW_OPS; do
         echo "${v}=$(openssl rand -hex 16)"
       done

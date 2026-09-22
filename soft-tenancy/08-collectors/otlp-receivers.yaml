@@ -1,0 +1,178 @@
+# Step 08b: one OTLP receiver per tenant, for traces.
+#
+# Traces are the one signal apps must PUSH. Letting them push straight to
+# Tempo would let them pick any X-Scope-OrgID. Instead each tenant gets its
+# own small Alloy, and the tenant ID comes from that Deployment's TENANT
+# variable, never from the request. Cilium makes sure only tenant a's pods can
+# reach otlp-tenant-a (step 03 egress, step 10 ingress). Whatever a tenant
+# sends, it can only land in its own tenant.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otlp-receiver
+  namespace: observability
+data:
+  config.alloy: |
+    otelcol.receiver.otlp "in" {
+      grpc {
+        endpoint = "0.0.0.0:4317"
+      }
+      output {
+        traces = [otelcol.processor.batch.out.input]
+      }
+    }
+
+    otelcol.processor.batch "out" {
+      output {
+        traces = [otelcol.exporter.otlp.tempo.input]
+      }
+    }
+
+    // Any X-Scope-OrgID the app sent is not forwarded; this one is set here.
+    otelcol.exporter.otlp "tempo" {
+      client {
+        endpoint = "tempo.observability.svc.cluster.local:4317"
+        headers  = { "X-Scope-OrgID" = sys.env("TENANT") }
+        tls {
+          insecure = true
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-tenant-a
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otlp-receiver
+      otlp-tenant: a
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otlp-receiver
+        otlp-tenant: a
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: alloy
+          image: docker.io/grafana/alloy:v1.19.2
+          args: ["run", "/etc/alloy/config.alloy", "--storage.path=/tmp/alloy",
+                 "--server.http.listen-addr=0.0.0.0:12345"]
+          env:
+            - name: TENANT
+              value: tenant-a
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 12345}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: otlp-receiver
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otlp-tenant-a
+  namespace: observability
+spec:
+  selector:
+    app.kubernetes.io/name: otlp-receiver
+    otlp-tenant: a
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-tenant-b
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otlp-receiver
+      otlp-tenant: b
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otlp-receiver
+        otlp-tenant: b
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: alloy
+          image: docker.io/grafana/alloy:v1.19.2
+          args: ["run", "/etc/alloy/config.alloy", "--storage.path=/tmp/alloy",
+                 "--server.http.listen-addr=0.0.0.0:12345"]
+          env:
+            - name: TENANT
+              value: tenant-b
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 12345}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: otlp-receiver
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otlp-tenant-b
+  namespace: observability
+spec:
+  selector:
+    app.kubernetes.io/name: otlp-receiver
+    otlp-tenant: b
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc

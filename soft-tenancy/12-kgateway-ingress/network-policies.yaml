@@ -1,0 +1,178 @@
+# Step 12b: who may talk to, and through, each gateway proxy.
+#
+#   tenant-a's proxy  ->  tenant a only      (plus the kgateway controller and DNS)
+#   tenant-b's proxy  ->  tenant b only
+#   platform proxy    ->  Grafana only
+#
+# Enforced on both ends: the proxy's egress, and the destination's ingress.
+# kgateway labels every proxy pod gateway.networking.k8s.io/gateway-name=<Gateway>,
+# and only the platform can create pods in kgateway-system, so that label is
+# safe to trust. Cluster-wide policies are used so selectors can name
+# namespaces freely.
+#
+# Tenant pods still cannot reach any gateway (their baseline has no egress to
+# kgateway-system). Inside the cluster they use service names, not the ingress.
+
+# ---------------------------------------------------------------- tenant side
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: tenant-a-from-gateway
+spec:
+  description: "tenant a also accepts traffic from its own gateway proxy"
+  endpointSelector:
+    matchLabels:
+      k8s:io.cilium.k8s.namespace.labels.tenant: a
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: tenant-a
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: tenant-b-from-gateway
+spec:
+  description: "tenant b also accepts traffic from its own gateway proxy"
+  endpointSelector:
+    matchLabels:
+      k8s:io.cilium.k8s.namespace.labels.tenant: b
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: tenant-b
+---
+# ---------------------------------------------------------------- proxy side
+# Even if a route or a kgateway Backend pointed tenant-a's proxy somewhere
+# else (another tenant, the Kubernetes API, observability), the packets drop.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: gateway-tenant-a-egress
+spec:
+  description: "tenant-a's proxy: tenant a, kgateway controller, DNS. Nothing else."
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: kgateway-system
+      gateway.networking.k8s.io/gateway-name: tenant-a
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: a
+    - toEndpoints:                     # configuration (xDS) from the controller
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            kgateway: kgateway
+      toPorts:
+        - ports:
+            - port: "9977"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: gateway-tenant-b-egress
+spec:
+  description: "tenant-b's proxy: tenant b, kgateway controller, DNS. Nothing else."
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: kgateway-system
+      gateway.networking.k8s.io/gateway-name: tenant-b
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: b
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            kgateway: kgateway
+      toPorts:
+        - ports:
+            - port: "9977"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: gateway-platform-egress
+spec:
+  description: "platform proxy: Grafana, kgateway controller, DNS. Nothing else."
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: kgateway-system
+      gateway.networking.k8s.io/gateway-name: platform
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            kgateway: kgateway
+      toPorts:
+        - ports:
+            - port: "9977"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# ---------------------------------------------------------------- Grafana side
+# Step 10 made observability default-deny. Grafana now also accepts the
+# platform gateway, and nothing else from outside the namespace.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-from-gateway
+  namespace: observability
+spec:
+  description: "Grafana: users arrive through the platform gateway"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: platform
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP

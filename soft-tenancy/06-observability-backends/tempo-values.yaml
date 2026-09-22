@@ -1,0 +1,32 @@
+# grafana-community/tempo: traces, monolithic (Tempo 3), multi-tenant.
+#
+# Same model as Loki: with multitenancy on, every push and query must carry
+# X-Scope-OrgID, and Tempo keeps each tenant's traces separate. Tempo does not
+# authenticate that header either: the per-tenant OTLP receivers (step 08)
+# set it on the write path, the read gateway (step 07) on the read path.
+tempo:
+  multitenancyEnabled: true
+  reportingEnabled: false
+
+  # The metrics generator turns each tenant's spans into service-graph and
+  # RED metrics, and writes them to Mimir under the SAME tenant (Tempo adds
+  # X-Scope-OrgID to its remote writes). That powers the service map in Grafana.
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: "http://mimir.observability.svc.cluster.local:8080/api/v1/push"
+    storage:
+      path: /var/tempo/generator
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
+
+  # Receivers keep the chart defaults (OTLP and Jaeger). Only the tenant OTLP
+  # receivers can reach Tempo at all (step 10), and only on OTLP gRPC :4317.
+  retention: 72h
+
+persistence:
+  enabled: true
+  size: 5Gi
