@@ -1,0 +1,48 @@
+# Step 12c: tenants publish their apps with HTTPRoutes, and nothing else.
+#
+# Deliberately NOT granted:
+#   referencegrants  a ReferenceGrant lets routes in another namespace point at
+#                    your services, which is a data path between tenants
+#   gateways         the Gateways (and their listeners) belong to the platform
+#   gateway.kgateway.dev/*  Backends (Static, DynamicForwardProxy) can target any
+#                    host; TrafficPolicies and friends are platform decisions
+# Even if one of these slipped, step 12b still drops the packets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-routes
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-routes-alice
+  namespace: tenant-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-routes
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: alice
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-routes-bob
+  namespace: tenant-b
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-routes
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: bob

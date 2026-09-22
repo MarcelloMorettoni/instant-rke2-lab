@@ -5,8 +5,9 @@
 # the namespace `tenant` label, which tenants also can't change (step 01).
 #
 # Once a pod is selected, everything not listed here is dropped:
-#   ingress  <- only tenant a
-#   egress   -> only tenant a, the shared CoreDNS (filtered names), example.com:443
+#   ingress  <- only tenant a, and the platform's collector (metrics, profiles)
+#   egress   -> only tenant a, the shared CoreDNS (filtered names), its own
+#               OTLP trace receiver, example.com:443
 # ...and an explicit DENY against every other tenant, in both directions.
 # In Cilium, deny beats allow. Whatever allow rule anyone adds later (a
 # NetworkPolicy, a sloppy CNP), traffic between tenants stays blocked.
@@ -15,7 +16,7 @@ kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: tenant-a-baseline
 spec:
-  description: "tenant a: itself, its own DNS names, example.com. Other tenants: denied."
+  description: "tenant a: itself, own DNS names, own trace receiver, example.com. Others: denied."
   endpointSelector:
     matchLabels:
       k8s:io.cilium.k8s.namespace.labels.tenant: a
@@ -24,6 +25,12 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.cilium.k8s.namespace.labels.tenant: a
+    # The platform's collector (Alloy) pulls metrics and profiles from pods
+    # that opt in. Only platform pods carry these labels in observability.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: alloy
 
   # "Has a tenant label, and it isn't a". Both expressions are needed: NotIn
   # alone would also match kube-system, observability, host, ...
@@ -56,7 +63,20 @@ spec:
             dns:
               - matchPattern: "*.tenant-a.svc.cluster.local"     # services
               - matchPattern: "*.*.tenant-a.svc.cluster.local"   # StatefulSet pods
+              - matchName: "otlp-tenant-a.observability.svc.cluster.local"  # own trace receiver
               - matchName: "example.com"                          # internet allowlist
+
+    # Traces: only to tenant a's own OTLP receiver (step 08), which stamps
+    # tenant-a on everything it forwards.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: otlp-receiver
+            otlp-tenant: a
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
 
     # Internet: an explicit FQDN allowlist. It works together with the DNS rule
     # above, because Cilium learns example.com's IPs from the lookups it proxies.

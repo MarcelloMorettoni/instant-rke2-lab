@@ -6,7 +6,7 @@ kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: tenant-b-baseline
 spec:
-  description: "tenant b: itself, its own DNS names. No internet. Other tenants: denied."
+  description: "tenant b: itself, own DNS names, own trace receiver. No internet. Others: denied."
   endpointSelector:
     matchLabels:
       k8s:io.cilium.k8s.namespace.labels.tenant: b
@@ -15,6 +15,12 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.cilium.k8s.namespace.labels.tenant: b
+    # The platform's collector (Alloy) pulls metrics and profiles from pods
+    # that opt in. Only platform pods carry these labels in observability.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: alloy
 
   ingressDeny:
     - fromEndpoints:
@@ -42,6 +48,17 @@ spec:
             dns:
               - matchPattern: "*.tenant-b.svc.cluster.local"
               - matchPattern: "*.*.tenant-b.svc.cluster.local"
+              - matchName: "otlp-tenant-b.observability.svc.cluster.local"
+
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: otlp-receiver
+            otlp-tenant: b
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
 
   egressDeny:
     - toEndpoints:

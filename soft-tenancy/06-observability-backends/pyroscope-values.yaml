@@ -1,0 +1,21 @@
+# grafana/pyroscope: continuous profiles, single binary, multi-tenant.
+#
+# Same model again: -auth.multitenancy-enabled makes every push and query name
+# its tenant in X-Scope-OrgID. Alloy sets it on the write path (it pulls
+# profiles from tenant pods, step 08), the read gateway on the read path.
+pyroscope:
+  replicaCount: 1
+  extraArgs:
+    auth.multitenancy-enabled: "true"
+    log.level: info
+  persistence:
+    enabled: true
+    size: 5Gi
+  # Keep the chart's RBAC: Pyroscope 2's metastore finds its peers through the
+  # Kubernetes API. It's a namespaced, read-only Role (endpoints, pods and
+  # services in observability).
+
+# By default the chart ALSO deploys its own Alloy, with a ClusterRole that can
+# read every Secret in the cluster. Our Alloy (step 08) does that job.
+alloy:
+  enabled: false

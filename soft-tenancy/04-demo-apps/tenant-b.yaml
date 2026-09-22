@@ -1,7 +1,13 @@
 # Step 04: tenant b's workloads. Same as tenant-a.yaml, plus a NodePort service at the end.
-#   web     nginx that answers "hello from tenant-b" (and logs every request)
-#   client  netshoot (curl, dig) that calls web every 10s. The verify scripts exec into it.
-# Both pass the "restricted" Pod Security Standard the namespace enforces.
+#   web       nginx that answers "hello from tenant-b" (network tests)
+#   frontend  podinfo, calls backend on every /echo: one trace across two services
+#   backend   podinfo
+#   client    netshoot (curl, dig): drives traffic every few seconds, and the
+#             verify scripts exec into it
+# frontend and backend produce all four signals: logs (stdout, with trace_id),
+# metrics (/metrics), profiles (/debug/pprof) and traces (OTLP to tenant a's
+# own receiver). The annotations opt them in to the platform's collector.
+# Everything passes the "restricted" Pod Security Standard the namespace enforces.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -84,9 +90,15 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
+              i=0
               while true; do
+                i=$((i + 1))
                 echo "$(date -Iseconds) tenant-b client: GET http://web -> $(curl -s -m 2 http://web || echo FAILED)"
-                sleep 10
+                # observability demo traffic: frontend -> backend, some slow, some failing
+                curl -s -m 5 -o /dev/null -X POST -d "order-$i" http://frontend:9898/echo
+                [ $((i % 3)) -eq 0 ] && curl -s -m 5 -o /dev/null http://frontend:9898/delay/1
+                [ $((i % 5)) -eq 0 ] && curl -s -m 5 -o /dev/null http://frontend:9898/status/500
+                sleep 5
               done
           securityContext:
             allowPrivilegeEscalation: false
@@ -94,6 +106,126 @@ spec:
           resources:
             requests: {cpu: 10m, memory: 32Mi}
             limits: {cpu: 100m, memory: 128Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: tenant-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9898"
+        profiles.grafana.com/scrape: "true"
+        profiles.grafana.com/port: "9898"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        # Container name = OpenTelemetry service.name = profile service_name,
+        # which is what lets Grafana jump from a span to its logs and profile.
+        - name: frontend
+          image: ghcr.io/stefanprodan/podinfo:6.15.0
+          command: ["./podinfo"]
+          args: ["--port=9898", "--level=debug", "--otel-service-name=frontend", "--backend-url=http://backend:9898/echo"]
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otlp-tenant-b.observability.svc.cluster.local:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 9898
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: tenant-b
+spec:
+  selector: {app: frontend}
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: tenant-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9898"
+        profiles.grafana.com/scrape: "true"
+        profiles.grafana.com/port: "9898"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        # Container name = OpenTelemetry service.name = profile service_name,
+        # which is what lets Grafana jump from a span to its logs and profile.
+        - name: backend
+          image: ghcr.io/stefanprodan/podinfo:6.15.0
+          command: ["./podinfo"]
+          args: ["--port=9898", "--level=debug", "--otel-service-name=backend"]
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otlp-tenant-b.observability.svc.cluster.local:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 9898
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: tenant-b
+spec:
+  selector: {app: backend}
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
 ---
 # Exposes tenant b's web on every node at :30082. The verify script uses it to
 # show that "go around via the node" doesn't work either. With kube-proxy

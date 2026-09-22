@@ -1,0 +1,134 @@
+# Step 12a: one Gateway per tenant, plus one for the platform (Grafana).
+# All of them live in kgateway-system, which only the platform can touch.
+#
+# Why not one shared Gateway? Its Envoy proxy would have to reach every
+# tenant, so Cilium could no longer tell tenant-a's traffic from tenant-b's on
+# that hop. On top of that, kgateway's Backend resource (types Static and
+# DynamicForwardProxy) can send traffic to any host: one RBAC slip and a
+# shared proxy becomes a bridge between tenants. With one proxy per tenant,
+# Cilium enforces the boundary on each proxy's own identity
+# (network-policies.yaml), whatever routes or backends exist.
+#
+# Each listener only accepts HTTPRoutes from its own tenant's namespaces
+# (allowedRoutes), so tenant-b can't attach a route that steals
+# web.tenant-a.lab.
+#
+# Lab only: there is no LoadBalancer provider here, so GatewayParameters turns
+# each proxy Service into a NodePort. In production, drop the ports/type
+# override and let each Gateway get its own LoadBalancer address.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: tenant-a
+  namespace: kgateway-system
+spec:
+  kube:
+    service:
+      type: NodePort
+      ports:
+        - port: 8080
+          nodePort: 30180
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: tenant-a
+  namespace: kgateway-system
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: tenant-a
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      hostname: "*.tenant-a.lab"
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              tenant: a
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: tenant-b
+  namespace: kgateway-system
+spec:
+  kube:
+    service:
+      type: NodePort
+      ports:
+        - port: 8080
+          nodePort: 30181
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: tenant-b
+  namespace: kgateway-system
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: tenant-b
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      hostname: "*.tenant-b.lab"
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              tenant: b
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: platform
+  namespace: kgateway-system
+spec:
+  kube:
+    service:
+      type: NodePort
+      ports:
+        - port: 8080
+          nodePort: 30182
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform
+  namespace: kgateway-system
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: platform
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      hostname: "grafana.platform.lab"
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              role: platform          # the observability namespace

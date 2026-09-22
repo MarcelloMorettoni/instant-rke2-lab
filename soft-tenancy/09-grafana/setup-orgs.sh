@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Step 09b: orgs, users and data sources, through Grafana's HTTP API.
 #
-#   Org "Tenant A"  alice (Editor)  data source "Loki" -> gateway as user tenant-a
-#   Org "Tenant B"  bob   (Editor)  data source "Loki" -> gateway as user tenant-b
-#   Org "Platform"  ops   (Editor)  data source "Loki" -> gateway as user platform
+#   Org "Tenant A"  alice (Editor)   Loki, Mimir, Tempo, Pyroscope -> obs-gateway as tenant-a
+#   Org "Tenant B"  bob   (Editor)   ... as tenant-b
+#   Org "Platform"  ops   (Editor)   ... as platform
 #   Main Org        nobody, and no data sources
+#
+# The four data sources of an org are linked to each other (trace -> logs,
+# trace -> metrics, trace -> profile, log line -> trace, metric exemplar ->
+# trace), and only ever to data sources of the SAME org.
 #
 # Tenant users are Editors (dashboards, Explore), NEVER org Admins. An org
 # Admin can create data sources, including one pointed at another tenant.
@@ -19,7 +23,7 @@ source "${HERE}/../lib.sh"
 command -v jq >/dev/null || die "jq is required"
 ensure_credentials
 
-GATEWAY_URL="${GATEWAY_URL:-http://loki-gateway.${OBS_NS}.svc.cluster.local:8080}"
+GATEWAY="${GATEWAY:-http://obs-gateway.${OBS_NS}.svc.cluster.local}"
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 
 if [[ -z "${GRAFANA_URL:-}" ]]; then
@@ -81,12 +85,9 @@ ensure_user() {
   api DELETE "/api/orgs/1/users/${uid}" >/dev/null 2>&1 || true
 }
 
-ensure_datasource() {
-  local org=$1 uid=$2 gw_user=$3 gw_password=$4 body
-  body="$(jq -n --arg uid "${uid}" --arg url "${GATEWAY_URL}" --arg u "${gw_user}" --arg p "${gw_password}" '{
-      name: "Loki", uid: $uid, type: "loki", access: "proxy", url: $url, isDefault: true,
-      basicAuth: true, basicAuthUser: $u, secureJsonData: {basicAuthPassword: $p}
-    }')"
+put_datasource() {  # put_datasource <org id> <json body>: create or update by uid
+  local org=$1 body=$2 uid
+  uid="$(jq -r .uid <<<"${body}")"
   if api GET "/api/datasources/uid/${uid}" "" "${org}" >/dev/null 2>&1; then
     api PUT "/api/datasources/uid/${uid}" "${body}" "${org}" >/dev/null
   else
@@ -94,16 +95,51 @@ ensure_datasource() {
   fi
 }
 
-# org name | Loki data source uid | gateway user | gateway password | grafana user | password
-while IFS='|' read -r org_name ds_uid gw_user gw_pw g_user g_pw; do
+# All four data sources of one tenant, each logging into the gateway as that tenant.
+ensure_datasources() {
+  local org=$1 t=$2 gw_user=$3 gw_password=$4 common
+  common="$(jq -n --arg u "${gw_user}" --arg p "${gw_password}" \
+    '{access: "proxy", basicAuth: true, basicAuthUser: $u, secureJsonData: {basicAuthPassword: $p}}')"
+
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8080" '$c + {
+    name: "Loki", uid: ("loki-" + $t), type: "loki", url: $url, isDefault: true,
+    jsonData: {derivedFields: [{
+      name: "TraceID", matcherRegex: "\"trace_id\":\"(\\w+)\"",
+      datasourceUid: ("tempo-" + $t), url: "${__value.raw}", urlDisplayLabel: "View trace"}]}}')"
+
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8081/prometheus" '$c + {
+    name: "Mimir", uid: ("mimir-" + $t), type: "prometheus", url: $url,
+    jsonData: {prometheusType: "Mimir", httpMethod: "POST",
+               exemplarTraceIdDestinations: [{name: "trace_id", datasourceUid: ("tempo-" + $t)}]}}')"
+
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8083" '$c + {
+    name: "Pyroscope", uid: ("pyroscope-" + $t), type: "grafana-pyroscope-datasource", url: $url}')"
+
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8082" '$c + {
+    name: "Tempo", uid: ("tempo-" + $t), type: "tempo", url: $url,
+    jsonData: {
+      tracesToLogsV2: {datasourceUid: ("loki-" + $t), filterByTraceID: true,
+                       spanStartTimeShift: "-5m", spanEndTimeShift: "5m",
+                       tags: [{key: "service.name", value: "container"}]},
+      tracesToMetrics: {datasourceUid: ("mimir-" + $t)},
+      tracesToProfiles: {datasourceUid: ("pyroscope-" + $t),
+                         profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+                         tags: [{key: "service.name", value: "service_name"}]},
+      serviceMap: {datasourceUid: ("mimir-" + $t)},
+      nodeGraph: {enabled: true},
+      streamingEnabled: {search: false, metrics: false}}}')"
+}
+
+# org name | data source uid suffix | gateway user | gateway password | grafana user | password
+while IFS='|' read -r org_name t gw_user gw_pw g_user g_pw; do
   org_id="$(ensure_org "${org_name}")"
-  ensure_datasource "${org_id}" "${ds_uid}" "${gw_user}" "${gw_pw}"
+  ensure_datasources "${org_id}" "${t}" "${gw_user}" "${gw_pw}"
   ensure_user "${g_user}" "${g_pw}" "${org_id}" "Editor"
-  ok "Org '${org_name}' (id ${org_id}): user ${g_user}, data source ${ds_uid} -> gateway as ${gw_user}"
+  ok "Org '${org_name}' (id ${org_id}): user ${g_user}; Loki, Mimir, Tempo, Pyroscope -> gateway as ${gw_user}"
 done <<EOF
-Tenant A|loki-tenant-a|tenant-a|${LOKI_PW_TENANT_A}|alice|${GRAFANA_PW_ALICE}
-Tenant B|loki-tenant-b|tenant-b|${LOKI_PW_TENANT_B}|bob|${GRAFANA_PW_BOB}
-Platform|loki-platform|platform|${LOKI_PW_PLATFORM}|ops|${GRAFANA_PW_OPS}
+Tenant A|tenant-a|tenant-a|${OBS_PW_TENANT_A}|alice|${GRAFANA_PW_ALICE}
+Tenant B|tenant-b|tenant-b|${OBS_PW_TENANT_B}|bob|${GRAFANA_PW_BOB}
+Platform|platform|platform|${OBS_PW_PLATFORM}|ops|${GRAFANA_PW_OPS}
 EOF
 
 # Main Org must stay empty: it's where Grafana drops brand-new users.
