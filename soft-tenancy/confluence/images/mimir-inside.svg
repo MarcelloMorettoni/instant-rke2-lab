@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="t">
+<title id="t">Inside Mimir: one tenant per X-Scope-OrgID</title>
+<defs><marker id="ah2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="ah475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="ah7C3AED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="429" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Inside Mimir: one tenant per X-Scope-OrgID</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">The header picks the tenant; everything after that is kept apart</text>
+<rect x="32" y="124" width="200" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="48" y="151" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="700" fill="#1E40AF" text-anchor="start">X-Scope-OrgID: tenant-a</text>
+<path d="M232,146 L296,146" fill="none" stroke="#2563EB" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
+<rect x="32" y="188" width="200" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="48" y="215" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="700" fill="#5B21B6" text-anchor="start">X-Scope-OrgID: tenant-b</text>
+<path d="M232,210 L296,210" fill="none" stroke="#7C3AED" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
+<rect x="32" y="252" width="200" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="48" y="279" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="700" fill="#334155" text-anchor="start">X-Scope-OrgID: platform</text>
+<path d="M232,274 L296,274" fill="none" stroke="#475569" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah475569)"/>
+<rect x="32" y="318" width="200" height="44" rx="8" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.5"/>
+<text x="48" y="345" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="700" fill="#991B1B" text-anchor="start">no header</text>
+<path d="M232,340 L296,340" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" marker-end="url(#ahDC2626)"/>
+<rect x="300" y="110" width="220" height="266" rx="10" fill="#FDF2F8" stroke="#F9A8D4" stroke-width="1.5"/>
+<text x="318" y="140" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#9D174D" text-anchor="start">Mimir</text>
+<text x="318" y="162" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" fill="#9D174D" text-anchor="start">multitenancy_enabled: true</text>
+<text x="318" y="196" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">reads the header on</text>
+<text x="318" y="213" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">every push and query,</text>
+<text x="318" y="230" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">and scopes the request</text>
+<text x="318" y="247" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">to that tenant</text>
+<g transform="translate(330,340) scale(0.8181818181818182)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="346" y="345" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#991B1B" text-anchor="start">401: no org id</text>
+<text x="318" y="276" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">It never checks who</text>
+<text x="318" y="291" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">sent the header: that is</text>
+<text x="318" y="306" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">the gateway&#x27;s and the</text>
+<text x="318" y="321" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">collectors&#x27; job.</text>
+<text x="620" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">STORAGE</text>
+<rect x="560" y="124" width="120" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="620" y="143" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#1E40AF" text-anchor="middle">tenant-a</text>
+<text x="620" y="159" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">TSDB blocks</text>
+<rect x="560" y="188" width="120" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="620" y="207" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#5B21B6" text-anchor="middle">tenant-b</text>
+<text x="620" y="223" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">TSDB blocks</text>
+<rect x="560" y="252" width="120" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="620" y="271" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#334155" text-anchor="middle">platform</text>
+<text x="620" y="287" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">TSDB blocks</text>
+<text x="748" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">LIMITS</text>
+<rect x="688" y="124" width="120" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="748" y="143" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#1E40AF" text-anchor="middle">tenant-a</text>
+<text x="748" y="159" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">150k series</text>
+<rect x="688" y="188" width="120" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="748" y="207" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#5B21B6" text-anchor="middle">tenant-b</text>
+<text x="748" y="223" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">150k series</text>
+<rect x="688" y="252" width="120" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="748" y="271" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#334155" text-anchor="middle">platform</text>
+<text x="748" y="287" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">150k series</text>
+<text x="876" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">QUERIES</text>
+<rect x="816" y="124" width="120" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="876" y="143" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#1E40AF" text-anchor="middle">tenant-a</text>
+<text x="876" y="159" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">PromQL: own data</text>
+<rect x="816" y="188" width="120" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="876" y="207" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#5B21B6" text-anchor="middle">tenant-b</text>
+<text x="876" y="223" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">PromQL: own data</text>
+<rect x="816" y="252" width="120" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="876" y="271" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" fill="#334155" text-anchor="middle">platform</text>
+<text x="876" y="287" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="400" fill="#475569" text-anchor="middle">PromQL: own data</text>
+<path d="M520,146 L556,146" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
+<path d="M520,210 L556,210" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
+<path d="M520,274 L556,274" fill="none" stroke="#475569" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#ah475569)"/>
+<text x="560" y="342" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">Per-tenant limits keep one noisy tenant</text>
+<text x="560" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">from starving the others. They cap; they</text>
+<text x="560" y="374" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">don&#x27;t give each tenant its own hardware.</text>
+</svg>

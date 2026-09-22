@@ -11,7 +11,7 @@ command -v jq >/dev/null || die "jq is required"
 
 GRAFANA_ADMIN_PASSWORD="$(kubectl -n "${OBS_NS}" get secret grafana -o jsonpath='{.data.admin-password}' | base64 -d)"
 G="http://127.0.0.1:33000"
-GW="http://127.0.0.1"                 # obs-gateway: :38080 Loki :38081 Mimir :38082 Tempo :38083 Pyroscope
+GW="http://127.0.0.1"                 # obs-gateway: :43100 Loki :48080 Mimir :43200 Tempo :44040 Pyroscope
 
 # Admin's view: port-forwards go straight into the pod's network namespace,
 # so they test the application logic (auth, orgs), not the network policy.
@@ -23,28 +23,31 @@ cleanup() {
 }
 trap cleanup EXIT
 kubectl -n "${OBS_NS}" port-forward svc/grafana 33000:80 >/dev/null 2>&1 & PIDS+=($!)
-kubectl -n "${OBS_NS}" port-forward svc/obs-gateway 38080:8080 38081:8081 38082:8082 38083:8083 >/dev/null 2>&1 & PIDS+=($!)
+kubectl -n "${OBS_NS}" port-forward svc/obs-gateway 43100:3100 48080:8080 43200:3200 44040:4040 >/dev/null 2>&1 & PIDS+=($!)
 for _ in $(seq 1 30); do
-  curl -sf "${G}/api/health" >/dev/null 2>&1 && curl -sf "${GW}:38080/healthz" >/dev/null 2>&1 && break
+  # The gateway has no open endpoint: a 401 on a real API path means it is up.
+  curl -sf "${G}/api/health" >/dev/null 2>&1 &&
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' "${GW}:43100/loki/api/v1/labels")" == 401 ]] && break
   sleep 1
 done
 
-TA="tenant-a:${OBS_PW_TENANT_A}"; TB="tenant-b:${OBS_PW_TENANT_B}"
+# Each tenant's gateway key, as a curl header. The key alone decides the tenant.
+TA="X-Api-Key: ${OBS_KEY_TENANT_A}"; TB="X-Api-Key: ${OBS_KEY_TENANT_B}"
 A="alice:${GRAFANA_PW_ALICE}"; B="bob:${GRAFANA_PW_BOB}"; O="ops:${GRAFANA_PW_OPS}"
 json() { jq -e "$2" <<<"$1"; }                       # json <document> <jq assertion>
 ms_range() { local now; now=$(date +%s); echo "start=$(( (now - 3600) * 1000 ))&end=$(( now * 1000 ))"; }
 only() { printf 'length > 0 and all(.[]; test("^%s(-|$)"))' "$1"; }   # every namespace is tenant X's
 
 # ---- what each tenant sees, through the gateway, per signal ----------------
-gw_logs()     { curl -sf -u "$1" "${@:2}" "${GW}:38080/loki/api/v1/label/namespace/values" | jq -c '.data // []'; }
-gw_metrics()  { curl -sf -u "$1" "${@:2}" "${GW}:38081/prometheus/api/v1/label/namespace/values" | jq -c '.data // []'; }
+gw_logs()     { curl -sf -H "$1" "${@:2}" "${GW}:43100/loki/api/v1/label/namespace/values" | jq -c '.data // []'; }
+gw_metrics()  { curl -sf -H "$1" "${@:2}" "${GW}:48080/prometheus/api/v1/label/namespace/values" | jq -c '.data // []'; }
 gw_profiles() { local now; now=$(date +%s)
-  curl -sf -u "$1" "${@:2}" -X POST -H 'Content-Type: application/json' \
+  curl -sf -H "$1" "${@:2}" -X POST -H 'Content-Type: application/json' \
     -d "{\"name\":\"namespace\",\"start\":$(( (now - 3600) * 1000 )),\"end\":$(( now * 1000 ))}" \
-    "${GW}:38083/querier.v1.QuerierService/LabelValues" | jq -c '.names // []'; }
-gw_trace_ids() { curl -sf -u "$1" "${GW}:38082/api/search?limit=20" | jq -r '.traces[]?.traceID'; }
+    "${GW}:44040/querier.v1.QuerierService/LabelValues" | jq -c '.names // []'; }
+gw_trace_ids() { curl -sf -H "$1" "${GW}:43200/api/search?limit=20" | jq -r '.traces[]?.traceID'; }
 gw_trace_spans() {  # number of resource spans a user gets back for a trace id (0 on any error)
-  curl -sf -u "$1" "${@:3}" "${GW}:38082/api/v2/traces/$2" 2>/dev/null | jq '[.trace.resourceSpans[]?] | length' 2>/dev/null || echo 0; }
+  curl -sf -H "$1" "${@:3}" "${GW}:43200/api/v2/traces/$2" 2>/dev/null | jq '[.trace.resourceSpans[]?] | length' 2>/dev/null || echo 0; }
 
 log "Waiting for all four signals of tenant-a (Alloy scrapes every 30s, profiles need a minute)..."
 for _ in $(seq 1 36); do
@@ -69,30 +72,34 @@ check "traces:   tenant-a gets its own trace"             ok   test "$(gw_trace_
 check "traces:   tenant-b gets nothing for it"            ok   test "$(gw_trace_spans "$TB" "$A_TRACE")" -eq 0
 check "traces:   tenant-a gets nothing for tenant-b's"    ok   test "$(gw_trace_spans "$TA" "$B_TRACE")" -eq 0
 
-echo; log "── The tenant comes from the password, never the header"
+echo; log "── The tenant comes from the key, never the header"
 SPOOF=(-H 'X-Scope-OrgID: tenant-b')
 check "logs:     tenant-a claiming tenant-b"              ok   json "$(gw_logs "$TA" "${SPOOF[@]}")" "$(only tenant-a)"
 check "metrics:  tenant-a claiming tenant-b"              ok   json "$(gw_metrics "$TA" "${SPOOF[@]}")" "$(only tenant-a)"
 check "profiles: tenant-a claiming tenant-b"              ok   json "$(gw_profiles "$TA" "${SPOOF[@]}")" "$(only tenant-a)"
 check "traces:   tenant-a claiming tenant-b"              ok   test "$(gw_trace_spans "$TA" "$B_TRACE" "${SPOOF[@]}")" -eq 0
-for pair in "38080 Loki" "38081 Mimir" "38082 Tempo" "38083 Pyroscope"; do
-  read -r port name <<<"$pair"
-  check "no credentials (${name}) -> refused"               fail curl -sf "${GW}:${port}/"
+http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+# A real API path of each backend: auth runs per route, so an unrouted path is just 404.
+for probe in "43100 Loki /loki/api/v1/labels" "48080 Mimir /prometheus/api/v1/labels" \
+             "43200 Tempo /api/search" "44040 Pyroscope /querier.v1.QuerierService/ProfileTypes"; do
+  read -r port name path <<<"$probe"
+  check "no key (${name}) -> 401"                           ok   test "$(http_code "${GW}:${port}${path}")" = 401
+  check "unknown key (${name}) -> 401"                      ok   test "$(http_code -H 'X-Api-Key: not-a-key' "${GW}:${port}${path}")" = 401
 done
-check "Loki push through the gateway -> refused"          fail curl -sf -u "$TA" -X POST -H 'Content-Type: application/json' -d '{"streams":[]}' "${GW}:38080/loki/api/v1/push"
-check "Mimir push through the gateway -> refused"         fail curl -sf -u "$TA" -X POST -d x "${GW}:38081/api/v1/push"
-check "Tempo overrides API -> refused"                    fail curl -sf -u "$TA" "${GW}:38082/api/overrides"
-check "Pyroscope push through the gateway -> refused"     fail curl -sf -u "$TA" -X POST -d x "${GW}:38083/push.v1.PusherService/Push"
+check "Loki push through the gateway -> refused"          fail curl -sf -H "$TA" -X POST -H 'Content-Type: application/json' -d '{"streams":[]}' "${GW}:43100/loki/api/v1/push"
+check "Mimir push through the gateway -> refused"         fail curl -sf -H "$TA" -X POST -d x "${GW}:48080/api/v1/push"
+check "Tempo overrides API -> refused"                    fail curl -sf -H "$TA" "${GW}:43200/api/overrides"
+check "Pyroscope push through the gateway -> refused"     fail curl -sf -H "$TA" -X POST -d x "${GW}:44040/push.v1.PusherService/Push"
 
 echo; log "── Signals are linked, inside a tenant only"
-LOG_TRACE="$(curl -sf -u "$TA" -G "${GW}:38080/loki/api/v1/query_range" \
+LOG_TRACE="$(curl -sf -H "$TA" -G "${GW}:43100/loki/api/v1/query_range" \
   --data-urlencode 'query={namespace="tenant-a", container="frontend"} |= "trace_id"' --data-urlencode limit=1 \
   | jq -r '.data.result[0].values[0][1] // ""' | grep -o '"trace_id":"[a-f0-9]*"' | cut -d'"' -f4 || true)"
 check "a tenant-a log line's trace_id opens in Tempo"     ok   test "$(gw_trace_spans "$TA" "${LOG_TRACE:-none}")" -gt 0
 check "...but not for tenant-b"                           ok   test "$(gw_trace_spans "$TB" "${LOG_TRACE:-none}")" -eq 0
 SG='sum by (client, server) (traces_service_graph_request_total{client="frontend", server="backend"})'
-check "service graph frontend -> backend (tenant-a)"      ok   json "$(curl -sf -u "$TA" --data-urlencode "query=${SG}" "${GW}:38081/prometheus/api/v1/query")" '.data.result | length > 0'
-check "podinfo request metrics (tenant-a)"                ok   json "$(curl -sf -u "$TA" --data-urlencode 'query=count(http_request_duration_seconds_count{namespace="tenant-a"})' "${GW}:38081/prometheus/api/v1/query")" '.data.result | length > 0'
+check "service graph frontend -> backend (tenant-a)"      ok   json "$(curl -sf -H "$TA" --data-urlencode "query=${SG}" "${GW}:48080/prometheus/api/v1/query")" '.data.result | length > 0'
+check "podinfo request metrics (tenant-a)"                ok   json "$(curl -sf -H "$TA" --data-urlencode 'query=count(http_request_duration_seconds_count{namespace="tenant-a"})' "${GW}:48080/prometheus/api/v1/query")" '.data.result | length > 0'
 
 echo; log "── Grafana: each user in their own org, with four linked data sources"
 check "alice's only org is 'Tenant A' (Editor)"           ok   json "$(curl -sf -u "$A" "${G}/api/user/orgs")" 'length == 1 and .[0].name == "Tenant A" and .[0].role == "Editor"'
@@ -122,7 +129,7 @@ check "tenant-a -> Tempo directly"                        fail tcp tenant-a "$TE
 check "tenant-a -> Mimir"                                 fail tcp tenant-a "$MIMIR_IP" 8080
 check "tenant-a -> Loki"                                  fail tcp tenant-a "$LOKI_IP" 3100
 check "tenant-a -> Pyroscope"                             fail tcp tenant-a "$PYRO_IP" 4040
-check "tenant-a -> the read gateway"                      fail tcp tenant-a "$GW_IP" 8081
+check "tenant-a -> the read gateway"                      fail tcp tenant-a "$GW_IP" 8080
 
 run_probe() {  # run_probe <namespace> <pod> [extra kubectl run args]: sleeping netshoot pod
   local ns=$1 pod=$2

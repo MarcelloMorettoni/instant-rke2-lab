@@ -3,7 +3,7 @@
 Two tenants share the cluster, `tenant-a` and `tenant-b`. The goals:
 
 - They **cannot talk to each other**: not by service name, pod IP or NodePort,
-  not through the ingress (kgateway), and not even by DNS lookup.
+  not through the ingress, and not even by DNS lookup.
 - Each tenant **logs into Grafana and sees only its own telemetry**: logs,
   metrics, traces and profiles, all linked together.
 - The isolation **holds when someone makes a mistake**: a sloppy allow policy,
@@ -16,7 +16,10 @@ section covers what that does *not* give you.
 **Word versions for the team:**
 [`soft-tenancy-lab-walkthrough.docx`](./soft-tenancy-lab-walkthrough.docx) (this walkthrough),
 [`soft-multi-tenancy-guide.docx`](./soft-multi-tenancy-guide.docx) (the same design for any Cilium cluster),
-and [`confluence/`](./confluence/) (two short "basics" pages with SVG and PNG diagrams, plus paste instructions).
+and [`confluence/`](./confluence/) (two "basics" pages and one page per backend, with SVG and PNG diagrams, plus paste instructions).
+
+**Every gateway is kgateway** (Envoy, Gateway API): the read gateway in front of
+the observability backends (step 07) and the tenant ingress (step 12).
 
 ## The design
 
@@ -34,8 +37,8 @@ observability (platform-only namespace, locked down in step 10)
           traces: tenant-a pods ──► otlp-tenant-a ──► Tempo ──► Mimir (service graph)
                   tenant-b pods ──► otlp-tenant-b ──┘      (receiver stamps the tenant)
   read    Grafana org "Tenant A" ─┐
-          Grafana org "Tenant B" ─┼─► obs-gateway ──► Loki :8080  Mimir :8081  Tempo :8082  Pyroscope :8083
-          Grafana org "Platform" ─┘   X-Scope-OrgID = authenticated user (whatever the client sent is overwritten)
+          Grafana org "Tenant B" ─┼─► obs-gateway (kgateway) ──► Loki :3100  Mimir :8080  Tempo :3200  Pyroscope :4040
+          Grafana org "Platform" ─┘   X-Scope-OrgID = owner of the API key (whatever the client sent is replaced)
 ```
 
 **One rule behind every decision: a tenant never controls anything that sets
@@ -52,7 +55,7 @@ namespace names or namespace labels (cluster-scoped objects), so those are.
 | Namespaces | name and label must match | ValidatingAdmissionPolicy (step 01) |
 | Logs, metrics, profiles (write) | namespace name | Alloy pulls them and maps `tenant-X[-*]` → tenant `tenant-X` (step 08) |
 | Traces (write) | which receiver the pod can reach | one OTLP receiver per tenant; Cilium lets only that tenant reach it (steps 03, 08, 10) |
-| All signals (read) | gateway username | nginx sets `X-Scope-OrgID` from basic auth on every backend (step 07) |
+| All signals (read) | gateway API key | kgateway's `apiKeyAuth` sets `X-Scope-OrgID` from the key on every backend (step 07) |
 | Grafana | org membership | one org per tenant with four linked data sources; users are Editors, never Admins (step 09) |
 | Ingress | Gateway listener, proxy identity | one kgateway Gateway per tenant; its listener only accepts that tenant's routes, and Cilium limits its proxy to that tenant (step 12) |
 
@@ -67,12 +70,12 @@ namespace names or namespace labels (cluster-scoped objects), so those are.
 | Mimir 3.2: metrics | plain manifest, single binary | `observability` |
 | Tempo 3.0: traces, with service graphs | `grafana-community/tempo` 3.0.0 | `observability` |
 | Pyroscope 2.3: profiles | `grafana/pyroscope` 2.3.1 | `observability` |
-| Read gateway (nginx): one port per backend | plain YAML | `observability` |
+| Read gateway (kgateway): one listener per backend | Gateway API YAML | `observability` |
 | Alloy 1.19 DaemonSet: logs, metrics, profiles | `grafana/alloy` 1.12.1 | `observability` |
 | Per-tenant OTLP receivers (Alloy): traces | plain YAML | `observability` |
 | Grafana 13.2 | `grafana-community/grafana` 13.2.5 | `observability` |
-| kgateway 2.4 (Gateway API 1.6) | `oci://cr.kgateway.dev/kgateway-dev/charts/kgateway` v2.4.5 | `kgateway-system` |
-| Gateways: one per tenant, one for the platform | plain YAML | `kgateway-system` |
+| kgateway 2.4 (Gateway API 1.6), installed in step 07 | `oci://cr.kgateway.dev/kgateway-dev/charts/kgateway` v2.4.5 | `kgateway-system` |
+| Ingress Gateways: one per tenant, one for the platform | plain YAML | `kgateway-system` |
 
 Chart versions are pinned in [`lib.sh`](./lib.sh).
 
@@ -259,23 +262,51 @@ filesystem can stay read-only.
 ```
 
 **None of the four backends authenticates `X-Scope-OrgID`.** It's a claim.
-The gateway ([`gateway.yaml`](./07-read-gateway/gateway.yaml)) turns it into
-an identity, the same way on every backend:
+The read gateway turns it into an identity, the same way on every backend. It's
+a kgateway `Gateway` called `obs-gateway` in `observability`, so the script
+first installs the Gateway API CRDs (unless something already manages them) and
+kgateway. The ingress in step 12 uses the same controller.
 
-```nginx
-auth_basic_user_file /etc/nginx/auth/htpasswd;   # users: tenant-a, tenant-b, platform
-proxy_set_header X-Scope-OrgID $remote_user;     # replaces whatever the client sent
+The tenant comes from an **API key**. Each tenant has one, stored in the
+`obs-gateway-keys` Secret under the tenant's name. A `TrafficPolicy` on the
+Gateway ([`gateway.yaml`](./07-read-gateway/gateway.yaml)) checks the key and
+writes the name it belongs to into the header:
+
+```yaml
+apiKeyAuth:
+  secretRef:
+    name: obs-gateway-keys       # entries: tenant-a, tenant-b, platform
+  keySources:
+    - header: X-Api-Key
+  clientIdHeader: X-Scope-OrgID  # the key's owner; replaces whatever the client sent
+  forwardCredential: false       # the key never reaches the backends
 ```
 
-| Port | Backend | Allowed (read APIs only) |
-|---|---|---|
-| 8080 | Loki | `/loki/api/v1/*` except push and delete |
-| 8081 | Mimir | `/prometheus/api/v1/*` |
-| 8082 | Tempo | `/api/*` except the overrides API |
-| 8083 | Pyroscope | `/querier.v1.QuerierService/*` |
+Envoy *sets* the header, so a caller with tenant-a's key who also sends
+`X-Scope-OrgID: tenant-b` still lands in tenant-a. One listener per backend, on
+the backend's own port, with one `HTTPRoute` each:
 
-Everything else, including every push path, is refused. Passwords are
-generated once into `../.state/soft-tenancy/credentials.env` (gitignored, mode 600).
+| Listener | Backend | Forwarded (read APIs only) | Refused with 403 |
+|---|---|---|---|
+| 3100 | Loki | `/loki/api/v1/*` | push, delete |
+| 8080 | Mimir | `/prometheus/api/v1/*` | |
+| 3200 | Tempo | `/api/*` | the overrides API |
+| 4040 | Pyroscope | `/querier.v1.QuerierService/*` | |
+
+Anything else gets 404, including every push path, and a missing or unknown key
+gets 401. Envoy normalizes paths before routing, so tricks like
+`/loki/api/v1/%70ush` or `/loki/api/v1//push` still hit the 403. Queries may
+run for 300 s (Envoy's default is 15 s), and Loki's live tail stays open. The
+access log shows who asked for what:
+
+```bash
+kubectl -n observability logs deploy/obs-gateway | grep tenant=
+# :3100 tenant=tenant-a "GET /loki/api/v1/labels" 200 675
+```
+
+Keys are generated once into `../.state/soft-tenancy/credentials.env`
+(gitignored, mode 600). Re-running the script is safe. If an older version of
+this lab left its nginx gateway behind, the script removes it.
 
 ### 08 · The collectors
 
@@ -317,10 +348,10 @@ replaced with `pods: get/list/watch`, which is all this collector needs.
 
 Installs Grafana, then [`setup-orgs.sh`](./09-grafana/setup-orgs.sh) creates
 the orgs through the API (Grafana can't provision orgs or users from files).
-Each org gets **four data sources**, all logging into the gateway as that
-tenant:
+Each org gets **four data sources**, all sending that tenant's gateway key
+(`X-Api-Key`, stored encrypted in the data source, never shown to the org's users):
 
-| Org | User (role) | Loki, Mimir, Tempo, Pyroscope authenticate as |
+| Org | User (role) | Loki, Mimir, Tempo, Pyroscope use the key of |
 |---|---|---|
 | Tenant A | alice (Editor) | `tenant-a` |
 | Tenant B | bob (Editor) | `tenant-b` |
@@ -374,8 +405,9 @@ the namespace, and each component may talk only to its neighbour:
   `POST` to their push endpoints. A compromised collector can't read anyone's data.
 - Only the tenant OTLP receivers reach Tempo's OTLP port, and each receiver
   accepts only its own tenant's pods.
-- Only the gateway reaches the query APIs, only Grafana reaches the gateway,
-  and Grafana can't reach the backends directly or the internet.
+- Only the read gateway's proxy reaches the query APIs, only Grafana reaches
+  the gateway, and Grafana can't reach the backends directly or the internet.
+  The proxy may also reach the kgateway controller, for its configuration.
 
 In Grafana (as alice), the forged line from the first run is still there:
 `{forged="true"}`. That's the integrity half of the problem.
@@ -386,12 +418,12 @@ In Grafana (as alice), the forged line from the first run is still there:
 ./11-verify-observability.sh
 ```
 
-54 checks across all four signals. Highlights:
+58 checks across all four signals. Highlights:
 
 ```
 PASS  metrics:  tenant-a sees only tenant-a
 PASS  traces:   tenant-b gets nothing for it                 ← tenant-a's trace id
-PASS  profiles: tenant-a claiming tenant-b                   ← gateway returns tenant-a's data
+PASS  profiles: tenant-a claiming tenant-b                   ← the key wins over the header
 PASS  a tenant-a log line's trace_id opens in Tempo
 PASS  service graph frontend -> backend (tenant-a)
 PASS  tenant-a -> tenant-b's trace receiver                  ← dropped
@@ -407,8 +439,8 @@ kubectl --as alice apply -f 12-kgateway-ingress/route-tenant-a.yaml
 kubectl --as bob   apply -f 12-kgateway-ingress/route-tenant-b.yaml
 ```
 
-The script installs the Gateway API CRDs (unless something already manages
-them) and kgateway, then creates **one Gateway per tenant** plus one for the
+kgateway is already installed (step 07; the script re-applies it, so step 12
+also works on its own). It creates **one Gateway per tenant** plus one for the
 platform, all in `kgateway-system`:
 
 | Gateway | Listener hostname | Accepts routes from | NodePort (lab) | Its proxy may reach |
@@ -487,12 +519,13 @@ tenant a.
    Revert the binding.
 4. **Make alice a Grafana org Admin**, then have her add a Mimir data source
    pointing at the gateway as `tenant-b`. She doesn't have tenant-b's
-   password. Pointing it straight at `mimir:8080` with a spoofed header gets
+   key. Pointing it straight at `mimir:8080` with a spoofed header gets
    dropped by Grafana's egress policy. Two layers, each enough on its own.
 5. **Onboard tenant-c.** Namespace (the guard tells you what's missing), copy
    the CCNP, add a `tenant_pipeline "tenant_c"` block to
    `08-collectors/alloy-values.yaml`, an `otlp-tenant-c` receiver, a line in
-   `09-grafana/setup-orgs.sh`, and a gateway user in `07-read-gateway/install.sh`.
+   `09-grafana/setup-orgs.sh`, and a gateway key: an `OBS_KEY_TENANT_C` in
+   `lib.sh`'s `CRED_VARS` and a `tenant-c` entry in `07-read-gateway/install.sh`.
 6. **Watch it live** with Hubble:
    ```bash
    kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --namespace tenant-a --protocol dns -f
@@ -514,7 +547,7 @@ Be honest about the boundary before calling it production-ready:
 - **Shared CoreDNS and Cilium agent.** A tenant flooding DNS degrades DNS for
   everyone. Every tenant DNS query also passes through the cilium-agent's DNS
   proxy, so an agent restart or upgrade briefly interrupts tenant DNS.
-- **Grafana holds every tenant's gateway password.** A compromised Grafana
+- **Grafana holds every tenant's gateway key.** A compromised Grafana
   crosses tenants. If that's unacceptable, run one Grafana per tenant (still
   in `observability`, never in the tenant's namespace).
 - **Node resources.** Quotas cap CPU and memory, not disk IO or network bandwidth.
@@ -528,8 +561,8 @@ Be honest about the boundary before calling it production-ready:
 - **DNS patterns cover the `tenant-X` namespace only.** A tenant with a second
   namespace (`tenant-a-dev`) needs `*.tenant-a-dev.svc.cluster.local` added.
 - **One kgateway controller configures every proxy.** A bug or compromise in
-  the controller affects every tenant's ingress. The proxies are separate; the
-  control plane is not.
+  the controller affects every tenant's ingress and the read gateway. The
+  proxies are separate; the control plane is not.
 
 ## Layout
 
@@ -543,17 +576,17 @@ soft-tenancy/
 ├── 04-demo-apps/                   # web + client per tenant
 ├── 05-verify-network.sh
 ├── 06-observability-backends/      # Loki, Mimir, Tempo, Pyroscope (values / manifest) + install.sh
-├── 07-read-gateway/                # nginx: basic auth → X-Scope-OrgID, one port per backend
+├── 07-read-gateway/                # kgateway: API key → X-Scope-OrgID, one listener per backend
 ├── 08-collectors/                  # Alloy DaemonSet (per-tenant pipelines) + per-tenant OTLP receivers
 ├── 09-grafana/                     # values.yaml, install.sh, setup-orgs.sh (4 linked data sources per org)
 ├── 10-observability-lockdown/      # policies.yaml + attack-demo.sh
 ├── 11-verify-observability.sh
-├── 12-kgateway-ingress/            # kgateway, one Gateway per tenant, proxy policies, routes
+├── 12-kgateway-ingress/            # one kgateway Gateway per tenant, proxy policies, routes
 ├── 13-verify-ingress.sh
 ├── 99-cleanup.sh                   # --all also deletes the generated credentials
 ├── soft-tenancy-lab-walkthrough.docx  # this README as a Word file, with diagrams
 ├── soft-multi-tenancy-guide.docx   # cluster-agnostic step-by-step guide (Word)
-└── confluence/                     # two short team pages (Word), diagrams (SVG + PNG), paste instructions
+└── confluence/                     # six team pages (Word), diagrams (SVG + PNG), paste instructions
 
 ```
 
@@ -568,14 +601,18 @@ and look for `nameError`.
 metrics are scraped every 30s, and profiles need about a minute to become
 queryable. Then check the path piece by piece: `kubectl -n observability logs ds/alloy`
 (logs, metrics, profiles), `kubectl -n observability logs deploy/otlp-tenant-a` (traces),
-the gateway log (`:port tenant=... status`), then `./11-verify-observability.sh`.
+the read gateway's access log (`kubectl -n observability logs deploy/obs-gateway | grep tenant=`),
+then `./11-verify-observability.sh`.
 
-**The obs-gateway pod crashes with `host not found in upstream`.** nginx
-resolves all four backends at startup, so step 06 must be complete before step 07.
+**Grafana's data sources answer 401.** The keys in the data sources don't match
+the `obs-gateway-keys` Secret, for example after the credentials file was
+recreated. Re-run `./07-read-gateway/install.sh`, then `./09-grafana/setup-orgs.sh`.
 
-**The gateway log shows `"PRI * HTTP/2.0" 400` on :8082.** Grafana's Tempo data
-source probes Tempo's gRPC streaming API. Streaming is off in the data source,
-so it falls back to plain HTTP. Harmless.
+**The read gateway isn't `Programmed`, or a backend answers 404 for everything.**
+`kubectl -n observability describe gateway obs-gateway`, then check that the
+routes and the policy are attached:
+`kubectl -n observability get httproute,trafficpolicy,listenerpolicy -o wide`
+and `kubectl -n observability describe trafficpolicy obs-gateway-tenant`.
 
 **The service map is empty.** It's built from metrics Tempo generates from
 spans, a minute or two after traces arrive. Check
@@ -594,4 +631,4 @@ wrong Gateway reports `NotAllowedByListeners`.
 its way to the backend. Check its egress:
 `kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --verdict DROPPED --from-label gateway.networking.k8s.io/gateway-name=tenant-a`.
 
-**Start over:** `./99-cleanup.sh` (add `--all` to also forget the passwords).
+**Start over:** `./99-cleanup.sh` (add `--all` to also forget the keys and passwords).

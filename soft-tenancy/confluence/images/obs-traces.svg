@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="450" viewBox="0 0 960 450" role="img" aria-labelledby="t">
+<title id="t">Traces: one receiver per tenant</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="449" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Traces: one receiver per tenant</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">The only signal apps push. The receiver, not the app, decides the tenant.</text>
+<rect x="32" y="110" width="200" height="110" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="48" y="136" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1E40AF" text-anchor="start">namespace tenant-a</text>
+<text x="48" y="160" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">frontend, backend</text>
+<text x="48" y="182" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">OTLP gRPC :4317</text>
+<rect x="32" y="270" width="200" height="110" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="48" y="296" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">namespace tenant-b</text>
+<text x="48" y="320" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">frontend, backend</text>
+<text x="48" y="342" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">OTLP gRPC :4317</text>
+<rect x="380" y="120" width="200" height="90" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="396" y="146" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">otlp-tenant-a</text>
+<text x="396" y="168" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="600" fill="#1E40AF" text-anchor="start">TENANT=tenant-a</text>
+<text x="396" y="190" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">sets X-Scope-OrgID itself</text>
+<rect x="380" y="280" width="200" height="90" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="396" y="306" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">otlp-tenant-b</text>
+<text x="396" y="328" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="600" fill="#5B21B6" text-anchor="start">TENANT=tenant-b</text>
+<text x="396" y="350" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">sets X-Scope-OrgID itself</text>
+<path d="M232,165 L376,165" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<g transform="translate(304,165) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<path d="M232,325 L376,325" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<g transform="translate(304,325) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<path d="M232,300 L376,190" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#ahDC2626)"/>
+<g transform="translate(304,245) scale(0.9090909090909091)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="320" y="262" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#991B1B" text-anchor="start">Cilium drops it</text>
+<rect x="680" y="110" width="248" height="270" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="698" y="138" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1E3A8A" text-anchor="start">Tempo</text>
+<text x="698" y="158" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">multitenancy enabled</text>
+<rect x="698" y="180" width="210" height="54" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="714" y="213" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="13.5" font-weight="700" fill="#1E40AF" text-anchor="start">tenant-a</text>
+<rect x="698" y="250" width="210" height="54" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="714" y="283" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">tenant-b</text>
+<text x="698" y="346" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">metrics generator → Mimir,</text>
+<text x="698" y="361" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">same tenant (service map)</text>
+<path d="M580,165 L620,165 L620,207 L694,207" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
+<path d="M580,325 L620,325 L620,277 L694,277" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
+<text x="32" y="414" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">An app that sets X-Scope-OrgID itself changes nothing: the receiver never forwards it.</text>
+<text x="32" y="432" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">And a tenant can only reach its own receiver (step 03 egress, step 10 ingress).</text>
+</svg>

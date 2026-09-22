@@ -1,6 +1,6 @@
 .state/
-images/
-vms/
+/images/
+/vms/
 *.swp
 .claude
 CLAUDE.md

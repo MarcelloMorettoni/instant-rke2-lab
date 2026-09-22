@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Step 09b: orgs, users and data sources, through Grafana's HTTP API.
 #
-#   Org "Tenant A"  alice (Editor)   Loki, Mimir, Tempo, Pyroscope -> obs-gateway as tenant-a
-#   Org "Tenant B"  bob   (Editor)   ... as tenant-b
-#   Org "Platform"  ops   (Editor)   ... as platform
+#   Org "Tenant A"  alice (Editor)   Loki, Mimir, Tempo, Pyroscope -> obs-gateway with tenant-a's key
+#   Org "Tenant B"  bob   (Editor)   ... with tenant-b's key
+#   Org "Platform"  ops   (Editor)   ... with platform's key
 #   Main Org        nobody, and no data sources
 #
 # The four data sources of an org are linked to each other (trace -> logs,
@@ -95,27 +95,29 @@ put_datasource() {  # put_datasource <org id> <json body>: create or update by u
   fi
 }
 
-# All four data sources of one tenant, each logging into the gateway as that tenant.
+# All four data sources of one tenant, each sending that tenant's gateway key.
+# The key lives in secureJsonData: encrypted, and never shown to org users.
 ensure_datasources() {
-  local org=$1 t=$2 gw_user=$3 gw_password=$4 common
-  common="$(jq -n --arg u "${gw_user}" --arg p "${gw_password}" \
-    '{access: "proxy", basicAuth: true, basicAuthUser: $u, secureJsonData: {basicAuthPassword: $p}}')"
+  local org=$1 t=$2 gw_key=$3 common
+  common="$(jq -n --arg k "${gw_key}" \
+    '{access: "proxy", basicAuth: false,
+      jsonData: {httpHeaderName1: "X-Api-Key"}, secureJsonData: {httpHeaderValue1: $k}}')"
 
-  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8080" '$c + {
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:3100" '$c * {
     name: "Loki", uid: ("loki-" + $t), type: "loki", url: $url, isDefault: true,
     jsonData: {derivedFields: [{
       name: "TraceID", matcherRegex: "\"trace_id\":\"(\\w+)\"",
       datasourceUid: ("tempo-" + $t), url: "${__value.raw}", urlDisplayLabel: "View trace"}]}}')"
 
-  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8081/prometheus" '$c + {
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8080/prometheus" '$c * {
     name: "Mimir", uid: ("mimir-" + $t), type: "prometheus", url: $url,
     jsonData: {prometheusType: "Mimir", httpMethod: "POST",
                exemplarTraceIdDestinations: [{name: "trace_id", datasourceUid: ("tempo-" + $t)}]}}')"
 
-  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8083" '$c + {
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:4040" '$c * {
     name: "Pyroscope", uid: ("pyroscope-" + $t), type: "grafana-pyroscope-datasource", url: $url}')"
 
-  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:8082" '$c + {
+  put_datasource "${org}" "$(jq -n --argjson c "${common}" --arg t "${t}" --arg url "${GATEWAY}:3200" '$c * {
     name: "Tempo", uid: ("tempo-" + $t), type: "tempo", url: $url,
     jsonData: {
       tracesToLogsV2: {datasourceUid: ("loki-" + $t), filterByTraceID: true,
@@ -130,16 +132,16 @@ ensure_datasources() {
       streamingEnabled: {search: false, metrics: false}}}')"
 }
 
-# org name | data source uid suffix | gateway user | gateway password | grafana user | password
-while IFS='|' read -r org_name t gw_user gw_pw g_user g_pw; do
+# org name | tenant (data source uid suffix) | gateway key | grafana user | password
+while IFS='|' read -r org_name t gw_key g_user g_pw; do
   org_id="$(ensure_org "${org_name}")"
-  ensure_datasources "${org_id}" "${t}" "${gw_user}" "${gw_pw}"
+  ensure_datasources "${org_id}" "${t}" "${gw_key}"
   ensure_user "${g_user}" "${g_pw}" "${org_id}" "Editor"
-  ok "Org '${org_name}' (id ${org_id}): user ${g_user}; Loki, Mimir, Tempo, Pyroscope -> gateway as ${gw_user}"
+  ok "Org '${org_name}' (id ${org_id}): user ${g_user}; Loki, Mimir, Tempo, Pyroscope -> gateway as ${t}"
 done <<EOF
-Tenant A|tenant-a|tenant-a|${OBS_PW_TENANT_A}|alice|${GRAFANA_PW_ALICE}
-Tenant B|tenant-b|tenant-b|${OBS_PW_TENANT_B}|bob|${GRAFANA_PW_BOB}
-Platform|platform|platform|${OBS_PW_PLATFORM}|ops|${GRAFANA_PW_OPS}
+Tenant A|tenant-a|${OBS_KEY_TENANT_A}|alice|${GRAFANA_PW_ALICE}
+Tenant B|tenant-b|${OBS_KEY_TENANT_B}|bob|${GRAFANA_PW_BOB}
+Platform|platform|${OBS_KEY_PLATFORM}|ops|${GRAFANA_PW_OPS}
 EOF
 
 # Main Org must stay empty: it's where Grafana drops brand-new users.

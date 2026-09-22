@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="t">
+<title id="t">Locking down the observability namespace</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker><marker id="ah94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="559" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Locking down the observability namespace</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">Each component may talk only to its neighbour. Everything else is dropped.</text>
+<rect x="200" y="90" width="600" height="420" rx="14" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="218" y="114" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#475569" text-anchor="start">namespace observability  ·  platform only</text>
+<rect x="230" y="130" width="160" height="60" rx="10" fill="#F0FDFA" stroke="#5EEAD4" stroke-width="1.5"/>
+<text x="310.0" y="156.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#115E59" text-anchor="middle">Alloy</text>
+<text x="310.0" y="176.45000000000002" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">pulls logs, metrics, profiles</text>
+<rect x="230" y="222" width="160" height="60" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="310.0" y="248.375" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#3730A3" text-anchor="middle">otlp-tenant-a / -b</text>
+<text x="310.0" y="268.125" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">trace receivers</text>
+<rect x="500" y="128" width="160" height="44" rx="8" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="516" y="155" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#92400E" text-anchor="start">Loki</text>
+<text x="644" y="155" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">logs</text>
+<rect x="500" y="182" width="160" height="44" rx="8" fill="#FDF2F8" stroke="#F9A8D4" stroke-width="1.5"/>
+<text x="516" y="209" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#9D174D" text-anchor="start">Mimir</text>
+<text x="644" y="209" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">metrics</text>
+<rect x="500" y="236" width="160" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="516" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#1E3A8A" text-anchor="start">Tempo</text>
+<text x="644" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">traces</text>
+<rect x="500" y="290" width="160" height="44" rx="8" fill="#FAF5FF" stroke="#D8B4FE" stroke-width="1.5"/>
+<text x="516" y="317" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#6B21A8" text-anchor="start">Pyroscope</text>
+<text x="644" y="317" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">profiles</text>
+<rect x="500" y="420" width="160" height="60" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="580.0" y="446.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#3730A3" text-anchor="middle">obs-gateway</text>
+<text x="580.0" y="466.45" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">kgateway · queries only</text>
+<rect x="230" y="420" width="160" height="60" rx="10" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.5"/>
+<text x="310.0" y="454.9" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#9A3412" text-anchor="middle">Grafana</text>
+<path d="M390,150 L496,150" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<path d="M390,170 L440,170 L440,204 L496,204" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<path d="M390,180 L430,180 L430,312 L496,312" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<text x="443" y="142" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#166534" text-anchor="middle">push only (L7)</text>
+<path d="M390,252 L460,252 L460,258 L496,258" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
+<path d="M580,420 L580,346" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<text x="590" y="392" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#166534" text-anchor="start">queries</text>
+<path d="M390,450 L496,450" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<path d="M664,258 L690,258 L690,204 L664,204" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#ah94A3B8)"/>
+<text x="698" y="236" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10" font-weight="400" fill="#64748B" text-anchor="start">service graph</text>
+<path d="M315,420 L315,380 L470,380 L470,334 L496,334" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#ahDC2626)"/>
+<g transform="translate(390,380) scale(0.8181818181818182)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="404" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#991B1B" text-anchor="start">Grafana to a backend</text>
+<rect x="24" y="222" width="150" height="60" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="99" y="246" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#1E40AF" text-anchor="middle">tenant pods</text>
+<text x="99" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#1E40AF" text-anchor="middle">own receiver only</text>
+<path d="M174,252 L226,252" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<path d="M99,222 L99,160 L226,160" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#ah94A3B8)"/>
+<text x="110" y="150" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10" font-weight="400" fill="#64748B" text-anchor="start">scraped by Alloy</text>
+<rect x="24" y="322" width="150" height="56" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="99" y="346" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#0F172A" text-anchor="middle">pods in other</text>
+<text x="99" y="362" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#0F172A" text-anchor="middle">namespaces</text>
+<path d="M174,350 L196,350" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" marker-end="url(#ahDC2626)"/>
+<g transform="translate(185,350) scale(0.7272727272727273)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<rect x="24" y="420" width="150" height="60" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="99" y="444" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#166534" text-anchor="middle">platform gateway</text>
+<text x="99" y="461" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#166534" text-anchor="middle">(kgateway)</text>
+<path d="M174,450 L226,450" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<rect x="836" y="270" width="100" height="60" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="886.0" y="304.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#334155" text-anchor="middle">Internet</text>
+<path d="M800,300 L832,300" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" marker-end="url(#ahDC2626)"/>
+<g transform="translate(816,300) scale(0.7272727272727273)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="32" y="534" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">Tenant pods can reach only their own trace receiver; everything else in here is closed to them.</text>
+</svg>

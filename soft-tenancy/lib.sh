@@ -22,7 +22,7 @@ GRAFANA_CHART_VERSION="13.2.5"      # Grafana 13.2 (chart moved to grafana-commu
 TEMPO_CHART_VERSION="3.0.0"         # Tempo 3.0 (grafana-community/tempo, monolithic)
 PYROSCOPE_CHART_VERSION="2.3.1"     # Pyroscope 2.3
 MIMIR_VERSION="3.2.1"               # Mimir 3.2, plain manifest (06-observability-backends/mimir.yaml)
-KGATEWAY_VERSION="v2.4.5"           # ingress (Gateway API implementation, Envoy-based)
+KGATEWAY_VERSION="v2.4.5"           # read gateway + ingress (Gateway API implementation, Envoy-based)
 GATEWAY_API_VERSION="v1.6.1"        # standard-channel CRDs kgateway 2.4 is built against
 
 OBS_NS="observability"
@@ -56,21 +56,61 @@ ensure_default_storageclass() {
   kubectl annotate sc local-path storageclass.kubernetes.io/is-default-class=true --overwrite
 }
 
-# One random password per observability tenant (read gateway) and per Grafana user, created once.
+# Generated once, then reused:
+#   OBS_KEY_*     one API key per observability tenant (read gateway, step 07)
+#   GRAFANA_PW_*  one password per Grafana user (step 09)
+# Variables missing from an older file are added, existing ones are kept.
+CRED_VARS=(OBS_KEY_TENANT_A OBS_KEY_TENANT_B OBS_KEY_PLATFORM
+           GRAFANA_PW_ALICE GRAFANA_PW_BOB GRAFANA_PW_OPS)
 ensure_credentials() {
-  if [[ ! -f "$CREDS_FILE" ]]; then
+  local v added=0
+  mkdir -p "$CREDS_DIR" && chmod 700 "$CREDS_DIR"
+  [[ -f "$CREDS_FILE" ]] && source "$CREDS_FILE"
+  for v in "${CRED_VARS[@]}"; do
+    [[ -n "${!v:-}" ]] && continue
     command -v openssl >/dev/null || die "openssl is needed to generate credentials"
-    mkdir -p "$CREDS_DIR" && chmod 700 "$CREDS_DIR"
-    (
-      umask 077
-      for v in OBS_PW_TENANT_A OBS_PW_TENANT_B OBS_PW_PLATFORM \
-               GRAFANA_PW_ALICE GRAFANA_PW_BOB GRAFANA_PW_OPS; do
-        echo "${v}=$(openssl rand -hex 16)"
-      done
-    ) > "$CREDS_FILE"
-    ok "Generated credentials in ${CREDS_FILE}"
-  fi
+    (umask 077; echo "${v}=$(openssl rand -hex 24)" >> "$CREDS_FILE")
+    added=1
+  done
+  (( added )) && ok "Generated credentials in ${CREDS_FILE}"
   source "$CREDS_FILE"
+}
+
+# kgateway serves both gateways in this lab: the read gateway in front of the
+# observability backends (step 07) and the tenant ingress (step 12).
+# Idempotent: step 12 calls it again and it only re-applies.
+install_kgateway() {
+  command -v helm >/dev/null || die "helm not installed. See https://helm.sh/docs/intro/install/"
+  # Gateway API CRDs. Some distributions (or another ingress, such as a bundled
+  # Traefik) install them already. Never overwrite CRDs someone else manages.
+  if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+    local have
+    have="$(kubectl get crd gateways.gateway.networking.k8s.io \
+            -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}')"
+    if [[ "${have}" != "${GATEWAY_API_VERSION}" ]]; then
+      warn "Gateway API CRDs already present (bundle ${have:-unknown}); leaving them alone."
+      warn "kgateway ${KGATEWAY_VERSION} is built against ${GATEWAY_API_VERSION}; upgrade them if routes misbehave."
+    fi
+  else
+    log "Installing Gateway API ${GATEWAY_API_VERSION} CRDs (standard channel)"
+    kubectl apply --server-side -f \
+      "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
+  fi
+
+  log "Installing kgateway ${KGATEWAY_VERSION} into ${GW_NS}"
+  # stdout only carries the charts' notes (uninstall hints); errors still show.
+  helm upgrade --install kgateway-crds oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds \
+    --version "${KGATEWAY_VERSION}" --namespace "${GW_NS}" --create-namespace --wait >/dev/null
+  helm upgrade --install kgateway oci://cr.kgateway.dev/kgateway-dev/charts/kgateway \
+    --version "${KGATEWAY_VERSION}" --namespace "${GW_NS}" --wait --timeout 5m >/dev/null
+
+  log "Waiting for the kgateway GatewayClass"
+  local _
+  for _ in $(seq 1 60); do
+    kubectl get gatewayclass kgateway >/dev/null 2>&1 && break
+    sleep 2
+  done
+  kubectl wait --for=condition=Accepted gatewayclass/kgateway --timeout=120s
 }
 
 ###############################################################################

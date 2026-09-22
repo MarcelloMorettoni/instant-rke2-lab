@@ -12,13 +12,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${HERE}/lib.sh"
 require_cluster
 
-log "Ingress (step 12): routes, Gateways, policies, kgateway"
+log "Ingress (step 12): routes, Gateways, policies"
 kubectl -n tenant-a delete httproute web --ignore-not-found 2>/dev/null || true
 kubectl -n tenant-b delete httproute web --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/12-kgateway-ingress/grafana-route.yaml" --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/12-kgateway-ingress/gateways.yaml" --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/12-kgateway-ingress/network-policies.yaml" --ignore-not-found
 kubectl delete -f "${HERE}/12-kgateway-ingress/rbac.yaml" --ignore-not-found
+
+log "Read gateway (step 07), then kgateway itself"
+kubectl delete -f "${HERE}/07-read-gateway/gateway.yaml" --ignore-not-found 2>/dev/null || true
+kubectl -n "${OBS_NS}" delete secret obs-gateway-keys --ignore-not-found 2>/dev/null || true
 helm -n "${GW_NS}" uninstall kgateway --wait 2>/dev/null || true
 helm -n "${GW_NS}" uninstall kgateway-crds --wait 2>/dev/null || true
 kubectl delete namespace "${GW_NS}" --ignore-not-found
@@ -26,7 +30,6 @@ kubectl delete namespace "${GW_NS}" --ignore-not-found
 
 log "Observability: collectors, Grafana, backends"
 kubectl delete -f "${HERE}/08-collectors/otlp-receivers.yaml" --ignore-not-found
-kubectl delete -f "${HERE}/07-read-gateway/gateway.yaml" --ignore-not-found
 for r in grafana alloy pyroscope tempo loki; do
   helm -n "${OBS_NS}" uninstall "$r" --wait 2>/dev/null || true
 done

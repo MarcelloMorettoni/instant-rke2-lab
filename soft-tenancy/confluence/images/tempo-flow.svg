@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="t">
+<title id="t">Tempo in our platform</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="539" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Tempo in our platform</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">Who writes traces, who reads them, and who may reach Tempo at all</text>
+<text x="32" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">WRITES</text>
+<text x="480" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">TEMPO</text>
+<text x="700" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">READS</text>
+<rect x="32" y="116" width="230" height="120" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="48" y="142" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">otlp-tenant-a / otlp-tenant-b</text>
+<text x="48" y="164" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">one Alloy receiver per tenant;</text>
+<text x="48" y="181" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">tenant = the receiver, never the app</text>
+<rect x="48" y="202" width="200" height="22" rx="11" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1"/>
+<text x="148" y="217" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#3730A3" text-anchor="middle">OTLP gRPC :4317</text>
+<path d="M262,176.0 L326,176.0" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<rect x="330" y="116" width="300" height="260" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="348" y="146" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="700" fill="#1E3A8A" text-anchor="start">Tempo</text>
+<text x="348" y="168" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">traces · port 3200 · OTLP 4317</text>
+<text x="348" y="190" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="600" fill="#1E3A8A" text-anchor="start">multitenancyEnabled: true</text>
+<rect x="348" y="208" width="264" height="36" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="364" y="231" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="700" fill="#1E40AF" text-anchor="start">tenant-a</text>
+<text x="596" y="231" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">own data</text>
+<rect x="348" y="254" width="264" height="36" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="364" y="277" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="700" fill="#5B21B6" text-anchor="start">tenant-b</text>
+<text x="596" y="277" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">own data</text>
+<rect x="348" y="300" width="264" height="36" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="364" y="323" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="700" fill="#334155" text-anchor="start">platform</text>
+<text x="596" y="323" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="end">own data</text>
+<text x="348" y="362" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">separate storage, limits and queries</text>
+<rect x="700" y="116" width="236" height="116" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="716" y="142" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">obs-gateway :3200</text>
+<text x="716" y="162" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">kgateway · API key → X-Scope-OrgID</text>
+<text x="716" y="184" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" fill="#3730A3" text-anchor="start">/api/* (search, traces)</text>
+<text x="716" y="199" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" fill="#3730A3" text-anchor="start">overrides API: 403</text>
+<path d="M700,174 L634,174" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
+<text x="667" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10" font-weight="600" fill="#3730A3" text-anchor="middle">queries</text>
+<rect x="700" y="256" width="236" height="120" rx="10" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.5"/>
+<text x="716" y="282" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#9A3412" text-anchor="start">Grafana, one org per tenant</text>
+<text x="716" y="302" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">data source &quot;Tempo&quot; per org</text>
+<text x="716" y="322" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">span → logs, metrics, profile</text>
+<text x="716" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">service map from Mimir</text>
+<path d="M818,256 L818,236" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
+<rect x="32" y="400" width="904" height="112" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="48" y="426" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0F172A" text-anchor="start">Who may reach Tempo (step 10)</text>
+<g transform="translate(58,452) scale(0.7272727272727273)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="74" y="456" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">the tenant OTLP receivers (:4317)</text>
+<g transform="translate(58,474) scale(0.7272727272727273)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="74" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">obs-gateway: queries (:3200)</text>
+<g transform="translate(58,496) scale(0.7272727272727273)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="74" y="500" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">Tempo itself; it writes to Mimir</text>
+<g transform="translate(500,452) scale(0.7272727272727273)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="516" y="456" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">tenant pods (they use their receiver)</text>
+<g transform="translate(500,474) scale(0.7272727272727273)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="516" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">any other namespace, Grafana directly</text>
+<g transform="translate(500,496) scale(0.7272727272727273)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="516" y="500" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">the internet</text>
+</svg>

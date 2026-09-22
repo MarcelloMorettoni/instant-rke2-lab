@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="580" viewBox="0 0 960 580" role="img" aria-labelledby="t">
+<title id="t">Ingress with kgateway</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah64748B" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="579" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Ingress with kgateway</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">One Gateway, and so one Envoy proxy, per tenant. All owned by the platform.</text>
+<rect x="24" y="120" width="120" height="330" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<g fill="none" stroke="#475569" stroke-width="2"><circle cx="84" cy="200" r="26"/><ellipse cx="84" cy="200" rx="11.700000000000001" ry="26"/><path d="M58,200 L110,200 M61.379999999999995,187.0 L106.62,187.0 M61.379999999999995,213.0 L106.62,213.0"/></g>
+<text x="84" y="258" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#0F172A" text-anchor="middle">users and</text>
+<text x="84" y="276" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#0F172A" text-anchor="middle">clients</text>
+<text x="84" y="300" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="middle">outside the</text>
+<text x="84" y="315" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="middle">cluster</text>
+<rect x="170" y="90" width="350" height="440" rx="14" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="186" y="114" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#475569" text-anchor="start">namespace kgateway-system  ·  platform only</text>
+<rect x="200" y="130" width="290" height="84" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="216" y="156" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1E40AF" text-anchor="start">Gateway tenant-a</text>
+<text x="216" y="178" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#0F172A" text-anchor="start">*.tenant-a.lab</text>
+<text x="216" y="199" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">routes from tenant=a only</text>
+<path d="M144,172 L196,172" fill="none" stroke="#64748B" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah64748B)"/>
+<rect x="200" y="240" width="290" height="84" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="216" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#5B21B6" text-anchor="start">Gateway tenant-b</text>
+<text x="216" y="288" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#0F172A" text-anchor="start">*.tenant-b.lab</text>
+<text x="216" y="309" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">routes from tenant=b only</text>
+<path d="M144,282 L196,282" fill="none" stroke="#64748B" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah64748B)"/>
+<rect x="200" y="350" width="290" height="84" rx="10" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.5"/>
+<text x="216" y="376" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#9A3412" text-anchor="start">Gateway platform</text>
+<text x="216" y="398" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#0F172A" text-anchor="start">grafana.platform.lab</text>
+<text x="216" y="419" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">routes from observability only</text>
+<path d="M144,392 L196,392" fill="none" stroke="#64748B" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah64748B)"/>
+<rect x="200" y="458" width="290" height="50" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="216" y="480" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#334155" text-anchor="start">kgateway controller</text>
+<text x="216" y="498" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">configures every proxy (xDS :9977)</text>
+<rect x="600" y="130" width="160" height="84" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="616" y="160" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#1E40AF" text-anchor="start">tenant-a</text>
+<text x="616" y="184" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="start">web</text>
+<path d="M490,172 L596,172" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<g transform="translate(543,172) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="600" y="240" width="160" height="84" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="616" y="270" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">tenant-b</text>
+<text x="616" y="294" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="start">web</text>
+<path d="M490,282 L596,282" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<g transform="translate(543,282) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="600" y="350" width="160" height="84" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="616" y="380" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">observability</text>
+<text x="616" y="404" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="start">Grafana</text>
+<path d="M490,392 L596,392" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
+<g transform="translate(543,392) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<path d="M490,262 L596,196" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#ahDC2626)"/>
+<g transform="translate(543,229) scale(0.9090909090909091)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="600" y="452" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#991B1B" text-anchor="start">rogue route or Backend on</text>
+<text x="600" y="468" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#991B1B" text-anchor="start">tenant-b&#x27;s gateway toward</text>
+<text x="600" y="484" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#991B1B" text-anchor="start">tenant a: Cilium drops it</text>
+<rect x="784" y="90" width="152" height="440" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="800" y="116" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0F172A" text-anchor="start">Three layers</text>
+<circle cx="814" cy="150" r="12" fill="#2563EB"/>
+<text x="814" y="155" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+<text x="834" y="155" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0F172A" text-anchor="start">Listener</text>
+<text x="800" y="182" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">accepts only its</text>
+<text x="800" y="199" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">own tenant&#x27;s routes</text>
+<circle cx="814" cy="246" r="12" fill="#475569"/>
+<text x="814" y="251" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+<text x="834" y="251" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0F172A" text-anchor="start">RBAC</text>
+<text x="800" y="278" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">tenants create</text>
+<text x="800" y="295" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HTTPRoutes only</text>
+<circle cx="814" cy="342" r="12" fill="#0E7490"/>
+<text x="814" y="347" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+<text x="834" y="347" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0F172A" text-anchor="start">Cilium</text>
+<text x="800" y="374" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">each proxy reaches</text>
+<text x="800" y="391" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">only its own tenant</text>
+<text x="800" y="460" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">No ReferenceGrant,</text>
+<text x="800" y="475" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">no kgateway Backend</text>
+<text x="800" y="490" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#64748B" text-anchor="start">for tenants.</text>
+<text x="32" y="556" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">Each proxy has its own Cilium identity: the network holds the line even if a route or kgateway Backend points the wrong way.</text>
+</svg>

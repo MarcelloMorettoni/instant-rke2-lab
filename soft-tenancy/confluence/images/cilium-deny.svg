@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="t">
+<title id="t">Deny beats allow</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ahCBD5E1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#CBD5E1"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="419" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Deny beats allow</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">The platform&#x27;s deny rule wins over any allow rule, including one added by mistake</text>
+<rect x="32" y="120" width="150" height="90" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="107.0" y="160.9" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1E40AF" text-anchor="middle">tenant-a</text>
+<text x="107.0" y="183.1" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">pod</text>
+<rect x="410" y="120" width="150" height="90" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="485.0" y="160.9" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#5B21B6" text-anchor="middle">tenant-b</text>
+<text x="485.0" y="183.1" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">pod</text>
+<path d="M182,146 L406,146" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 4" marker-end="url(#ah16A34A)"/>
+<text x="294" y="136" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#166534" text-anchor="middle" font-style="italic">allow rule added by mistake</text>
+<path d="M182,186 L278,186" fill="none" stroke="#DC2626" stroke-width="2" stroke-linejoin="round" marker-end="url(#ahDC2626)"/>
+<rect x="282" y="167" width="76" height="38" rx="8" fill="#DC2626" stroke="#DC2626" stroke-width="1.5"/>
+<text x="320" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">DENY</text>
+<path d="M358,186 L406,186" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linejoin="round" stroke-dasharray="3 4"/>
+<g transform="translate(384,186) scale(0.9090909090909091)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<rect x="32" y="246" width="528" height="72" rx="10" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.5"/>
+<g transform="translate(60,282) scale(1.0)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
+<text x="82" y="277" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#991B1B" text-anchor="start">Result: dropped</text>
+<text x="82" y="299" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#0F172A" text-anchor="start">Traffic between tenants stays blocked, whatever allow rules exist.</text>
+<text x="32" y="356" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">The deny rules live in the platform&#x27;s cluster-wide policy.</text>
+<text x="32" y="374" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#64748B" text-anchor="start">Tenants cannot edit it: they have no permissions on cilium.io resources.</text>
+<rect x="600" y="104" width="328" height="290" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="620" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0F172A" text-anchor="start">How Cilium evaluates a packet</text>
+<circle cx="634" cy="176" r="14" fill="#DC2626"/>
+<text x="634" y="181" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+<text x="658" y="177" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0F172A" text-anchor="start">Deny rules first</text>
+<text x="658" y="197" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">match: drop. Nothing else matters.</text>
+<circle cx="634" cy="246" r="14" fill="#16A34A"/>
+<text x="634" y="251" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+<text x="658" y="247" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0F172A" text-anchor="start">Then allow rules</text>
+<text x="658" y="267" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">match: forward.</text>
+<circle cx="634" cy="316" r="14" fill="#475569"/>
+<text x="634" y="321" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+<text x="658" y="317" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0F172A" text-anchor="start">Nothing matched</text>
+<text x="658" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">drop. A selected pod is default-deny.</text>
+</svg>
