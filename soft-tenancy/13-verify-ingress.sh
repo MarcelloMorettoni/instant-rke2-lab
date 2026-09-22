@@ -10,7 +10,7 @@ require_cluster
 
 NODE_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
 A_POD_IP="$(kubectl -n tenant-a get pod -l app=web -o jsonpath='{.items[0].status.podIP}')"
-GA="http://${NODE_IP}:30180"; GB="http://${NODE_IP}:30181"; GP="http://${NODE_IP}:30182"
+GA="http://${NODE_IP}:30180"; GB="http://${NODE_IP}:30181"; GC="http://${NODE_IP}:30183"; GP="http://${NODE_IP}:30182"
 
 body_is() { local want=$1; shift; [[ "$(curl -s -m 5 "$@")" == "$want" ]]; }
 code_is() { local want=$1; shift; [[ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$@")" == "$want" ]]; }
@@ -27,10 +27,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Routes applied a moment ago take a few seconds to reach the proxies.
+log "Waiting for the routes to be programmed..."
+for _ in $(seq 1 45); do
+  body_is "hello from tenant-a" -H 'Host: web.tenant-a.lab' "$GA/" &&
+    body_is "hello from tenant-b" -H 'Host: web.tenant-b.lab' "$GB/" &&
+    body_is "hello from tenant-c" -H 'Host: web.tenant-c.lab' "$GC/" &&
+    code_is 200 -H 'Host: grafana.platform.lab' "$GP/api/health" && break
+  sleep 2
+done
+
 echo; log "── Through the front door"
 check "web.tenant-a.lab on tenant-a's gateway"          ok   body_is "hello from tenant-a" -H 'Host: web.tenant-a.lab' "$GA/"
 check "web.tenant-b.lab on tenant-b's gateway"          ok   body_is "hello from tenant-b" -H 'Host: web.tenant-b.lab' "$GB/"
+check "web.tenant-c.lab on tenant-c's gateway"          ok   body_is "hello from tenant-c" -H 'Host: web.tenant-c.lab' "$GC/"
 check "tenant-a's gateway won't serve web.tenant-b.lab" fail body_is "hello from tenant-b" -H 'Host: web.tenant-b.lab' "$GA/"
+# Tenant a's PODS may call tenant c; tenant a's GATEWAY still serves tenant a only.
+check "tenant-a's gateway won't serve web.tenant-c.lab" fail body_is "hello from tenant-c" -H 'Host: web.tenant-c.lab' "$GA/"
 check "grafana.platform.lab on the platform gateway"    ok   code_is 200 -H 'Host: grafana.platform.lab' "$GP/api/health"
 # Tenants have no egress to kgateway-system: inside the cluster, use service names.
 check "tenant-a pod -> its gateway from inside"         fail in_tenant tenant-a \

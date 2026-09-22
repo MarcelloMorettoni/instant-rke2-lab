@@ -4,8 +4,8 @@
 # Tempo would let them pick any X-Scope-OrgID. Instead each tenant gets its
 # own small Alloy, and the tenant ID comes from that Deployment's TENANT
 # variable, never from the request. Cilium makes sure only tenant a's pods can
-# reach otlp-tenant-a (step 03 egress, step 10 ingress). Whatever a tenant
-# sends, it can only land in its own tenant.
+# reach otlp-tenant-a (step 03 egress, step 10 ingress), and the same for b
+# and c. Whatever a tenant sends, it can only land in its own tenant.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,6 +16,34 @@ data:
     otelcol.receiver.otlp "in" {
       grpc {
         endpoint = "0.0.0.0:4317"
+      }
+      output {
+        traces = [otelcol.processor.transform.tenant.input]
+        logs   = [otelcol.processor.filter.drop_logs.input]
+      }
+    }
+
+    // Apps like podinfo also send their logs over OTLP. The platform already
+    // collects every log from disk (step 08a), so they're accepted and
+    // dropped here, instead of failing in the app every second.
+    otelcol.processor.filter "drop_logs" {
+      error_mode = "ignore"
+      logs {
+        log_record = ["true"]
+      }
+      output {
+        logs = []
+      }
+    }
+
+    // Stamp the tenant on every span, replacing any "tenant" the app set. In a
+    // Grafana org that sees several tenants, { resource.tenant = "tenant-c" }
+    // then tells whose span it is.
+    otelcol.processor.transform "tenant" {
+      error_mode = "ignore"
+      trace_statements {
+        context    = "resource"
+        statements = ["set(resource.attributes[\"tenant\"], \"" + sys.env("TENANT") + "\")"]
       }
       output {
         traces = [otelcol.processor.batch.out.input]
@@ -172,6 +200,75 @@ spec:
   selector:
     app.kubernetes.io/name: otlp-receiver
     otlp-tenant: b
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-tenant-c
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otlp-receiver
+      otlp-tenant: c
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otlp-receiver
+        otlp-tenant: c
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: alloy
+          image: docker.io/grafana/alloy:v1.19.2
+          args: ["run", "/etc/alloy/config.alloy", "--storage.path=/tmp/alloy",
+                 "--server.http.listen-addr=0.0.0.0:12345"]
+          env:
+            - name: TENANT
+              value: tenant-c
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 12345}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: otlp-receiver
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otlp-tenant-c
+  namespace: observability
+spec:
+  selector:
+    app.kubernetes.io/name: otlp-receiver
+    otlp-tenant: c
   ports:
     - name: otlp-grpc
       port: 4317

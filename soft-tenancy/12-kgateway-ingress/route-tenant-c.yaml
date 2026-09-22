@@ -1,0 +1,17 @@
+# Step 12e: tenant c publishes its app. Applied BY carol:
+#   kubectl --as carol apply -f 12-kgateway-ingress/route-tenant-c.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web
+  namespace: tenant-c
+spec:
+  parentRefs:
+    - name: tenant-c
+      namespace: kgateway-system
+  hostnames:
+    - web.tenant-c.lab
+  rules:
+    - backendRefs:
+        - name: web
+          port: 80

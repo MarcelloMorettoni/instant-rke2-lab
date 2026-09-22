@@ -10,7 +10,7 @@
 <text x="310.0" y="156.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#115E59" text-anchor="middle">Alloy</text>
 <text x="310.0" y="176.45000000000002" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">pulls logs, metrics, profiles</text>
 <rect x="230" y="222" width="160" height="60" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
-<text x="310.0" y="248.375" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#3730A3" text-anchor="middle">otlp-tenant-a / -b</text>
+<text x="310.0" y="248.375" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#3730A3" text-anchor="middle">otlp-tenant-a/-b/-c</text>
 <text x="310.0" y="268.125" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">trace receivers</text>
 <rect x="500" y="128" width="160" height="44" rx="8" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
 <text x="516" y="155" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#92400E" text-anchor="start">Loki</text>

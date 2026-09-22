@@ -1,13 +1,27 @@
 # Soft tenancy on the lab
 
-Two tenants share the cluster, `tenant-a` and `tenant-b`. The goals:
+Three tenants share the cluster: `tenant-a`, `tenant-b` and `tenant-c`.
 
-- They **cannot talk to each other**: not by service name, pod IP or NodePort,
-  not through the ingress, and not even by DNS lookup.
-- Each tenant **logs into Grafana and sees only its own telemetry**: logs,
-  metrics, traces and profiles, all linked together.
+| | Network (Cilium) | Grafana |
+|---|---|---|
+| **tenant a** | its own services, and tenant c's | alice sees tenant a **and tenant c** |
+| **tenant b** | only its own | bob sees only tenant b |
+| **tenant c** | only its own: it can't call tenant a | carol sees only tenant c |
+| **platform** | | ops sees everything |
+
+The goals:
+
+- Tenants **only reach what they're allowed to**: tenant a may use tenant c's
+  services, nothing else crosses a tenant boundary. Not by service name, pod
+  IP or NodePort, not through the ingress, and not even by DNS lookup.
+- Each tenant **logs into Grafana and sees exactly the telemetry it's
+  allowed to**: logs, metrics, traces and profiles, all linked together.
 - The isolation **holds when someone makes a mistake**: a sloppy allow policy,
   a spoofed header, an over-privileged Grafana user.
+
+**One command:** `make soft-tenancy` in the repo root runs every step below,
+in order, and verifies each half as it goes (see [Quick start](#quick-start)).
+The walkthrough does the same by hand, with the why.
 
 "Soft" tenancy means one cluster, one kernel, shared nodes, with isolation
 enforced by policy. The [limits](#what-soft-tenancy-does-not-protect-against)
@@ -24,21 +38,25 @@ the observability backends (step 07) and the tenant ingress (step 12).
 ## The design
 
 ```
-tenant-a pods ──✗── tenant-b pods           Cilium CCNP: both directions denied (deny beats allow)
-     │                    │
-     │ DNS *.tenant-a     │ DNS *.tenant-b   ← Cilium DNS proxy filters names; anything else is NXDOMAIN
-     └──► CoreDNS (kube-system, shared) ◄────┘
+network (one CiliumClusterwideNetworkPolicy per tenant; deny beats allow)
+  tenant-a pods ──────► tenant-c pods   a may call c; c may not call a (replies flow)
+  tenant-b pods ──✗──   anyone          b reaches no other tenant, and none reaches b
+  DNS: through Cilium's DNS proxy in front of the shared CoreDNS; a tenant resolves only
+       its own names (tenant a also tenant c's), everything else is NXDOMAIN
 
 observability (platform-only namespace, locked down in step 10)
   write   Alloy DaemonSet pulls from every node, tenant = namespace
             logs     /var/log/pods        ──► Loki
             metrics  /metrics  (opt-in)   ──► Mimir
             profiles /debug/pprof (opt-in)──► Pyroscope
-          traces: tenant-a pods ──► otlp-tenant-a ──► Tempo ──► Mimir (service graph)
-                  tenant-b pods ──► otlp-tenant-b ──┘      (receiver stamps the tenant)
-  read    Grafana org "Tenant A" ─┐
-          Grafana org "Tenant B" ─┼─► obs-gateway (kgateway) ──► Loki :3100  Mimir :8080  Tempo :3200  Pyroscope :4040
-          Grafana org "Platform" ─┘   X-Scope-OrgID = owner of the API key (whatever the client sent is replaced)
+          traces: tenant-X pods ──► otlp-tenant-X ──► Tempo ──► Mimir (service graph)
+                  (one receiver per tenant; it stamps the tenant)
+  read    Grafana org  view on obs-gateway   X-Scope-OrgID sent to Loki, Mimir, Tempo
+          "Tenant A" ──► /tenant-a/ + key ──► tenant-a|tenant-c
+          "Tenant B" ──► /tenant-b/ + key ──► tenant-b
+          "Tenant C" ──► /tenant-c/ + key ──► tenant-c
+          "Platform" ──► /platform/ + key ──► platform|tenant-a|tenant-b|tenant-c
+          (the gateway sets the header; whatever the client sent is replaced)
 ```
 
 **One rule behind every decision: a tenant never controls anything that sets
@@ -55,8 +73,8 @@ namespace names or namespace labels (cluster-scoped objects), so those are.
 | Namespaces | name and label must match | ValidatingAdmissionPolicy (step 01) |
 | Logs, metrics, profiles (write) | namespace name | Alloy pulls them and maps `tenant-X[-*]` → tenant `tenant-X` (step 08) |
 | Traces (write) | which receiver the pod can reach | one OTLP receiver per tenant; Cilium lets only that tenant reach it (steps 03, 08, 10) |
-| All signals (read) | gateway API key | kgateway's `apiKeyAuth` sets `X-Scope-OrgID` from the key on every backend (step 07) |
-| Grafana | org membership | one org per tenant with four linked data sources; users are Editors, never Admins (step 09) |
+| All signals (read) | gateway view + API key | each Grafana org has a view on the read gateway that only its key opens; the view sets `X-Scope-OrgID` to the org's tenant list (step 07) |
+| Grafana | org membership | one org per tenant with linked data sources; users are Editors, never Admins (step 09) |
 | Ingress | Gateway listener, proxy identity | one kgateway Gateway per tenant; its listener only accepts that tenant's routes, and Cilium limits its proxy to that tenant (step 12) |
 
 ## What gets deployed
@@ -65,12 +83,12 @@ namespace names or namespace labels (cluster-scoped objects), so those are.
 |---|---|---|
 | Admission guard, RBAC, quotas | plain YAML | cluster / tenants |
 | Tenant network baselines | `CiliumClusterwideNetworkPolicy` | cluster-wide |
-| Workloads: nginx `web`, podinfo `frontend` → `backend`, netshoot `client` | plain YAML, applied *as the tenant user* | `tenant-a`, `tenant-b` |
+| Workloads: nginx `web`, podinfo `frontend` → `backend`, netshoot `client` | plain YAML, applied *as the tenant user* | `tenant-a`, `tenant-b`, `tenant-c` |
 | Loki 3.6: logs | `grafana/loki` 7.3.0, single binary | `observability` |
 | Mimir 3.2: metrics | plain manifest, single binary | `observability` |
 | Tempo 3.0: traces, with service graphs | `grafana-community/tempo` 3.0.0 | `observability` |
 | Pyroscope 2.3: profiles | `grafana/pyroscope` 2.3.1 | `observability` |
-| Read gateway (kgateway): one listener per backend | Gateway API YAML | `observability` |
+| Read gateway (kgateway): one view per Grafana org | Gateway API YAML | `observability` |
 | Alloy 1.19 DaemonSet: logs, metrics, profiles | `grafana/alloy` 1.12.1 | `observability` |
 | Per-tenant OTLP receivers (Alloy): traces | plain YAML | `observability` |
 | Grafana 13.2 | `grafana-community/grafana` 13.2.5 | `observability` |
@@ -85,6 +103,28 @@ Chart versions are pinned in [`lib.sh`](./lib.sh).
 - On the host: `helm`, `jq`, `openssl`, `envsubst` (all used by the scripts).
 - The VMs can reach the internet (images, and the `example.com` allowlist test).
 
+## Quick start
+
+From the repo root:
+
+```bash
+make soft-tenancy            # steps 00-13, with the three verify scripts
+make soft-tenancy-verify     # re-run the checks any time
+make soft-tenancy-clean      # remove it all
+```
+
+It ends by printing how to reach Grafana. Every Grafana login uses the
+password **`test-tenant`**: `alice` (Tenant A), `bob` (Tenant B), `carol`
+(Tenant C), `ops` (Platform) and `admin`. Set `ST_PASSWORD=...` for another
+one. [`up.sh`](./up.sh) is what the target runs: `./up.sh 06` resumes from
+step 06, and `VERIFY=0 ./up.sh` skips the checks.
+
+The gateway keys behind the data sources are random, one per Grafana org, in
+`../.state/soft-tenancy/credentials.env`. They must differ: each key opens
+exactly one org's view.
+
+## Walkthrough, by hand
+
 Every command below runs from this folder:
 
 ```bash
@@ -93,8 +133,6 @@ export KUBECONFIG=$PWD/../.state/kubeconfig
 ```
 
 ---
-
-## Walkthrough
 
 ### 00 · DNS: NXDOMAIN instead of REFUSED
 
@@ -132,7 +170,7 @@ label impossible to get wrong:
 Try it:
 
 ```bash
-kubectl create namespace tenant-c        # denied, and the message says why
+kubectl create namespace tenant-d        # denied, and the message says why
 ```
 
 ### 02 · What a tenant user may do
@@ -141,9 +179,9 @@ kubectl create namespace tenant-c        # denied, and the message says why
 kubectl apply -f 02-tenant-guardrails/
 ```
 
-`alice` works in tenant-a and `bob` in tenant-b, simulated with impersonation
-(`kubectl --as alice`). They get a custom `tenant-developer` role, **not** the
-built-in `edit`. `edit` includes NetworkPolicies, and a tenant with that
+`alice` works in tenant-a, `bob` in tenant-b and `carol` in tenant-c,
+simulated with impersonation (`kubectl --as alice`). They get a custom
+`tenant-developer` role, **not** the built-in `edit`. `edit` includes NetworkPolicies, and a tenant with that
 right could write `egress: 0.0.0.0/0` and bypass the internet allowlist.
 Quotas and LimitRanges stop one tenant from eating the workers.
 
@@ -162,20 +200,27 @@ One [`CiliumClusterwideNetworkPolicy` per tenant](./03-tenant-isolation/tenant-a
 selected by the namespace label. Once a pod is selected, only what's listed
 is allowed:
 
-| | tenant-a | tenant-b |
-|---|---|---|
-| ingress | tenant a; the platform's collector (metrics, profiles) | tenant b; the platform's collector |
-| egress | tenant a, CoreDNS (own names), its own trace receiver, `example.com:443` | tenant b, CoreDNS (own names), its own trace receiver |
-| explicit **deny** | every other tenant, both ways | every other tenant, both ways |
+| | tenant-a | tenant-b | tenant-c |
+|---|---|---|---|
+| ingress | tenant a; the platform's collector (metrics, profiles) | tenant b; the collector | tenant c, **tenant a**; the collector |
+| egress | tenant a, **tenant c**, CoreDNS (own names and tenant c's), its own trace receiver, `example.com:443` | tenant b, CoreDNS (own names), its own trace receiver | tenant c, CoreDNS (own names), its own trace receiver |
+| explicit **deny** | every tenant except c, both ways | every other tenant, both ways | every tenant except a (ingress only), both ways |
+
+**Tenant a → tenant c** needs both ends to agree: tenant a's egress allows
+tenant c, and tenant c's ingress admits tenant a. **Tenant c → tenant a**
+stays denied: tenant c's egress deny covers every other tenant, a included.
+Tenant c can still *answer* tenant a, because Cilium tracks connections and
+policy only decides who may open one.
 
 The deny rules are the safety net. In Cilium, deny beats allow, so no allow
-rule added later can connect the tenants. Step 05 proves it.
+rule added later can open another path between tenants. Step 05 proves it.
 
 ### 04 · Workloads, deployed by the tenants themselves
 
 ```bash
 kubectl --as alice apply -f 04-demo-apps/tenant-a.yaml
 kubectl --as bob   apply -f 04-demo-apps/tenant-b.yaml
+kubectl --as carol apply -f 04-demo-apps/tenant-c.yaml
 ```
 
 Each tenant gets:
@@ -198,9 +243,15 @@ profiles.grafana.com/scrape: "true"     # profiles
 
 The container name equals the OpenTelemetry `service.name`, which is how
 Grafana later jumps from a span to that service's logs and profile. Deploying
-as alice/bob proves the RBAC and Pod Security setup is usable, not just
+as alice/bob/carol proves the RBAC and Pod Security setup is usable, not just
 strict. Tenant b also gets a NodePort (`:30082`) to test "going around via
 the node".
+
+**Tenant a uses tenant c.** Tenant a's client also calls `web.tenant-c`, and
+tenant a's frontend calls tenant c's backend on every `/echo`, next to its own.
+That request's trace spans two tenants: tenant a's spans land in tenant a,
+tenant c's in tenant c (each through its own receiver). In Grafana, alice sees
+the whole trace; carol sees only tenant c's half.
 
 ### 05 · Prove the network isolation
 
@@ -208,22 +259,24 @@ the node".
 ./05-verify-network.sh
 ```
 
-27 checks, each stating what must happen, then the flows Cilium dropped
+43 checks, each stating what must happen, then the flows Cilium dropped
 (from Hubble). Highlights:
 
 ```
-PASS  tenant-a -> tenant-b web via pod IP
-PASS  tenant-a -> tenant-b via NodePort 192.168.122.11:30082
-PASS  tenant-a gets NXDOMAIN for web.tenant-b
+PASS  tenant-a -> tenant-c web via DNS name                    ← allowed
+PASS  tenant-c -> tenant-a web via pod IP                      ← blocked
+PASS  tenant-c gets NXDOMAIN for web.tenant-a
+PASS  tenant-a -> tenant-b via NodePort 192.168.122.11:30082   ← blocked
+PASS  tenant-b gets NXDOMAIN for web.tenant-c
 PASS  tenant-a -> https://example.com (allowlisted)
-PASS  tenant-b -> https://example.com (no internet)
+PASS  tenant-c -> https://example.com (no internet)
 PASS  PSA rejects a hostNetwork pod
 PASS  'sneaky' namespace claiming tenant=a
-PASS  tenant-a -> tenant-b pod IP, rogue allows in place     ← deny beats allow
+PASS  tenant-c -> tenant-a pod IP, rogue allows in place       ← deny beats allow
 ```
 
-That last check applies two "mistake" policies that explicitly allow
-traffic between tenant-a and tenant-b, confirms it is still dropped, then removes them.
+The rogue checks apply "mistake" policies that explicitly allow tenant-a →
+tenant-b and tenant-c → tenant-a, confirm both are still dropped, then remove them.
 
 ### 06 · The backends: Loki, Mimir, Tempo, Pyroscope
 
@@ -249,6 +302,15 @@ Chart defaults that don't belong in a multi-tenant cluster are switched off:
 - **Pyroscope's bundled Alloy** comes with the same kind of cluster-wide
   Secret access. Our collector (step 08) does that job.
 
+**Several tenants in one query.** For alice to see tenant a and tenant c
+together, a query must name both: `X-Scope-OrgID: tenant-a|tenant-c`. Loki
+(`multi_tenant_queries_enabled`) and Mimir (`tenant_federation`) are switched
+to allow it; Tempo allows it by default. Results carry the tenant (Loki and
+Mimir add a `__tenant_id__` label). Only the read gateway can query the
+backends, and it sets that header itself (steps 07 and 10), so a tenant never
+picks its own list. **Pyroscope can't** query several tenants at once: an
+org that sees several tenants gets one Pyroscope data source per tenant.
+
 **Tempo's metrics generator** turns each tenant's spans into service-graph and
 RED metrics, and writes them to Mimir *under the same tenant*, which powers the
 service map in Grafana. Mimir has no small chart (only the full microservices
@@ -262,51 +324,68 @@ filesystem can stay read-only.
 ```
 
 **None of the four backends authenticates `X-Scope-OrgID`.** It's a claim.
-The read gateway turns it into an identity, the same way on every backend. It's
-a kgateway `Gateway` called `obs-gateway` in `observability`, so the script
-first installs the Gateway API CRDs (unless something already manages them) and
-kgateway. The ingress in step 12 uses the same controller.
+The read gateway makes sure it always comes from the platform. It's a kgateway
+`Gateway` called `obs-gateway` in `observability` (one listener, port 8080), so
+the script first installs the Gateway API CRDs (unless something already
+manages them) and kgateway. The ingress in step 12 uses the same controller.
 
-The tenant comes from an **API key**. Each tenant has one, stored in the
-`obs-gateway-keys` Secret under the tenant's name. A `TrafficPolicy` on the
-Gateway ([`gateway.yaml`](./07-read-gateway/gateway.yaml)) checks the key and
-writes the name it belongs to into the header:
+**One view per Grafana org** ([`views.yaml`](./07-read-gateway/views.yaml)): a
+path prefix, opened only by that org's API key, that asks the backends for a
+fixed list of tenants.
+
+| Grafana org | View | Loki, Mimir and Tempo are asked for |
+|---|---|---|
+| Tenant A | `/tenant-a/` | `tenant-a\|tenant-c` |
+| Tenant B | `/tenant-b/` | `tenant-b` |
+| Tenant C | `/tenant-c/` | `tenant-c` |
+| Platform | `/platform/` | `platform\|tenant-a\|tenant-b\|tenant-c` |
+
+Pyroscope gets one path per tenant instead: `/tenant-a/pyroscope/tenant-a`
+and `/tenant-a/pyroscope/tenant-c` for Tenant A, one per tenant for Platform.
+
+Each view is one `HTTPRoute` and one `TrafficPolicy`:
 
 ```yaml
+# HTTPRoute view-tenant-a, one of its rules
+- matches:
+    - path: {type: PathPrefix, value: /tenant-a/loki/api/v1}
+  filters:
+    - type: RequestHeaderModifier       # SETS the header, replacing what the caller sent
+      requestHeaderModifier:
+        set: [{name: X-Scope-OrgID, value: "tenant-a|tenant-c"}]
+    - type: URLRewrite                  # /tenant-a/loki/... -> /loki/...
+      urlRewrite:
+        path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1}
+  backendRefs:
+    - {name: loki, port: 3100}
+
+# TrafficPolicy view-tenant-a: only Tenant A's key opens this route
 apiKeyAuth:
-  secretRef:
-    name: obs-gateway-keys       # entries: tenant-a, tenant-b, platform
-  keySources:
-    - header: X-Api-Key
-  clientIdHeader: X-Scope-OrgID  # the key's owner; replaces whatever the client sent
-  forwardCredential: false       # the key never reaches the backends
+  secretRef: {name: obs-key-tenant-a}
+  keySources: [{header: X-Api-Key}]
+  forwardCredential: false              # the key never reaches the backends
 ```
 
-Envoy *sets* the header, so a caller with tenant-a's key who also sends
-`X-Scope-OrgID: tenant-b` still lands in tenant-a. One listener per backend, on
-the backend's own port, with one `HTTPRoute` each:
+So Tenant A's key on `/tenant-b/...` gets 401, and a header claiming another
+tenant is simply overwritten. Envoy normalizes paths before choosing a route:
+`/tenant-a/../tenant-b/...` *is* `/tenant-b/...`, and Tenant A's key doesn't
+open it. That matters because Grafana Editors can send arbitrary paths through
+a data source.
 
-| Listener | Backend | Forwarded (read APIs only) | Refused with 403 |
-|---|---|---|---|
-| 3100 | Loki | `/loki/api/v1/*` | push, delete |
-| 8080 | Mimir | `/prometheus/api/v1/*` | |
-| 3200 | Tempo | `/api/*` | the overrides API |
-| 4040 | Pyroscope | `/querier.v1.QuerierService/*` | |
-
-Anything else gets 404, including every push path, and a missing or unknown key
-gets 401. Envoy normalizes paths before routing, so tricks like
-`/loki/api/v1/%70ush` or `/loki/api/v1//push` still hit the 403. Queries may
-run for 300 s (Envoy's default is 15 s), and Loki's live tail stays open. The
-access log shows who asked for what:
+Each view forwards read APIs only: Loki's query API, Mimir's Prometheus API,
+Tempo's query API and Pyroscope's querier. Loki push and delete and Tempo's
+overrides API get 403, anything else 404, a missing or unknown key 401.
+Queries may run for 300 s (Envoy's default is 15 s), and Loki's live tail stays
+open. The access log shows who asked for what:
 
 ```bash
 kubectl -n observability logs deploy/obs-gateway | grep tenant=
-# :3100 tenant=tenant-a "GET /loki/api/v1/labels" 200 675
+# tenant=tenant-a|tenant-c "GET /tenant-a/loki/api/v1/labels" 200 675
 ```
 
-Keys are generated once into `../.state/soft-tenancy/credentials.env`
-(gitignored, mode 600). Re-running the script is safe. If an older version of
-this lab left its nginx gateway behind, the script removes it.
+The keys are generated once into `../.state/soft-tenancy/credentials.env`
+(gitignored, mode 600), one per view, and must stay distinct. Re-running the
+script is safe; it also removes what older versions of this lab left behind.
 
 ### 08 · The collectors
 
@@ -328,14 +407,22 @@ tenant_pipeline "tenant_a" {
   metric_targets  = discovery.relabel.metrics.output
   profile_targets = discovery.relabel.profiles.output
 }
-// ...and a "platform" block for everything that isn't a tenant
+// ...the same for tenant_b and tenant_c, and a "platform" block for
+// everything that isn't a tenant
 ```
+
+Tenant a *reading* tenant c's data changes nothing here: tenant c's data is
+written to tenant c, by tenant c's pipeline. Who may read it is decided in
+step 07.
 
 **Traces are the one signal apps must push.** Instead of letting them push
 straight to Tempo (and pick any tenant), each tenant gets its own small OTLP
 receiver ([`otlp-receivers.yaml`](./08-collectors/otlp-receivers.yaml)). The
 receiver sets `X-Scope-OrgID` from its own configuration, and Cilium lets only
 that tenant's pods reach it. Whatever a tenant sends lands in its own tenant.
+The receiver also stamps a `tenant` resource attribute on every span,
+replacing any the app set, so in Tenant A's org
+`{ resource.tenant = "tenant-c" }` shows which spans are tenant c's.
 
 The Alloy chart's default ClusterRole (every Secret, `pods/log`, and more) is
 replaced with `pods: get/list/watch`, which is all this collector needs.
@@ -348,15 +435,24 @@ replaced with `pods: get/list/watch`, which is all this collector needs.
 
 Installs Grafana, then [`setup-orgs.sh`](./09-grafana/setup-orgs.sh) creates
 the orgs through the API (Grafana can't provision orgs or users from files).
-Each org gets **four data sources**, all sending that tenant's gateway key
-(`X-Api-Key`, stored encrypted in the data source, never shown to the org's users):
+Each org's data sources call the read gateway under the org's view, with the
+org's key (`X-Api-Key`, stored encrypted in the data source, never shown to the
+org's users). Every login uses the password `test-tenant` (`ST_PASSWORD`),
+admin included.
 
-| Org | User (role) | Loki, Mimir, Tempo, Pyroscope use the key of |
-|---|---|---|
-| Tenant A | alice (Editor) | `tenant-a` |
-| Tenant B | bob (Editor) | `tenant-b` |
-| Platform | ops (Editor) | `platform` (kube-system, observability, ...) |
-| Main Org | nobody | no data sources, because new users land here by default |
+| Org | User (role) | Sees | Data sources |
+|---|---|---|---|
+| Tenant A | alice (Editor) | tenant-a, tenant-c | Loki, Mimir, Tempo (both tenants in each); Pyroscope, Pyroscope (tenant-c) |
+| Tenant B | bob (Editor) | tenant-b | Loki, Mimir, Tempo, Pyroscope |
+| Tenant C | carol (Editor) | tenant-c | Loki, Mimir, Tempo, Pyroscope |
+| Platform | ops (Editor) | everything | Loki, Mimir, Tempo (all tenants); Pyroscope (platform) plus one per tenant |
+| Main Org | nobody | nothing | none, because new users land here by default |
+
+In Tenant A's org, narrow things down by namespace: `{namespace="tenant-c"}`
+(Loki, Mimir). Loki and Mimir also label every result with its tenant, so
+`sum by (__tenant_id__) (...)` splits a graph per tenant; Mimir, but not Loki,
+also filters on it (`up{__tenant_id__="tenant-c"}`). In Tempo, use
+`{ resource.tenant = "tenant-c" }`.
 
 The data sources of an org are linked to each other, and only to each other:
 
@@ -365,11 +461,12 @@ The data sources of an org are linked to each other, and only to each other:
 - the **service map** comes from the metrics Tempo generated
 
 Users are **Editors, never org Admins**. An org Admin can add data sources,
-including one pointed at another tenant. The script prints the passwords:
+including one pointed at another tenant.
 
 ```bash
 kubectl -n observability port-forward svc/grafana 3000:80
-# http://localhost:3000 → log in as alice → Explore → Tempo → Search → open a trace
+# http://localhost:3000 → alice / test-tenant → Explore → Tempo → Search → open a trace
+# a trace from frontend that also calls tenant c's backend shows both tenants' spans
 ```
 
 ### 10 · Lock down the observability namespace
@@ -418,16 +515,20 @@ In Grafana (as alice), the forged line from the first run is still there:
 ./11-verify-observability.sh
 ```
 
-58 checks across all four signals. Highlights:
+78 checks across all four signals and all four views. Highlights:
 
 ```
-PASS  metrics:  tenant-a sees only tenant-a
-PASS  traces:   tenant-b gets nothing for it                 ← tenant-a's trace id
-PASS  profiles: tenant-a claiming tenant-b                   ← the key wins over the header
-PASS  a tenant-a log line's trace_id opens in Tempo
-PASS  service graph frontend -> backend (tenant-a)
-PASS  tenant-a -> tenant-b's trace receiver                  ← dropped
-PASS  alice can't use bob's tempo data source
+PASS  logs:     /tenant-a/ sees tenant-a tenant-c
+PASS  metrics:  /tenant-c/ sees tenant-c
+PASS  profiles: /tenant-a/ -> tenant-c's profiles only
+PASS  traces:   /tenant-a/ gets a cross-tenant trace whole  ← a's frontend -> c's backend
+PASS  traces:   /tenant-c/ gets only its half of it
+PASS  tenant-a's key on /tenant-b/ -> 401
+PASS  path trick /tenant-a/../tenant-b/ -> 401
+PASS  metrics:  tenant-c claiming a|c (header)             ← the view beats the header
+PASS  alice: logs are tenant-a and tenant-c
+PASS  ops: metrics are everyone's
+PASS  tenant-a -> tenant-c's trace receiver                ← c's services yes, receiver no
 PASS  Alloy identity: Mimir query -> 403                     ← Envoy L7 rule
 ```
 
@@ -437,6 +538,7 @@ PASS  Alloy identity: Mimir query -> 403                     ← Envoy L7 rule
 ./12-kgateway-ingress/install.sh
 kubectl --as alice apply -f 12-kgateway-ingress/route-tenant-a.yaml
 kubectl --as bob   apply -f 12-kgateway-ingress/route-tenant-b.yaml
+kubectl --as carol apply -f 12-kgateway-ingress/route-tenant-c.yaml
 ```
 
 kgateway is already installed (step 07; the script re-applies it, so step 12
@@ -447,6 +549,7 @@ platform, all in `kgateway-system`:
 |---|---|---|---|---|
 | `tenant-a` | `*.tenant-a.lab` | namespaces with `tenant: a` | 30180 | tenant a only |
 | `tenant-b` | `*.tenant-b.lab` | namespaces with `tenant: b` | 30181 | tenant b only |
+| `tenant-c` | `*.tenant-c.lab` | namespaces with `tenant: c` | 30183 | tenant c only |
 | `platform` | `grafana.platform.lab` | namespaces with `role: platform` | 30182 | Grafana only |
 
 **Why not one shared Gateway?** Its Envoy proxy would need a way into every
@@ -467,6 +570,9 @@ Three layers, again:
 - **Cilium:** each proxy's egress is its own tenant, the kgateway controller
   and DNS. Each tenant's ingress now also allows exactly its own proxy.
 
+Tenant a's *pods* may call tenant c, but tenant a's *gateway* still serves and
+reaches tenant a only: publishing tenant c's apps is tenant c's gateway's job.
+
 Grafana moves behind the platform gateway: its policy admits only that proxy.
 Tenant pods still can't reach any gateway (their baseline has no egress to
 `kgateway-system`). Inside the cluster they use service names.
@@ -485,9 +591,12 @@ Gateway get its own LoadBalancer address.
 ./13-verify-ingress.sh
 ```
 
+15 checks. Highlights:
+
 ```
 PASS  web.tenant-a.lab on tenant-a's gateway
-PASS  tenant-a's gateway won't serve web.tenant-b.lab
+PASS  web.tenant-c.lab on tenant-c's gateway
+PASS  tenant-a's gateway won't serve web.tenant-c.lab   ← only tenant a's pods reach c
 PASS  bob's route on tenant-a's gateway is rejected       ← listener allowedRoutes
 PASS  bob's route can't use tenant-a's service            ← no ReferenceGrant
 PASS  bob can't create kgateway Backends                  ← RBAC
@@ -518,21 +627,27 @@ tenant a.
    allowlist is gone. Cross-tenant traffic stays blocked (deny beats allow).
    Revert the binding.
 4. **Make alice a Grafana org Admin**, then have her add a Mimir data source
-   pointing at the gateway as `tenant-b`. She doesn't have tenant-b's
-   key. Pointing it straight at `mimir:8080` with a spoofed header gets
-   dropped by Grafana's egress policy. Two layers, each enough on its own.
-5. **Onboard tenant-c.** Namespace (the guard tells you what's missing), copy
-   the CCNP, add a `tenant_pipeline "tenant_c"` block to
-   `08-collectors/alloy-values.yaml`, an `otlp-tenant-c` receiver, a line in
-   `09-grafana/setup-orgs.sh`, and a gateway key: an `OBS_KEY_TENANT_C` in
-   `lib.sh`'s `CRED_VARS` and a `tenant-c` entry in `07-read-gateway/install.sh`.
-6. **Watch it live** with Hubble:
+   pointing at `/tenant-b/` on the gateway. She doesn't have Tenant B's key.
+   Pointing it straight at `mimir:8080` with a spoofed header gets dropped by
+   Grafana's egress policy. Two layers, each enough on its own.
+5. **Onboard tenant-d.** Namespace (the guard tells you what's missing), copy
+   tenant-b's CCNP, add a `tenant_pipeline "tenant_d"` block to
+   `08-collectors/alloy-values.yaml` (and to the platform's `drop`), an
+   `otlp-tenant-d` receiver and its policy, a view in `07-read-gateway/views.yaml`
+   with its key (`OBS_KEY_TENANT_D` in `lib.sh`, a Secret in
+   `07-read-gateway/install.sh`), and a line in `09-grafana/setup-orgs.sh`.
+6. **Let tenant b see tenant c too.** Change `/tenant-b/`'s header to
+   `tenant-b|tenant-c` and add a `/tenant-b/pyroscope/tenant-c` rule in
+   `views.yaml`, then add `tenant-c` to bob's line in `setup-orgs.sh`. Grafana
+   visibility changes; the network doesn't. Which one you change is a separate
+   decision, per direction.
+7. **Watch it live** with Hubble:
    ```bash
    kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --namespace tenant-a --protocol dns -f
    kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --verdict DROPPED -f
    ```
    (`ds/cilium` picks one agent, so you only see flows on that node.)
-7. **Try to send traces as someone else.** From tenant-a's client pod, send a
+8. **Try to send traces as someone else.** From tenant-a's client pod, send a
    span to `otlp-tenant-b` (Cilium drops it), then to tenant-a's own receiver
    with `X-Scope-OrgID: tenant-b` set (it lands in tenant-a anyway: the receiver
    stamps its own tenant).
@@ -563,30 +678,37 @@ Be honest about the boundary before calling it production-ready:
 - **One kgateway controller configures every proxy.** A bug or compromise in
   the controller affects every tenant's ingress and the read gateway. The
   proxies are separate; the control plane is not.
+- **Profiles don't merge across tenants.** Pyroscope can't query several
+  tenants at once, so alice picks "Pyroscope" or "Pyroscope (tenant-c)". A span
+  from tenant c opens tenant a's Pyroscope, which has no profile for it.
+- **Service graphs stop at the tenant boundary.** Tempo builds each tenant's
+  service graph from that tenant's spans only, so tenant a's frontend calling
+  tenant c's backend doesn't show as an edge.
 
 ## Layout
 
 ```
 soft-tenancy/
-├── lib.sh                          # shared helpers, pinned chart versions, test harness
-├── 00-cilium-dns/                  # NXDOMAIN for blocked names (HelmChartConfig on cp1)
-├── 01-namespaces/                  # tenant-a, tenant-b, observability + admission guard
-├── 02-tenant-guardrails/           # RBAC (alice, bob), quotas, limit ranges
-├── 03-tenant-isolation/            # one CiliumClusterwideNetworkPolicy per tenant
-├── 04-demo-apps/                   # web + client per tenant
+├── lib.sh                            # helpers, pinned versions, test harness
+├── 00-cilium-dns/                    # NXDOMAIN for blocked names (RKE2)
+├── up.sh                             # make soft-tenancy: every step, with checks
+├── 01-namespaces/                    # tenants a/b/c, observability, guard
+├── 02-tenant-guardrails/             # RBAC (alice, bob, carol), quotas
+├── 03-tenant-isolation/              # one CCNP per tenant (a -> c allowed)
+├── 04-demo-apps/                     # web + client per tenant
 ├── 05-verify-network.sh
-├── 06-observability-backends/      # Loki, Mimir, Tempo, Pyroscope (values / manifest) + install.sh
-├── 07-read-gateway/                # kgateway: API key → X-Scope-OrgID, one listener per backend
-├── 08-collectors/                  # Alloy DaemonSet (per-tenant pipelines) + per-tenant OTLP receivers
-├── 09-grafana/                     # values.yaml, install.sh, setup-orgs.sh (4 linked data sources per org)
-├── 10-observability-lockdown/      # policies.yaml + attack-demo.sh
+├── 06-observability-backends/        # Loki, Mimir, Tempo, Pyroscope + install.sh
+├── 07-read-gateway/                  # kgateway: gateway.yaml, views.yaml
+├── 08-collectors/                    # Alloy DaemonSet + per-tenant OTLP receivers
+├── 09-grafana/                       # install.sh, setup-orgs.sh
+├── 10-observability-lockdown/        # policies.yaml + attack-demo.sh
 ├── 11-verify-observability.sh
-├── 12-kgateway-ingress/            # one kgateway Gateway per tenant, proxy policies, routes
+├── 12-kgateway-ingress/              # one Gateway per tenant, policies, routes
 ├── 13-verify-ingress.sh
-├── 99-cleanup.sh                   # --all also deletes the generated credentials
-├── soft-tenancy-lab-walkthrough.docx  # this README as a Word file, with diagrams
-├── soft-multi-tenancy-guide.docx   # cluster-agnostic step-by-step guide (Word)
-└── confluence/                     # six team pages (Word), diagrams (SVG + PNG), paste instructions
+├── 99-cleanup.sh                     # --all also deletes the gateway keys
+├── soft-tenancy-lab-walkthrough.docx # this README as a Word file
+├── soft-multi-tenancy-guide.docx     # the design for any cluster (Word)
+└── confluence/                       # team pages (Word), diagrams, paste how-to
 
 ```
 
@@ -605,14 +727,21 @@ the read gateway's access log (`kubectl -n observability logs deploy/obs-gateway
 then `./11-verify-observability.sh`.
 
 **Grafana's data sources answer 401.** The keys in the data sources don't match
-the `obs-gateway-keys` Secret, for example after the credentials file was
+the `obs-key-<view>` Secrets, for example after the credentials file was
 recreated. Re-run `./07-read-gateway/install.sh`, then `./09-grafana/setup-orgs.sh`.
 
-**The read gateway isn't `Programmed`, or a backend answers 404 for everything.**
+**The read gateway isn't `Programmed`, or a view answers 404 for everything.**
 `kubectl -n observability describe gateway obs-gateway`, then check that the
-routes and the policy are attached:
+views and their policies are attached:
 `kubectl -n observability get httproute,trafficpolicy,listenerpolicy -o wide`
-and `kubectl -n observability describe trafficpolicy obs-gateway-tenant`.
+and `kubectl -n observability describe trafficpolicy view-tenant-a`.
+
+**Can't log in to Grafana with `test-tenant`.** The password is set at install
+(`ST_PASSWORD`, default `test-tenant`). After changing it, re-run
+`./09-grafana/install.sh`: it resets admin's password and every user's.
+
+**Live tail in Tenant A's or Platform's org fails.** Loki can't tail several
+tenants at once. Query instead, or tail from the Tenant C org.
 
 **The service map is empty.** It's built from metrics Tempo generates from
 spans, a minute or two after traces arrive. Check
@@ -631,4 +760,5 @@ wrong Gateway reports `NotAllowedByListeners`.
 its way to the backend. Check its egress:
 `kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --verdict DROPPED --from-label gateway.networking.k8s.io/gateway-name=tenant-a`.
 
-**Start over:** `./99-cleanup.sh` (add `--all` to also forget the keys and passwords).
+**Start over:** `./99-cleanup.sh` or `make soft-tenancy-clean` (add `--all` to the
+script to also forget the gateway keys).

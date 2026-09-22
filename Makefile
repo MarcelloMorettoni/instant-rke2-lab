@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 S := scripts
 
 .PHONY: help all prereqs image vms cluster kubeconfig verify destroy status \
-        ssh-cp1 ssh-w1 ssh-w2
+        ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean
 
 help:
 	@echo "instant-rke2-lab — RKE2 + Cilium on libvirt/KVM"
@@ -17,6 +17,12 @@ help:
 	@echo "  make destroy     Tear down VMs, disks, and lab state"
 	@echo "  make status      Show libvirt + node status"
 	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2   SSH to a VM"
+	@echo
+	@echo
+	@echo "  make soft-tenancy         Soft multi-tenancy lab: tenants a, b, c; Cilium isolation (a -> c only),"
+	@echo "                            Grafana stack per tenant, kgateway. Grafana logins: password test-tenant"
+	@echo "  make soft-tenancy-verify  Re-run the network, observability and ingress checks"
+	@echo "  make soft-tenancy-clean   Remove everything soft-tenancy created"
 	@echo
 	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
@@ -60,3 +66,15 @@ ssh-w1:
 
 ssh-w2:
 	@ssh -i .state/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@192.168.122.13
+
+# Soft multi-tenancy lab (soft-tenancy/). Needs the cluster from `make all`.
+soft-tenancy:
+	soft-tenancy/up.sh
+
+soft-tenancy-verify:
+	soft-tenancy/05-verify-network.sh
+	soft-tenancy/11-verify-observability.sh
+	soft-tenancy/13-verify-ingress.sh
+
+soft-tenancy-clean:
+	soft-tenancy/99-cleanup.sh

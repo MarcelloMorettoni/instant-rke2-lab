@@ -56,12 +56,14 @@ ensure_default_storageclass() {
   kubectl annotate sc local-path storageclass.kubernetes.io/is-default-class=true --overwrite
 }
 
-# Generated once, then reused:
-#   OBS_KEY_*     one API key per observability tenant (read gateway, step 07)
-#   GRAFANA_PW_*  one password per Grafana user (step 09)
-# Variables missing from an older file are added, existing ones are kept.
-CRED_VARS=(OBS_KEY_TENANT_A OBS_KEY_TENANT_B OBS_KEY_PLATFORM
-           GRAFANA_PW_ALICE GRAFANA_PW_BOB GRAFANA_PW_OPS)
+# One password for every Grafana login (alice, bob, carol, ops, admin). A lab
+# convenience: override with ST_PASSWORD=... before running any step.
+ST_PASSWORD="${ST_PASSWORD:-test-tenant}"
+
+# Read-gateway keys, one per Grafana org (step 07). Generated once and kept in
+# the credentials file. They stay random and distinct: each key opens exactly
+# one org's view, so equal keys would let one org read another's.
+CRED_VARS=(OBS_KEY_TENANT_A OBS_KEY_TENANT_B OBS_KEY_TENANT_C OBS_KEY_PLATFORM)
 ensure_credentials() {
   local v added=0
   mkdir -p "$CREDS_DIR" && chmod 700 "$CREDS_DIR"
@@ -72,8 +74,11 @@ ensure_credentials() {
     (umask 077; echo "${v}=$(openssl rand -hex 24)" >> "$CREDS_FILE")
     added=1
   done
-  (( added )) && ok "Generated credentials in ${CREDS_FILE}"
+  (( added )) && ok "Generated gateway keys in ${CREDS_FILE}"
   source "$CREDS_FILE"
+  # Grafana logins all use ST_PASSWORD (older credentials files had random ones).
+  GRAFANA_PW_ALICE="${ST_PASSWORD}"; GRAFANA_PW_BOB="${ST_PASSWORD}"
+  GRAFANA_PW_CAROL="${ST_PASSWORD}"; GRAFANA_PW_OPS="${ST_PASSWORD}"
 }
 
 # kgateway serves both gateways in this lab: the read gateway in front of the

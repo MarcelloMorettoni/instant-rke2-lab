@@ -1,25 +1,22 @@
-# Step 07: the read gateway in front of Loki, Mimir, Tempo and Pyroscope,
+# Step 07a: the read gateway in front of Loki, Mimir, Tempo and Pyroscope,
 # built with kgateway (the same Gateway API controller as the ingress, step 12).
 #
 # All four backends trust whatever X-Scope-OrgID they receive. This gateway
-# makes the tenant follow from WHICH KEY THE CALLER PRESENTED, never from what
-# it claims:
+# makes sure the header always comes from the platform, never from the caller:
 #
-#   Grafana org "Tenant A" --X-Api-Key: <tenant-a key>--> obs-gateway --X-Scope-OrgID: tenant-a--> backend
+#   Grafana org "Tenant A" --GET /tenant-a/loki/..., X-Api-Key: <Tenant A's key>-->
+#       obs-gateway --X-Scope-OrgID: tenant-a|tenant-c--> Loki
 #
-# kgateway's apiKeyAuth looks the key up in the obs-gateway-keys Secret, whose
-# entries are named after the tenants, and writes the matching entry's name
-# into X-Scope-OrgID. Envoy SETS that header, so any X-Scope-OrgID the caller
-# sent is replaced. The key itself is removed before the request goes upstream.
-#
-# One listener per backend, on the backend's own port, read APIs only: pushes,
-# deletes and admin endpoints are refused. Writes come from Alloy, the OTLP
-# receivers and Tempo, straight to the backends (step 08, locked down in step 10).
+# This file is the entry point: one Gateway, one listener, and settings shared
+# by every route. Who sees what lives in views.yaml: one path prefix per
+# Grafana org, opened only by that org's key, with the tenant list fixed by
+# the platform. Writes never pass here: Alloy, the OTLP receivers and Tempo
+# push straight to the backends (step 08, locked down in step 10).
 #
 # The Gateway is called obs-gateway and lives in observability, so kgateway
 # names its proxy Deployment and Service obs-gateway too, and the proxy pods
 # carry the label gateway.networking.k8s.io/gateway-name=obs-gateway (step 10
-# uses it). The key Secret is created by install.sh from generated keys.
+# uses it).
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
@@ -42,51 +39,24 @@ spec:
       group: gateway.kgateway.dev
       kind: GatewayParameters
       name: obs-gateway
-  # Only routes from this namespace (the platform's) may attach.
+  # One listener for all four backends: the path picks the view and the
+  # backend. Only routes from this namespace (the platform's) may attach.
+  # Not 8082 or 9091: the proxy uses those itself (readiness, stats).
   listeners:
-    - name: loki
-      protocol: HTTP
-      port: 3100
-      allowedRoutes: {namespaces: {from: Same}}
-    - name: mimir
+    - name: http
       protocol: HTTP
       port: 8080
       allowedRoutes: {namespaces: {from: Same}}
-    - name: tempo
-      protocol: HTTP
-      port: 3200
-      allowedRoutes: {namespaces: {from: Same}}
-    - name: pyroscope
-      protocol: HTTP
-      port: 4040
-      allowedRoutes: {namespaces: {from: Same}}
----
-# THE policy: the key decides the tenant, on every listener and route.
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: obs-gateway-tenant
-  namespace: observability
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: obs-gateway
-  apiKeyAuth:
-    secretRef:
-      name: obs-gateway-keys       # entries: tenant-a, tenant-b, platform
-    keySources:
-      - header: X-Api-Key
-    clientIdHeader: X-Scope-OrgID  # the matching entry's name, replacing any sent value
-    forwardCredential: false       # the key never reaches the backends
 ---
 # Listener settings:
-#   access log  who asked for what, on which backend (the key itself is never logged):
-#                 :3100 tenant=tenant-a "GET /loki/api/v1/labels" 200 675
-#               On a 401, tenant= is whatever the caller claimed: nothing was forwarded.
-#               Envoy writes the file every few seconds, so lines show up with a delay.
+#   access log  who asked for what (the path starts with the view; the key is
+#               never logged), and which tenants the backend was asked for:
+#                 tenant=tenant-a|tenant-c "GET /tenant-a/loki/api/v1/labels" 200 675
+#               On a 401 nothing was forwarded. Envoy writes the file every
+#               few seconds, so lines show up with a delay.
 #   paths       normalization and slash merging are on by default; spelled out
-#               because the read-only rules below match on paths
+#               because the views match on paths (/tenant-a/../tenant-b/...
+#               becomes /tenant-b/... before any route is chosen)
 #   websocket   Loki's live tail (Grafana Explore → Live)
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: ListenerPolicy
@@ -104,13 +74,14 @@ spec:
         - fileSink:
             path: /dev/stdout
             stringFormat: >            # ">" keeps the final newline: one line per request
-              :%DOWNSTREAM_LOCAL_PORT% tenant=%REQ(X-SCOPE-ORGID)%
+              tenant=%REQ(X-SCOPE-ORGID)%
               "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%" %RESPONSE_CODE% %BYTES_SENT%
       normalizePath: true
       mergeSlashes: true
       upgradeConfig:
         enabledUpgrades: ["websocket"]
 ---
+# Pushes, deletes and Tempo's overrides API: refused on every view.
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: DirectResponse
 metadata:
@@ -119,95 +90,3 @@ metadata:
 spec:
   status: 403
   body: "read-only gateway\n"
----
-# ---- :3100 Loki (logs): the query API; push and delete refused ---------------
-# The longest matching path wins, so the 403 rule beats the forwarding rule.
-# Anything that matches no rule gets 404. Envoy's default timeout is 15s; big
-# queries need longer, and a live tail stays open as long as someone watches.
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: obs-loki
-  namespace: observability
-spec:
-  parentRefs:
-    - name: obs-gateway
-      sectionName: loki
-  rules:
-    - matches:
-        - path: {type: PathPrefix, value: /loki/api/v1}
-      backendRefs:
-        - name: loki
-          port: 3100
-      timeouts: {request: 300s}
-    - matches:
-        - path: {type: PathPrefix, value: /loki/api/v1/tail}
-      backendRefs:
-        - name: loki
-          port: 3100
-      timeouts: {request: 0s}        # no limit: the WebSocket stays open
-    - matches:
-        - path: {type: PathPrefix, value: /loki/api/v1/push}
-        - path: {type: PathPrefix, value: /loki/api/v1/delete}
-      filters:
-        - type: ExtensionRef
-          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
----
-# ---- :8080 Mimir (metrics): the Prometheus query API only --------------------
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: obs-mimir
-  namespace: observability
-spec:
-  parentRefs:
-    - name: obs-gateway
-      sectionName: mimir
-  rules:
-    - matches:
-        - path: {type: PathPrefix, value: /prometheus/api/v1}
-      backendRefs:
-        - name: mimir
-          port: 8080
-      timeouts: {request: 300s}
----
-# ---- :3200 Tempo (traces): the query API; the overrides API refused ----------
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: obs-tempo
-  namespace: observability
-spec:
-  parentRefs:
-    - name: obs-gateway
-      sectionName: tempo
-  rules:
-    - matches:
-        - path: {type: PathPrefix, value: /api}
-      backendRefs:
-        - name: tempo
-          port: 3200
-      timeouts: {request: 300s}
-    - matches:
-        - path: {type: PathPrefix, value: /api/overrides}
-      filters:
-        - type: ExtensionRef
-          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
----
-# ---- :4040 Pyroscope (profiles): the querier API only ------------------------
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: obs-pyroscope
-  namespace: observability
-spec:
-  parentRefs:
-    - name: obs-gateway
-      sectionName: pyroscope
-  rules:
-    - matches:
-        - path: {type: PathPrefix, value: /querier.v1.QuerierService}
-      backendRefs:
-        - name: pyroscope
-          port: 4040
-      timeouts: {request: 300s}

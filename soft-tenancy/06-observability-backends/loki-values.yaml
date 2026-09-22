@@ -25,9 +25,13 @@ loki:
           prefix: loki_index_
           period: 24h
 
-  # "a|b" in X-Scope-OrgID would query both tenants at once. Keep it off.
+  # X-Scope-OrgID "tenant-a|tenant-c" queries both tenants at once: that's how
+  # tenant a's Grafana org sees tenant c too (step 07 decides who gets which
+  # list). Safe only because nothing but the read gateway can query Loki, and
+  # the gateway sets the header itself (steps 07 and 10). Writes always name
+  # exactly one tenant.
   querier:
-    multi_tenant_queries_enabled: false
+    multi_tenant_queries_enabled: true
 
   # Defaults every tenant gets...
   limits_config:
@@ -42,6 +46,8 @@ loki:
       tenant-a:
         ingestion_rate_mb: 2
       tenant-b:
+        ingestion_rate_mb: 2
+      tenant-c:
         ingestion_rate_mb: 2
 
   compactor:

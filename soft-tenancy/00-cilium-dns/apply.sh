@@ -12,6 +12,14 @@ source "${HERE}/../../scripts/lib.sh"     # ssh_run, control_plane_ip, config.en
 # shellcheck source=../lib.sh
 source "${HERE}/../lib.sh"
 require_cluster
+
+# Already done (for example on a re-run of make soft-tenancy): nothing to do,
+# and no need to restart every Cilium agent again.
+if [[ "$(kubectl -n kube-system get cm cilium-config \
+         -o jsonpath='{.data.tofqdns-dns-reject-response-code}' 2>/dev/null)" == "nameError" ]]; then
+  ok "Step 00: Cilium already answers blocked names with NXDOMAIN"
+  exit 0
+fi
 command -v envsubst >/dev/null || die "envsubst not found (apt install gettext-base)"
 
 CP_IP="$(control_plane_ip)"

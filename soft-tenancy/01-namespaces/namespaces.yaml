@@ -1,4 +1,4 @@
-# Step 01b: the three namespaces.
+# Step 01b: the namespaces: three tenants and the platform's observability.
 #
 # The `tenant` label is the identity every later layer trusts. Tenants can't
 # change it: Namespace is a cluster-scoped object and tenant RBAC (step 02)
@@ -21,6 +21,17 @@ metadata:
   name: tenant-b
   labels:
     tenant: b
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-c
+  labels:
+    tenant: c
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted

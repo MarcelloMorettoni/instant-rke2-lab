@@ -1,9 +1,7 @@
-# Step 04: tenant a's workloads.
-#   web       nginx that answers "hello from tenant-a" (network tests)
-#   frontend  podinfo, calls backend on every /echo: one trace across two services.
-#             It ALSO calls tenant c's backend, which tenant a may use: that
-#             trace spans two tenants (tenant a's Grafana org sees all of it,
-#             tenant c's org only its own half)
+# Step 04: tenant c's workloads. Same as tenant-a.yaml. Tenant a calls two of
+# them: web (from its client) and backend (from its frontend, see tenant-a.yaml).
+#   web       nginx that answers "hello from tenant-c" (network tests)
+#   frontend  podinfo, calls backend on every /echo: one trace across two services
 #   backend   podinfo
 #   client    netshoot (curl, dig): drives traffic every few seconds, and the
 #             verify scripts exec into it
@@ -15,15 +13,15 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: web-content
-  namespace: tenant-a
+  namespace: tenant-c
 data:
-  index.html: "hello from tenant-a\n"
+  index.html: "hello from tenant-c\n"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   replicas: 1
   selector:
@@ -61,7 +59,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   selector: {app: web}
   ports:
@@ -72,7 +70,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: client
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   replicas: 1
   selector:
@@ -96,8 +94,7 @@ spec:
               i=0
               while true; do
                 i=$((i + 1))
-                echo "$(date -Iseconds) tenant-a client: GET http://web -> $(curl -s -m 2 http://web || echo FAILED)"
-                echo "$(date -Iseconds) tenant-a client: GET http://web.tenant-c -> $(curl -s -m 2 http://web.tenant-c || echo FAILED)"
+                echo "$(date -Iseconds) tenant-c client: GET http://web -> $(curl -s -m 2 http://web || echo FAILED)"
                 # observability demo traffic: frontend -> backend, some slow, some failing
                 curl -s -m 5 -o /dev/null -X POST -d "order-$i" http://frontend:9898/echo
                 [ $((i % 3)) -eq 0 ] && curl -s -m 5 -o /dev/null http://frontend:9898/delay/1
@@ -115,7 +112,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   replicas: 1
   selector:
@@ -141,12 +138,10 @@ spec:
         - name: frontend
           image: ghcr.io/stefanprodan/podinfo:6.15.0
           command: ["./podinfo"]
-          args: ["--port=9898", "--level=debug", "--otel-service-name=frontend",
-                 "--backend-url=http://backend:9898/echo",
-                 "--backend-url=http://backend.tenant-c.svc.cluster.local:9898/echo"]
+          args: ["--port=9898", "--level=debug", "--otel-service-name=frontend", "--backend-url=http://backend:9898/echo"]
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://otlp-tenant-a.observability.svc.cluster.local:4317
+              value: http://otlp-tenant-c.observability.svc.cluster.local:4317
             - name: OTEL_EXPORTER_OTLP_INSECURE
               value: "true"
           ports:
@@ -165,7 +160,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   selector: {app: frontend}
   ports:
@@ -177,7 +172,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   replicas: 1
   selector:
@@ -206,7 +201,7 @@ spec:
           args: ["--port=9898", "--level=debug", "--otel-service-name=backend"]
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://otlp-tenant-a.observability.svc.cluster.local:4317
+              value: http://otlp-tenant-c.observability.svc.cluster.local:4317
             - name: OTEL_EXPORTER_OTLP_INSECURE
               value: "true"
           ports:
@@ -225,7 +220,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: backend
-  namespace: tenant-a
+  namespace: tenant-c
 spec:
   selector: {app: backend}
   ports:

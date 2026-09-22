@@ -2,6 +2,7 @@
 #
 #   write:  Alloy ──POST push only (L7)──► Loki, Mimir, Pyroscope
 #           tenant pods ──► their OWN otlp-tenant-X ──► Tempo ──► Mimir (service graphs)
+#           (X = a, b, c: tenant a may use tenant c's services, not its receiver)
 #   read:   Grafana ──► obs-gateway (kgateway) ──► Loki, Mimir, Tempo, Pyroscope
 #
 # Nothing else may reach the backends, the gateway or Grafana, and none of
@@ -223,10 +224,7 @@ spec:
             app.kubernetes.io/name: grafana
       toPorts:
         - ports:
-            - {port: "3100", protocol: TCP}     # Loki listener
-            - {port: "8080", protocol: TCP}     # Mimir listener
-            - {port: "3200", protocol: TCP}     # Tempo listener
-            - {port: "4040", protocol: TCP}     # Pyroscope listener
+            - {port: "8080", protocol: TCP}     # the one listener; the path picks the view
   egress:
     - toEndpoints:
         - matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: single-binary}
@@ -268,10 +266,7 @@ spec:
             gateway.networking.k8s.io/gateway-name: obs-gateway
       toPorts:
         - ports:
-            - {port: "3100", protocol: TCP}
             - {port: "8080", protocol: TCP}
-            - {port: "3200", protocol: TCP}
-            - {port: "4040", protocol: TCP}
 ---
 # ---------------------------------------------------------------- write path
 apiVersion: cilium.io/v2
@@ -339,6 +334,35 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.cilium.k8s.namespace.labels.tenant: b
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: tempo
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: otlp-tenant-c
+spec:
+  description: "tenant c's trace receiver: accepts only tenant c, forwards only to Tempo."
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: observability
+      app.kubernetes.io/name: otlp-receiver
+      otlp-tenant: c
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: c
       toPorts:
         - ports:
             - port: "4317"

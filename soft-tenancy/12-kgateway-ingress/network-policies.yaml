@@ -2,6 +2,7 @@
 #
 #   tenant-a's proxy  ->  tenant a only      (plus the kgateway controller and DNS)
 #   tenant-b's proxy  ->  tenant b only
+#   tenant-c's proxy  ->  tenant c only   (tenant a may call tenant c; its proxy may not)
 #   platform proxy    ->  Grafana only
 #
 # Enforced on both ends: the proxy's egress, and the destination's ingress.
@@ -43,6 +44,21 @@ spec:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kgateway-system
             gateway.networking.k8s.io/gateway-name: tenant-b
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: tenant-c-from-gateway
+spec:
+  description: "tenant c also accepts traffic from its own gateway proxy"
+  endpointSelector:
+    matchLabels:
+      k8s:io.cilium.k8s.namespace.labels.tenant: c
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: tenant-c
 ---
 # ---------------------------------------------------------------- proxy side
 # Even if a route or a kgateway Backend pointed tenant-a's proxy somewhere
@@ -95,6 +111,40 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.cilium.k8s.namespace.labels.tenant: b
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            kgateway: kgateway
+      toPorts:
+        - ports:
+            - port: "9977"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: gateway-tenant-c-egress
+spec:
+  description: "tenant-c's proxy: tenant c, kgateway controller, DNS. Nothing else."
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: kgateway-system
+      gateway.networking.k8s.io/gateway-name: tenant-c
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: c
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kgateway-system

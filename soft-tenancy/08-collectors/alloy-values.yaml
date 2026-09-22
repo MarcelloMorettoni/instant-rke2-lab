@@ -274,11 +274,21 @@ alloy:
         profile_targets = discovery.relabel.profiles.output
       }
 
+      // Tenant a may READ tenant c's data (step 07). The data itself still
+      // lives in tenant c, written by tenant c's own pipeline.
+      tenant_pipeline "tenant_c" {
+        id              = "tenant-c"
+        keep            = "tenant-c(-.+)?"
+        log_targets     = discovery.relabel.logs.output
+        metric_targets  = discovery.relabel.metrics.output
+        profile_targets = discovery.relabel.profiles.output
+      }
+
       // Everything that isn't a tenant: the platform's own tenant, never a customer's.
       tenant_pipeline "platform" {
         id              = "platform"
         keep            = ".+"
-        drop            = "tenant-a(-.+)?|tenant-b(-.+)?"
+        drop            = "tenant-a(-.+)?|tenant-b(-.+)?|tenant-c(-.+)?"
         log_targets     = discovery.relabel.logs.output
         metric_targets  = discovery.relabel.metrics.output
         profile_targets = discovery.relabel.profiles.output

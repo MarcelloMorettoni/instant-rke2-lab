@@ -1,4 +1,4 @@
-# Step 12a: one Gateway per tenant, plus one for the platform (Grafana).
+# Step 12a: one Gateway per tenant (a, b, c), plus one for the platform (Grafana).
 # All of them live in kgateway-system, which only the platform can touch.
 #
 # Why not one shared Gateway? Its Envoy proxy would have to reach every
@@ -93,6 +93,45 @@ spec:
           selector:
             matchLabels:
               tenant: b
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: tenant-c
+  namespace: kgateway-system
+spec:
+  kube:
+    service:
+      type: NodePort
+      ports:
+        - port: 8080
+          nodePort: 30183
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: tenant-c
+  namespace: kgateway-system
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: tenant-c
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      hostname: "*.tenant-c.lab"
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              tenant: c
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters

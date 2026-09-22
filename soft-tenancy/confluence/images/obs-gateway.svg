@@ -25,18 +25,20 @@
 <rect x="612" y="136" width="204" height="50" rx="10" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.5"/>
 <text x="714.0" y="165.5" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9A3412" text-anchor="middle">Grafana, org Tenant A</text>
 <path d="M714,186 L714,230" fill="none" stroke="#4338CA" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah4338CA)"/>
-<text x="726" y="204" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">X-Api-Key: tenant-a&#x27;s key</text>
-<text x="726" y="221" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">claims: tenant-b (ignored)</text>
+<text x="726" y="202" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11" font-weight="400" fill="#0F172A" text-anchor="start">GET /tenant-a/loki/...</text>
+<text x="726" y="218" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#0F172A" text-anchor="start">X-Api-Key: Tenant A&#x27;s key</text>
 <rect x="612" y="234" width="204" height="56" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
-<text x="714.0" y="258.05" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#3730A3" text-anchor="middle">obs-gateway (kgateway)</text>
-<text x="714.0" y="278.95" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="middle">key → tenant-a</text>
+<text x="714.0" y="250.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#3730A3" text-anchor="middle">obs-gateway (kgateway)</text>
+<text x="714.0" y="270.45" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="middle">the path is the view;</text>
+<text x="714.0" y="286.45" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="middle">only its key opens it</text>
 <path d="M714,290 L714,330" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
-<text x="726" y="315" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11.5" font-weight="700" fill="#166534" text-anchor="start">X-Scope-OrgID: tenant-a</text>
+<text x="726" y="313" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11" font-weight="700" fill="#166534" text-anchor="start">X-Scope-OrgID:</text>
+<text x="726" y="327" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="11" font-weight="700" fill="#166534" text-anchor="start">tenant-a|tenant-c</text>
 <rect x="612" y="334" width="204" height="50" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
 <text x="714.0" y="363.55" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#92400E" text-anchor="middle">any backend</text>
 <path d="M612,359 L578,359 L578,161 L608,161" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" marker-end="url(#ah16A34A)"/>
-<text x="504" y="250" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#166534" text-anchor="start">tenant-a&#x27;s</text>
-<text x="504" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#166534" text-anchor="start">data only</text>
+<text x="504" y="244" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#166534" text-anchor="start">tenant a&#x27;s and</text>
+<text x="504" y="260" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#166534" text-anchor="start">tenant c&#x27;s data</text>
 <g transform="translate(524,418) scale(1.0)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
-<text x="544" y="423" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#166534" text-anchor="start">The tenant comes from the API key, never the header.</text>
+<text x="544" y="423" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#166534" text-anchor="start">The tenants come from the view and its key, never from the header.</text>
 </svg>

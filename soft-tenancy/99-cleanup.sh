@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Remove everything the soft-tenancy exercises created.
 #   ./99-cleanup.sh          workloads, policies, namespaces, Helm releases
-#   ./99-cleanup.sh --all    ...and the generated credentials in .state/
+#   ./99-cleanup.sh --all    ...and the generated gateway keys in .state/
 #
 # Step 00's Cilium setting (NXDOMAIN for blocked names) is left in place: it's
 # harmless without DNS policies. To revert it, re-upload the original
@@ -13,16 +13,19 @@ source "${HERE}/lib.sh"
 require_cluster
 
 log "Ingress (step 12): routes, Gateways, policies"
-kubectl -n tenant-a delete httproute web --ignore-not-found 2>/dev/null || true
-kubectl -n tenant-b delete httproute web --ignore-not-found 2>/dev/null || true
+for ns in tenant-a tenant-b tenant-c; do
+  kubectl -n "${ns}" delete httproute web --ignore-not-found 2>/dev/null || true
+done
 kubectl delete -f "${HERE}/12-kgateway-ingress/grafana-route.yaml" --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/12-kgateway-ingress/gateways.yaml" --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/12-kgateway-ingress/network-policies.yaml" --ignore-not-found
 kubectl delete -f "${HERE}/12-kgateway-ingress/rbac.yaml" --ignore-not-found
 
 log "Read gateway (step 07), then kgateway itself"
+kubectl delete -f "${HERE}/07-read-gateway/views.yaml" --ignore-not-found 2>/dev/null || true
 kubectl delete -f "${HERE}/07-read-gateway/gateway.yaml" --ignore-not-found 2>/dev/null || true
-kubectl -n "${OBS_NS}" delete secret obs-gateway-keys --ignore-not-found 2>/dev/null || true
+kubectl -n "${OBS_NS}" delete secret obs-key-tenant-a obs-key-tenant-b obs-key-tenant-c obs-key-platform \
+  --ignore-not-found 2>/dev/null || true
 helm -n "${GW_NS}" uninstall kgateway --wait 2>/dev/null || true
 helm -n "${GW_NS}" uninstall kgateway-crds --wait 2>/dev/null || true
 kubectl delete namespace "${GW_NS}" --ignore-not-found

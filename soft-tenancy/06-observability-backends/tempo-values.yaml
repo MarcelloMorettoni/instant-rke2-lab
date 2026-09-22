@@ -23,6 +23,11 @@ tempo:
           - service-graphs
           - span-metrics
 
+  # Tempo answers queries for several tenants ("tenant-a|tenant-c") out of
+  # the box (query_frontend.multi_tenant_queries_enabled defaults to true): a
+  # trace that crosses tenants comes back whole. Only the read gateway sets
+  # that header.
+
   # Receivers keep the chart defaults (OTLP and Jaeger). Only the tenant OTLP
   # receivers can reach Tempo at all (step 10), and only on OTLP gRPC :4317.
   retention: 72h

@@ -15,6 +15,10 @@ pyroscope:
   # Kubernetes API. It's a namespaced, read-only Role (endpoints, pods and
   # services in observability).
 
+# Pyroscope has no multi-tenant queries: "tenant-a|tenant-c" is rejected. So a
+# Grafana org that may see several tenants gets one Pyroscope data source per
+# tenant (step 09), each through its own path on the read gateway (step 07).
+
 # By default the chart ALSO deploys its own Alloy, with a ClusterRole that can
 # read every Secret in the cluster. Our Alloy (step 08) does that job.
 alloy:

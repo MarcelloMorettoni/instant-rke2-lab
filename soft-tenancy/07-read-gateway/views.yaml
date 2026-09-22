@@ -1,0 +1,471 @@
+# Step 07b: who sees what. One view per Grafana org.
+#
+#   view (path)    Grafana org   tenants the backends are asked for
+#   /tenant-a/     Tenant A      tenant-a|tenant-c
+#   /tenant-b/     Tenant B      tenant-b
+#   /tenant-c/     Tenant C      tenant-c
+#   /platform/     Platform      platform|tenant-a|tenant-b|tenant-c   (ops: everything)
+#
+# Each view is one HTTPRoute plus one TrafficPolicy:
+#   - the TrafficPolicy lets in only that org's API key (Secret obs-key-<view>,
+#     created by install.sh). Tenant A's key on /tenant-b/... gets 401.
+#   - each rule SETS X-Scope-OrgID to the view's tenant list, replacing
+#     whatever the caller sent, and strips the view prefix before forwarding.
+#
+# Loki, Mimir and Tempo accept several tenants in one request ("a|c", step 06).
+# Pyroscope doesn't, so a view gets one Pyroscope path per tenant:
+#   /tenant-a/pyroscope/tenant-a/...   and   /tenant-a/pyroscope/tenant-c/...
+# The longest matching path wins, so the 403 rules beat the forwarding rules.
+# Anything that matches no rule gets 404.
+---
+# ---- Tenant A: tenant a's own data, and tenant c's (tenant a uses tenant c) --
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-tenant-a
+  namespace: observability
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    # Loki (logs): the query API. Envoy's default timeout is 15s; big queries need longer.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/loki/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 300s}
+    # Live tail stays open as long as someone watches.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/loki/api/v1/tail}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1/tail}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 0s}
+    # Pushes and deletes: refused.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /tenant-a/loki/api/v1/delete}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    # Mimir (metrics): the Prometheus query API only.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/prometheus/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /prometheus/api/v1}
+      backendRefs:
+        - {name: mimir, port: 8080}
+      timeouts: {request: 300s}
+    # Tempo (traces): the query API; a trace that crosses tenants comes back whole.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/api}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api}
+      backendRefs:
+        - {name: tempo, port: 3200}
+      timeouts: {request: 300s}
+    # Tempo's overrides API would let a tenant change its own limits: refused.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/api/overrides}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    # Pyroscope (profiles): one path per tenant, no multi-tenant queries.
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/pyroscope/tenant-a/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-a/pyroscope/tenant-c/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+---
+# Only Tenant A's key opens /tenant-a/. The key is removed before forwarding.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-tenant-a
+  namespace: observability
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: view-tenant-a
+  apiKeyAuth:
+    secretRef:
+      name: obs-key-tenant-a
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false
+---
+# ---- Tenant B: tenant-b --------------------------------------------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-tenant-b
+  namespace: observability
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/loki/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/loki/api/v1/tail}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1/tail}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 0s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /tenant-b/loki/api/v1/delete}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/prometheus/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /prometheus/api/v1}
+      backendRefs:
+        - {name: mimir, port: 8080}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/api}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api}
+      backendRefs:
+        - {name: tempo, port: 3200}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/api/overrides}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-b/pyroscope/tenant-b/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-tenant-b
+  namespace: observability
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: view-tenant-b
+  apiKeyAuth:
+    secretRef:
+      name: obs-key-tenant-b
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false
+---
+# ---- Tenant C: tenant-c --------------------------------------------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-tenant-c
+  namespace: observability
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/loki/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/loki/api/v1/tail}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1/tail}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 0s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /tenant-c/loki/api/v1/delete}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/prometheus/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /prometheus/api/v1}
+      backendRefs:
+        - {name: mimir, port: 8080}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/api}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api}
+      backendRefs:
+        - {name: tempo, port: 3200}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/api/overrides}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /tenant-c/pyroscope/tenant-c/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-tenant-c
+  namespace: observability
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: view-tenant-c
+  apiKeyAuth:
+    secretRef:
+      name: obs-key-tenant-c
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false
+---
+# ---- Platform: platform, tenant-a, tenant-b, tenant-c --------------
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-platform
+  namespace: observability
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /platform/loki/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "platform|tenant-a|tenant-b|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/loki/api/v1/tail}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "platform|tenant-a|tenant-b|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /loki/api/v1/tail}
+      backendRefs:
+        - {name: loki, port: 3100}
+      timeouts: {request: 0s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /platform/loki/api/v1/delete}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/prometheus/api/v1}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "platform|tenant-a|tenant-b|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /prometheus/api/v1}
+      backendRefs:
+        - {name: mimir, port: 8080}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/api}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "platform|tenant-a|tenant-b|tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api}
+      backendRefs:
+        - {name: tempo, port: 3200}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/api/overrides}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/pyroscope/platform/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "platform"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/pyroscope/tenant-a/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-a"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/pyroscope/tenant-b/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-b"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+    - matches:
+        - path: {type: PathPrefix, value: /platform/pyroscope/tenant-c/querier.v1.QuerierService}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: "tenant-c"}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /querier.v1.QuerierService}
+      backendRefs:
+        - {name: pyroscope, port: 4040}
+      timeouts: {request: 300s}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-platform
+  namespace: observability
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: view-platform
+  apiKeyAuth:
+    secretRef:
+      name: obs-key-platform
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false

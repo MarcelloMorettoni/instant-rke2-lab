@@ -1,65 +1,64 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470" role="img" aria-labelledby="t">
 <title id="t">Grafana: one organization per tenant</title>
-<defs><marker id="ah2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="ah475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="ah7C3AED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="ah94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker></defs>
+<defs><marker id="ah059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="ah2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="ah475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="ah7C3AED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="ah94A3B8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/></marker></defs>
 <rect x="0.5" y="0.5" width="959" height="469" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
 <text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A">Grafana: one organization per tenant</text>
-<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">Each org has four data sources, linked to each other, all locked to the same tenant</text>
-<text x="100.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">USER</text>
-<text x="270.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">GRAFANA ORG</text>
-<text x="490.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">DATA SOURCES</text>
-<text x="710.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">GATEWAY KEY OF</text>
-<text x="875.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">TENANT</text>
-<rect x="35" y="120" width="130" height="46" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
-<text x="100.0" y="148" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1E40AF" text-anchor="middle">alice (Editor)</text>
-<path d="M165,143 L201,143" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
-<rect x="205" y="120" width="130" height="46" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
-<text x="270.0" y="148" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1E40AF" text-anchor="middle">Tenant A</text>
-<path d="M335,143 L371,143" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
-<rect x="375" y="120" width="230" height="46" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
-<text x="490.0" y="148" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#1E40AF" text-anchor="middle">Loki · Mimir · Tempo · Pyroscope</text>
-<path d="M605,143 L641,143" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
-<rect x="645" y="120" width="130" height="46" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
-<text x="710.0" y="148" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#1E40AF" text-anchor="middle">tenant-a</text>
-<path d="M775,143 L811,143" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
-<rect x="815" y="120" width="120" height="46" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
-<text x="875.0" y="148" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#1E40AF" text-anchor="middle">tenant-a</text>
-<rect x="35" y="184" width="130" height="46" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
-<text x="100.0" y="212" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5B21B6" text-anchor="middle">bob (Editor)</text>
-<path d="M165,207 L201,207" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
-<rect x="205" y="184" width="130" height="46" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
-<text x="270.0" y="212" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5B21B6" text-anchor="middle">Tenant B</text>
-<path d="M335,207 L371,207" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
-<rect x="375" y="184" width="230" height="46" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
-<text x="490.0" y="212" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#5B21B6" text-anchor="middle">Loki · Mimir · Tempo · Pyroscope</text>
-<path d="M605,207 L641,207" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
-<rect x="645" y="184" width="130" height="46" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
-<text x="710.0" y="212" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#5B21B6" text-anchor="middle">tenant-b</text>
-<path d="M775,207 L811,207" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
-<rect x="815" y="184" width="120" height="46" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
-<text x="875.0" y="212" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#5B21B6" text-anchor="middle">tenant-b</text>
-<rect x="35" y="248" width="130" height="46" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
-<text x="100.0" y="276" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">ops (Editor)</text>
-<path d="M165,271 L201,271" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
-<rect x="205" y="248" width="130" height="46" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
-<text x="270.0" y="276" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">Platform</text>
-<path d="M335,271 L371,271" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
-<rect x="375" y="248" width="230" height="46" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
-<text x="490.0" y="276" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">Loki · Mimir · Tempo · Pyroscope</text>
-<path d="M605,271 L641,271" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
-<rect x="645" y="248" width="130" height="46" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
-<text x="710.0" y="276" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">platform</text>
-<path d="M775,271 L811,271" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
-<rect x="815" y="248" width="120" height="46" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
-<text x="875.0" y="276" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">platform</text>
-<text x="35" y="334" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">Grafana&#x27;s default landing place</text>
-<rect x="35" y="344" width="130" height="46" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="100" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="middle">new users</text>
-<path d="M165,367 L201,367" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#ah94A3B8)"/>
-<rect x="205" y="344" width="130" height="46" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="270" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#475569" text-anchor="middle">Main Org</text>
-<text x="355" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="start">kept empty: no data sources, nothing to see</text>
-<g transform="translate(46,418) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
-<text x="62" y="422" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#0F172A" text-anchor="start">Links stay inside the org: a span opens its logs, metrics and profile; a log line opens its trace.</text>
-<g transform="translate(46,446) scale(0.8181818181818182)"><circle r="11" fill="#DC2626" stroke="#FFFFFF" stroke-width="2"/><path d="M-4,-4 L4,4 M4,-4 L-4,4" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/></g>
-<text x="62" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#0F172A" text-anchor="start">Tenant users are Editors, never org Admins: an Admin could add a data source for another tenant.</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" fill="#64748B">The org decides which view on the gateway its data sources use, and so which tenants it sees</text>
+<text x="110.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">USER</text>
+<text x="290.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">GRAFANA ORG</text>
+<text x="485.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">VIEW (its key)</text>
+<text x="765.0" y="104" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1">SEES</text>
+<rect x="35" y="120" width="150" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="110.0" y="147" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#1E40AF" text-anchor="middle">alice (Editor)</text>
+<path d="M185,142 L211,142" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
+<rect x="215" y="120" width="150" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="290.0" y="147" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#1E40AF" text-anchor="middle">Tenant A</text>
+<path d="M365,142 L391,142" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
+<rect x="395" y="120" width="180" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="485.0" y="147" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#1E40AF" text-anchor="middle">/tenant-a/</text>
+<path d="M575,142 L601,142" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah2563EB)"/>
+<rect x="605" y="120" width="320" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+<text x="765.0" y="147" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1E40AF" text-anchor="middle">tenant-a and tenant-c</text>
+<rect x="35" y="178" width="150" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="110.0" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#5B21B6" text-anchor="middle">bob (Editor)</text>
+<path d="M185,200 L211,200" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
+<rect x="215" y="178" width="150" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="290.0" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#5B21B6" text-anchor="middle">Tenant B</text>
+<path d="M365,200 L391,200" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
+<rect x="395" y="178" width="180" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="485.0" y="205" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#5B21B6" text-anchor="middle">/tenant-b/</text>
+<path d="M575,200 L601,200" fill="none" stroke="#7C3AED" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah7C3AED)"/>
+<rect x="605" y="178" width="320" height="44" rx="8" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="765.0" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5B21B6" text-anchor="middle">tenant-b</text>
+<rect x="35" y="236" width="150" height="44" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.5"/>
+<text x="110.0" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#065F46" text-anchor="middle">carol (Editor)</text>
+<path d="M185,258 L211,258" fill="none" stroke="#059669" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah059669)"/>
+<rect x="215" y="236" width="150" height="44" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.5"/>
+<text x="290.0" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#065F46" text-anchor="middle">Tenant C</text>
+<path d="M365,258 L391,258" fill="none" stroke="#059669" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah059669)"/>
+<rect x="395" y="236" width="180" height="44" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.5"/>
+<text x="485.0" y="263" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#065F46" text-anchor="middle">/tenant-c/</text>
+<path d="M575,258 L601,258" fill="none" stroke="#059669" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah059669)"/>
+<rect x="605" y="236" width="320" height="44" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.5"/>
+<text x="765.0" y="263" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#065F46" text-anchor="middle">tenant-c</text>
+<rect x="35" y="294" width="150" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="110.0" y="321" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">ops (Editor)</text>
+<path d="M185,316 L211,316" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
+<rect x="215" y="294" width="150" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="290.0" y="321" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">Platform</text>
+<path d="M365,316 L391,316" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
+<rect x="395" y="294" width="180" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="485.0" y="321" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">/platform/</text>
+<path d="M575,316 L601,316" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#ah475569)"/>
+<rect x="605" y="294" width="320" height="44" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="765.0" y="321" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">every tenant, and the platform</text>
+<text x="35" y="380" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">Grafana&#x27;s default landing place</text>
+<rect x="35" y="390" width="150" height="42" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="110" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="middle">new users</text>
+<path d="M185,411 L211,411" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#ah94A3B8)"/>
+<rect x="215" y="390" width="150" height="42" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="290" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#475569" text-anchor="middle">Main Org</text>
+<text x="385" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#475569" text-anchor="start">kept empty: no data sources, nothing to see</text>
+<g transform="translate(46,448) scale(0.8181818181818182)"><circle r="11" fill="#16A34A" stroke="#FFFFFF" stroke-width="2"/><path d="M-5,0.5 L-1.5,4 L5,-3.5" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="62" y="452" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#0F172A" text-anchor="start">Loki, Mimir and Tempo cover every tenant the org sees; Pyroscope gets one data source per tenant.</text>
 </svg>
