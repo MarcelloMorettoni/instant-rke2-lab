@@ -201,6 +201,7 @@ Each VM gets a NoCloud seed ISO with:
 ├── manifests/
 │   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
 ├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
+├── soft-tenancy/                 # optional: two isolated tenants + per-tenant logs (step by step)
 └── .state/                       # generated, gitignored: ssh_key, kubeconfig, node-token
 ```
 
@@ -245,6 +246,25 @@ cd slinky
 ```
 
 See [`slinky/README.md`](./slinky/README.md) for the full walkthrough.
+
+## Optional: Soft multi-tenancy (Cilium + Loki + Grafana)
+
+The `./soft-tenancy/` folder is a step-by-step exercise. Two tenants,
+`tenant-a` and `tenant-b`, share the cluster but can't reach each other
+(Cilium cluster-wide policies with explicit deny, filtered DNS, Pod Security
+`restricted`, an admission guard). Each tenant logs into Grafana and sees
+only its own logs (Loki multi-tenancy, an authenticating read gateway, one
+Grafana org per tenant). Verify scripts after each half prove it, including
+what happens when someone makes a mistake.
+
+Like Slinky, it's **not part of `make all`**:
+
+```bash
+cd soft-tenancy
+./00-cilium-dns/apply.sh      # then follow README.md, steps 01 → 11
+```
+
+See [`soft-tenancy/README.md`](./soft-tenancy/README.md) for the design and walkthrough.
 
 ## Security note
 

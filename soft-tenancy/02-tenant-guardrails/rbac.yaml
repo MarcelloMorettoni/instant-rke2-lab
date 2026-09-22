@@ -1,0 +1,72 @@
+# Step 02a: what a tenant user may do.
+#
+# We don't use the built-in `edit` role: it includes networking.k8s.io
+# NetworkPolicies, and Cilium enforces those too. A tenant could then write
+# an allow rule, for example egress to 0.0.0.0/0, which bypasses the
+# internet allowlist in step 03. Tenants run workloads. Network policy
+# belongs to the platform.
+#
+# Lab users are simulated with impersonation (you're cluster-admin):
+#   kubectl --as alice -n tenant-a get pods
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-developer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods/portforward"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["events", "endpoints", "serviceaccounts", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale", "statefulsets/scale"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  # Deliberately absent: networking.k8s.io/*, cilium.io/*, rbac.authorization.k8s.io/*,
+  # namespaces, nodes. And nothing cluster-scoped at all.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-developer-alice
+  namespace: tenant-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-developer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: alice
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-developer-bob
+  namespace: tenant-b
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-developer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: bob

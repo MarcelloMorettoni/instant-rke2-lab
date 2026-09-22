@@ -1,0 +1,148 @@
+# Step 10: lock down the observability namespace.
+#
+#   Alloy ----POST /loki/api/v1/push only (L7)----> Loki <----any query---- loki-gateway <---- Grafana
+#
+# Nothing else may reach Loki, the gateway or Grafana, and none of them may
+# reach the internet. Pod labels are safe to use HERE: only the platform can
+# create pods in this namespace (tenants have no RBAC in it).
+#
+# Admin access still works: kubectl port-forward enters the pod's network
+# namespace directly and never crosses Cilium's policy hooks.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: observability
+spec:
+  description: "Every pod: default deny both ways, DNS allowed."
+  endpointSelector: {}
+  ingress:
+    - {}            # empty rule = default deny, allows nothing
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loki
+  namespace: observability
+spec:
+  description: "Loki: pushes only from Alloy, queries only from the gateway."
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/component: single-binary
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: alloy
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP
+          # L7: even Alloy can only PUSH. A compromised log shipper can't
+          # read anyone's logs (Envoy answers anything else with 403).
+          rules:
+            http:
+              - method: POST
+                path: /loki/api/v1/push
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki-gateway
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP
+    # Loki talking to itself (memberlist ring, compactor gRPC).
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loki-gateway
+  namespace: observability
+spec:
+  description: "Gateway: only Grafana may call it, and it may only call Loki."
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: loki-gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki
+            app.kubernetes.io/component: single-binary
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana
+  namespace: observability
+spec:
+  description: "Grafana: may only call the gateway (not Loki directly, not the internet)."
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  # No ingress rule: users reach it through port-forward in this lab. To put
+  # it behind RKE2's Traefik, allow from the ingress controller's pods here
+  # (check their labels with: kubectl -n kube-system get pods --show-labels).
+  egress:
+    # Not Loki directly. If an admin created a data source pointing at
+    # loki:3100 with a spoofed header, the packets would be dropped.
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki-gateway
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: alloy
+  namespace: observability
+spec:
+  description: "Alloy: Kubernetes API for pod discovery, Loki push. Nothing else."
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+  egress:
+    - toEntities:
+        - kube-apiserver
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: loki
+            app.kubernetes.io/component: single-binary
+      # L4 here; the push-only L7 rule sits on Loki's ingress side.
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP

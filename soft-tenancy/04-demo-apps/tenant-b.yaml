@@ -1,0 +1,113 @@
+# Step 04: tenant b's workloads. Same as tenant-a.yaml, plus a NodePort service at the end.
+#   web     nginx that answers "hello from tenant-b" (and logs every request)
+#   client  netshoot (curl, dig) that calls web every 10s. The verify scripts exec into it.
+# Both pass the "restricted" Pod Security Standard the namespace enforces.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-content
+  namespace: tenant-b
+data:
+  index.html: "hello from tenant-b\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: tenant-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: web
+          image: docker.io/nginxinc/nginx-unprivileged:1.31-alpine
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: content
+          configMap:
+            name: web-content
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: tenant-b
+spec:
+  selector: {app: web}
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: tenant-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: client}
+  template:
+    metadata:
+      labels: {app: client}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: client
+          image: docker.io/nicolaka/netshoot:v0.16
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo "$(date -Iseconds) tenant-b client: GET http://web -> $(curl -s -m 2 http://web || echo FAILED)"
+                sleep 10
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+---
+# Exposes tenant b's web on every node at :30082. The verify script uses it to
+# show that "go around via the node" doesn't work either. With kube-proxy
+# replacement, Cilium resolves the NodePort to the real backend pod, so tenant
+# b's policy (and its deny against tenant a) still applies.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-nodeport
+  namespace: tenant-b
+spec:
+  type: NodePort
+  selector: {app: web}
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30082

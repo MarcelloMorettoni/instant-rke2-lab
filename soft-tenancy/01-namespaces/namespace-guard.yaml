@@ -1,0 +1,57 @@
+# Step 01a: admission guard for tenant namespaces.
+#
+# Everything later keys off the namespace's `tenant` label: the Cilium
+# policies select by it, and Alloy maps tenant-X / tenant-X-* namespaces to
+# Loki tenant "tenant-X". This policy makes that link impossible to get wrong:
+#
+#   * a namespace named tenant-* MUST carry a `tenant` label
+#   * the label value is a single token (^[a-z0-9]+$), so tenant-a-dev can only be tenant "a"
+#   * label tenant=X is only allowed on namespaces named tenant-X or tenant-X-*
+#     (a namespace called "sneaky" can't join tenant a by adding the label)
+#   * tenant namespaces MUST enforce the "restricted" Pod Security Standard,
+#     so no hostNetwork / privileged pod can step around Cilium's pod policies
+#
+# Native ValidatingAdmissionPolicy (GA since Kubernetes 1.30). No Kyverno needed.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: tenant-namespace-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["namespaces"]
+  validations:
+    - expression: >-
+        !object.metadata.name.startsWith('tenant-') ||
+        (has(object.metadata.labels) && 'tenant' in object.metadata.labels)
+      message: "namespaces named tenant-* must carry a 'tenant' label"
+
+    - expression: >-
+        !(has(object.metadata.labels) && 'tenant' in object.metadata.labels) ||
+        object.metadata.labels['tenant'].matches('^[a-z0-9]+$')
+      message: "the 'tenant' label must be a single token matching ^[a-z0-9]+$"
+
+    - expression: >-
+        !(has(object.metadata.labels) && 'tenant' in object.metadata.labels) ||
+        object.metadata.name == 'tenant-' + object.metadata.labels['tenant'] ||
+        object.metadata.name.startsWith('tenant-' + object.metadata.labels['tenant'] + '-')
+      message: "label tenant=X is only allowed on namespaces named tenant-X or tenant-X-*"
+
+    - expression: >-
+        !object.metadata.name.startsWith('tenant-') ||
+        (has(object.metadata.labels) &&
+         'pod-security.kubernetes.io/enforce' in object.metadata.labels &&
+         object.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted')
+      message: "tenant namespaces must set pod-security.kubernetes.io/enforce=restricted"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: tenant-namespace-guard
+spec:
+  policyName: tenant-namespace-guard
+  validationActions: [Deny]

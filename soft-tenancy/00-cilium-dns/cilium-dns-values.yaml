@@ -1,0 +1,9 @@
+# Extra Cilium Helm values for soft tenancy.
+# apply.sh appends these to the lab's HelmChartConfig (manifests/rke2-cilium-config.yaml).
+dnsProxy:
+  # Names a DNS policy doesn't allow get NXDOMAIN instead of REFUSED.
+  # glibc STOPS walking the search path when it gets REFUSED. With
+  # ndots:5, "example.com" is first tried as example.com.tenant-a.svc.cluster.local,
+  # and a REFUSED there means the real example.com is never queried. NXDOMAIN
+  # makes the resolver move on, and to tenant a, tenant b's names simply don't exist.
+  dnsRejectResponseCode: nameError

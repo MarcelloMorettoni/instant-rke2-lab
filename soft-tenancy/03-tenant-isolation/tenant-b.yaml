@@ -1,0 +1,53 @@
+# Step 03: tenant b's network baseline. Same template as tenant-a.yaml, with
+# one deliberate difference: tenant b gets NO internet at all. The egress
+# allowlist is a per-tenant decision, and the verify script checks it.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: tenant-b-baseline
+spec:
+  description: "tenant b: itself, its own DNS names. No internet. Other tenants: denied."
+  endpointSelector:
+    matchLabels:
+      k8s:io.cilium.k8s.namespace.labels.tenant: b
+
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: b
+
+  ingressDeny:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: Exists
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: NotIn
+              values: ["b"]
+
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: b
+
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.tenant-b.svc.cluster.local"
+              - matchPattern: "*.*.tenant-b.svc.cluster.local"
+
+  egressDeny:
+    - toEndpoints:
+        - matchExpressions:
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: Exists
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: NotIn
+              values: ["b"]

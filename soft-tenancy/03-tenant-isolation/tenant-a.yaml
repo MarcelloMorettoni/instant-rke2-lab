@@ -1,0 +1,77 @@
+# Step 03: tenant a's network baseline.
+#
+# A CiliumClusterwideNetworkPolicy owned by the platform. Tenants have no
+# RBAC on cilium.io, so they can't read, edit or delete it. It selects by
+# the namespace `tenant` label, which tenants also can't change (step 01).
+#
+# Once a pod is selected, everything not listed here is dropped:
+#   ingress  <- only tenant a
+#   egress   -> only tenant a, the shared CoreDNS (filtered names), example.com:443
+# ...and an explicit DENY against every other tenant, in both directions.
+# In Cilium, deny beats allow. Whatever allow rule anyone adds later (a
+# NetworkPolicy, a sloppy CNP), traffic between tenants stays blocked.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: tenant-a-baseline
+spec:
+  description: "tenant a: itself, its own DNS names, example.com. Other tenants: denied."
+  endpointSelector:
+    matchLabels:
+      k8s:io.cilium.k8s.namespace.labels.tenant: a
+
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: a
+
+  # "Has a tenant label, and it isn't a". Both expressions are needed: NotIn
+  # alone would also match kube-system, observability, host, ...
+  ingressDeny:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: Exists
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: NotIn
+              values: ["a"]
+
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.tenant: a
+
+    # Shared CoreDNS, but every query passes through Cilium's DNS proxy. Names
+    # not listed get NXDOMAIN (step 00), so tenant b's services don't exist
+    # as far as tenant a can tell.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.tenant-a.svc.cluster.local"     # services
+              - matchPattern: "*.*.tenant-a.svc.cluster.local"   # StatefulSet pods
+              - matchName: "example.com"                          # internet allowlist
+
+    # Internet: an explicit FQDN allowlist. It works together with the DNS rule
+    # above, because Cilium learns example.com's IPs from the lookups it proxies.
+    - toFQDNs:
+        - matchName: "example.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+  egressDeny:
+    - toEndpoints:
+        - matchExpressions:
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: Exists
+            - key: k8s:io.cilium.k8s.namespace.labels.tenant
+              operator: NotIn
+              values: ["a"]

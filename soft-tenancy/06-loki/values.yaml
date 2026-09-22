@@ -1,0 +1,92 @@
+# grafana/loki — single binary, multi-tenant, filesystem storage.
+#
+# The one setting that matters for tenancy is `auth_enabled: true`: every push
+# and every query must carry `X-Scope-OrgID`, and data is stored and queried per
+# tenant. Loki does NOT authenticate that header, which is why step 07 puts a
+# gateway in front of the read path and step 10 locks down who can reach Loki.
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: true
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  # "a|b" in X-Scope-OrgID would query both tenants at once. Keep it off.
+  querier:
+    multi_tenant_queries_enabled: false
+
+  # Defaults every tenant gets...
+  limits_config:
+    ingestion_rate_mb: 4
+    ingestion_burst_size_mb: 8
+    max_global_streams_per_user: 5000
+    retention_period: 72h
+
+  # ...and per-tenant overrides, so one noisy tenant can't starve the other.
+  runtimeConfig:
+    overrides:
+      tenant-a:
+        ingestion_rate_mb: 2
+      tenant-b:
+        ingestion_rate_mb: 2
+
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# The rules sidecar is on by default. It watches `loki_rule` ConfigMaps in EVERY
+# namespace (tenants included) and ships a ClusterRole that can read every
+# Secret in the cluster. Neither belongs in a multi-tenant setup.
+sidecar:
+  rules:
+    enabled: false
+
+# Without the sidecar Loki never talks to the Kubernetes API: no token, and
+# whatever RBAC the chart still creates stays inside the observability namespace.
+serviceAccount:
+  automountServiceAccountToken: false
+rbac:
+  namespaced: true
+
+# Single binary only: switch off every scalable/optional component.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+gateway:
+  enabled: false        # we run our own, explicit gateway in step 07
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+minio:
+  enabled: false

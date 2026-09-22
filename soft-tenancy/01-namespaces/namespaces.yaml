@@ -1,0 +1,38 @@
+# Step 01b: the three namespaces.
+#
+# The `tenant` label is the identity every later layer trusts. Tenants can't
+# change it: Namespace is a cluster-scoped object and tenant RBAC (step 02)
+# is namespaced. Pod labels, on the other hand, are chosen by the tenant,
+# so no security decision in this lab is ever based on a tenant's pod labels.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-a
+  labels:
+    tenant: a
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-b
+  labels:
+    tenant: b
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# Platform-only. It carries NO tenant label (the platform is not a tenant).
+# Enforce is "privileged" only because Alloy needs a read-only hostPath on
+# /var/log. Tenants have no RBAC here, so they can't use that leeway.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    role: platform
+    pod-security.kubernetes.io/enforce: privileged
