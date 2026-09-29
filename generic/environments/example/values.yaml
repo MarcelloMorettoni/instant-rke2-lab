@@ -1,0 +1,67 @@
+# Environment values for BOTH charts (log-platform-operators and log-platform).
+# Copy this folder to environments/<env>/ and fill in every field.
+# Most values come from `terraform -chdir=infra/terraform output`.
+#
+#   scripts/render-images.py <env>     # after changing global.imageRegistry
+#   scripts/install.sh <env>
+
+global:
+  # ONE place for the image registry (a pull-through proxy or a mirror).
+  # Every image becomes <imageRegistry>/<upstream path>:<tag>, e.g.
+  #   myproxy.bank.internal:5000/grafana/grafana:13.2.2
+  #   myproxy.bank.internal:5000/otel/opentelemetry-collector-contrib:0.160.0
+  # Leave "" to pull from the upstream registries. After changing it, run
+  # scripts/render-images.py <env>; scripts/images.sh <env> lists every image.
+  imageRegistry: ""                              # e.g. myproxy.bank.internal:5000
+  clusterName: aks-test-weu-01                   # k8s_cluster_name on every log line
+
+storageClass:
+  diskEncryptionSetID: ""                        # terraform output disk_encryption_set_id ("" = platform keys)
+
+network:
+  apiServerCidrs: [10.20.0.0/28]                 # API server VNet-integration subnet (or its private IP /32)
+  blobPrivateEndpointCidrs: [10.20.8.0/24]       # Blob private endpoint subnet
+  postgresCidrs: [10.20.9.0/24]                  # PostgreSQL flexible server subnet
+  grafanaClientCidrs: [10.0.0.0/8]               # users' networks (via the hub)
+
+keyVault:
+  url: https://kv-obs-test-weu.vault.azure.net/  # terraform output key_vault_uri
+
+grafanaAccess:
+  hostname: grafana.obs-test.bank.internal
+  loadBalancerSubnet: snet-aks-ingress
+
+monitoring:
+  azurePodMonitors: true                         # false if AKS managed Prometheus isn't enabled
+
+loki:
+  loki:
+    storage:
+      azure:
+        accountName: stlokitestweuxxxx           # terraform output storage_account_name
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000   # terraform output loki_client_id
+  ingester:
+    zoneAwareReplication:                        # the region's zone names: <region>-1/2/3
+      zoneA: {nodeSelector: {topology.kubernetes.io/zone: westeurope-1}}
+      zoneB: {nodeSelector: {topology.kubernetes.io/zone: westeurope-2}}
+      zoneC: {nodeSelector: {topology.kubernetes.io/zone: westeurope-3}}
+
+grafana:
+  grafana.ini:
+    server:
+      root_url: https://grafana.obs-test.bank.internal
+    database:
+      host: psql-grafana-test-weu.postgres.database.azure.com:5432   # terraform output postgres_fqdn
+    auth.azuread:
+      client_id: 00000000-0000-0000-0000-000000000000                # Entra app registration
+      auth_url: https://login.microsoftonline.com/<ENTRA_TENANT_ID>/oauth2/v2.0/authorize
+      token_url: https://login.microsoftonline.com/<ENTRA_TENANT_ID>/oauth2/v2.0/token
+      allowed_organizations: <ENTRA_TENANT_ID>
+
+# Used by the log-platform-operators chart.
+external-secrets:
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000   # terraform output eso_client_id

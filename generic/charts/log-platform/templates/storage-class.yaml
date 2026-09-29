@@ -1,0 +1,24 @@
+{{- if .Values.storageClass.create }}
+# Zonal Premium SSD for every stateful volume: Loki WAL, compactor, index
+# gateways, and the OTel gateway's per-tenant queues. WaitForFirstConsumer puts
+# each disk in its pod's zone; Retain keeps an unflushed WAL/queue if a PVC is
+# deleted by mistake; the disk encryption set applies the bank's own key.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: {{ .Values.storageClass.skuName }}
+  cachingMode: ReadOnly
+  kind: Managed
+  networkAccessPolicy: DenyAll
+  {{- with .Values.storageClass.diskEncryptionSetID }}
+  diskEncryptionSetID: {{ . }}
+  {{- end }}
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+{{- end }}

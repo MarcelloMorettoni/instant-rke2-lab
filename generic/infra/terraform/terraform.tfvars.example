@@ -1,0 +1,31 @@
+environment         = "prod"
+location            = "westeurope"
+location_short      = "weu"
+resource_group_name = "rg-obs-logs-prod-weu"
+
+aks_name                = "aks-prod-weu-01"
+aks_resource_group_name = "rg-aks-prod-weu"
+
+node_subnet_id             = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/snet-aks-nodes"
+private_endpoint_subnet_id = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/snet-private-endpoints"
+postgres_subnet_id         = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/snet-postgres"
+
+private_dns_zone_ids = {
+  blob     = "/subscriptions/<hub-sub>/resourceGroups/<hub-rg>/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net"
+  vault    = "/subscriptions/<hub-sub>/resourceGroups/<hub-rg>/providers/Microsoft.Network/privateDnsZones/privatelink.vaultcore.azure.net"
+  postgres = "/subscriptions/<hub-sub>/resourceGroups/<hub-rg>/providers/Microsoft.Network/privateDnsZones/obs.private.postgres.database.azure.com"
+}
+
+log_analytics_workspace_id = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/law-security-prod"
+azure_monitor_workspace_id = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Monitor/accounts/amw-prod-weu"
+action_group_id            = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Insights/actionGroups/ag-platform-oncall"
+
+loki_vm_size        = "Standard_D16ds_v5"
+loki_nodes_per_zone = { min = 2, max = 5 }
+storage_replication = "GZRS"
+max_retention_days  = 396
+
+tags = {
+  cost-center = "platform"
+  data-class  = "confidential"
+}

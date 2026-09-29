@@ -1,0 +1,91 @@
+# Overlay for a TEST cluster: no dedicated Loki node pools, small sizes.
+# Use it by listing it in environments/<env>/overlays.txt (install.sh adds it
+# after values.yaml). Ingesters stay zone-pinned (the cluster needs 3 zones);
+# for a cluster without zones, also list no-zones.yaml.
+#
+# `null` REMOVES a default (Helm deep-merges maps, so {} would keep them).
+placement: {nodeSelector: null, tolerations: null}
+readGateway: {replicas: 2, maxReplicas: 3}
+
+loki:
+  distributor:
+    nodeSelector: null
+    tolerations: null
+    topologySpreadConstraints: null
+    replicas: 2
+    autoscaling: {enabled: false}
+    resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+  ingester:
+    replicas: 3                                  # 1 per zone
+    tolerations: null
+    resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 4Gi}}
+    persistence:
+      claims:
+        - {name: data, accessModes: [ReadWriteOnce], size: 10Gi, storageClass: obs-zonal-ssd}
+    zoneAwareReplication:
+      zoneA: {extraAffinity: null}              # keep the zone, drop the dedicated pool
+      zoneB: {extraAffinity: null}
+      zoneC: {extraAffinity: null}
+  queryFrontend:
+    nodeSelector: null
+    tolerations: null
+    replicas: 1
+    resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+  queryScheduler:
+    nodeSelector: null
+    tolerations: null
+    replicas: 1
+    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+  querier:
+    nodeSelector: null
+    tolerations: null
+    topologySpreadConstraints: null
+    replicas: 2
+    autoscaling: {enabled: false}
+    resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
+  indexGateway:
+    nodeSelector: null
+    tolerations: null
+    topologySpreadConstraints: null
+    replicas: 1
+    resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+    persistence: {enabled: true, size: 10Gi, storageClass: obs-zonal-ssd}
+  compactor:
+    nodeSelector: null
+    tolerations: null
+    resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+    persistence:
+      enabled: true
+      claims:
+        - {name: data, accessModes: [ReadWriteOnce], size: 10Gi, storageClass: obs-zonal-ssd}
+  overridesExporter: {nodeSelector: null, tolerations: null}
+  rollout_operator: {nodeSelector: null, tolerations: null}
+  chunksCache:
+    nodeSelector: null
+    tolerations: null
+    topologySpreadConstraints: null
+    replicas: 1
+    allocatedMemory: 1024
+  resultsCache:
+    nodeSelector: null
+    tolerations: null
+    replicas: 1
+    allocatedMemory: 512
+
+otelGateway:
+  replicaCount: 2
+  nodeSelector: null
+  tolerations: null
+  topologySpreadConstraints: null
+  resources: {requests: {cpu: 200m, memory: 512Mi}, limits: {memory: 2Gi}}
+  statefulset:
+    volumeClaimTemplates:
+      - metadata: {name: queue}
+        spec: {accessModes: [ReadWriteOnce], storageClassName: obs-zonal-ssd, resources: {requests: {storage: 20Gi}}}
+
+grafana:
+  replicas: 1
+  nodeSelector: null
+  tolerations: null
+  topologySpreadConstraints: null
+  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}

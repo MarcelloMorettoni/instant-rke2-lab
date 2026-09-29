@@ -1,0 +1,869 @@
+# log-platform: multi-tenant Loki on AKS with OpenTelemetry collection.
+#
+#   python3 scripts/render-tenants.py                 # tenants.yaml → rendered/values-tenants.yaml
+#   python3 scripts/render-images.py <env>            # imageRegistry → environments/<env>/generated-images.yaml
+#   helm upgrade --install log-platform charts/log-platform -n loki \
+#     -f environments/<env>/values.yaml \
+#     -f environments/<env>/generated-images.yaml \
+#     -f rendered/values-tenants.yaml
+#
+# Defaults here are the production ("M") shape. Everything environment-specific
+# lives in environments/<env>/values.yaml (see environments/example/).
+# Design: docs/01-architecture.md. Components: docs/table.md.
+
+global:
+  # ONE place for the image registry. Every image becomes
+  #   <imageRegistry>/<upstream path>:<tag>, e.g. myproxy:5000/grafana/grafana:13.2.2
+  # Empty = the upstream registries (docker.io, ...). Charts that don't read
+  # global.imageRegistry get it through scripts/render-images.py.
+  imageRegistry: ""
+  # Stamped on every log record as k8s.cluster.name (Loki label k8s_cluster_name).
+  clusterName: ""                                # ← SET (environment file)
+  dnsService: kube-dns
+  dnsNamespace: kube-system
+
+# ---------------------------------------------------------------- platform objects
+namespaces:
+  create: true                  # otel, otel-agent, grafana; `loki` comes from the operators chart
+priorityClasses:
+  create: true
+storageClass:
+  create: true
+  name: obs-zonal-ssd
+  skuName: Premium_LRS
+  diskEncryptionSetID: ""       # ← SET (environment file): terraform output disk_encryption_set_id; "" = platform keys
+
+# Where platform pods without their own chart placement run (read gateway,
+# Grafana ingress, grafana-sync). Match the subcharts' nodeSelector/tolerations.
+placement:
+  nodeSelector:
+    obs.platform/pool: loki
+  tolerations:
+    - key: obs.platform/dedicated
+      operator: Equal
+      value: loki
+      effect: NoSchedule
+
+network:
+  policies: true                # NetworkPolicies for loki, otel, otel-agent, grafana
+  apiServerCidrs: []            # ← SET: API server (VNet integration subnet or IP), for the agents and rollout-operator
+  blobPrivateEndpointCidrs: []  # ← SET: subnet of the Blob private endpoint
+  postgresCidrs: []             # ← SET: PostgreSQL subnet
+  grafanaClientCidrs: []        # ← SET: users' networks allowed to open Grafana
+  # Entra ID (token exchange, SSO) and alert webhooks are public endpoints,
+  # reached through the hub firewall. false once ciliumFqdn allows them by name.
+  internetEgress443: true
+  ciliumFqdn:
+    enabled: false              # needs Azure CNI powered by Cilium + ACNS
+
+keyVault:
+  url: ""                       # ← SET: terraform output key_vault_uri
+  storeName: azure-keyvault
+
+readGateway:
+  replicas: 3
+  maxReplicas: 9
+
+grafanaAccess:
+  enabled: true
+  hostname: ""                  # ← SET: e.g. grafana.obs.bank.internal
+  loadBalancerSubnet: ""        # ← SET: subnet for the internal load balancer
+  tls:
+    fromKeyVault: true          # Key Vault certificate → Secret grafana-tls (else create grafana-tls yourself)
+    keyVaultCertificate: grafana-obs-tls
+
+# Keeps every Grafana org's Loki data source pointed at its read-gateway view
+# with its current key (from Key Vault). A CronJob, so key rotations apply
+# within one schedule interval; install.sh also runs it once right away.
+grafanaSync:
+  enabled: true
+  schedule: "*/10 * * * *"
+  image:
+    repository: library/python
+    tag: "3.13-alpine"
+
+monitoring:
+  azurePodMonitors: true        # azmonitoring.coreos.com PodMonitors (AKS managed Prometheus)
+
+# ---------------------------------------------------------------- per tenant
+# Rendered from tenants/tenants.yaml by scripts/render-tenants.py into
+# rendered/values-tenants.yaml. Don't edit here.
+readViews: []
+grafanaOrgs: []
+grafanaOrgMapping:
+  orgMapping: ""
+  allowedGroups: ""
+
+# ================================================================ subcharts
+# ---------------------------------------------------------------- Loki (grafana/loki 7.3.0)
+loki:
+  enabled: true
+  fullnameOverride: loki                           # resource names: loki-distributor, loki-query-frontend, ...
+  namespaceOverride: loki
+
+  # Docker Hub "official" image: with a registry proxy, library/ is the full path.
+  memcached:
+    image:
+      repository: library/memcached
+
+  deploymentMode: Distributed
+
+  loki:
+    auth_enabled: true
+
+    # Entra Workload Identity: the webhook injects a federated token into every
+    # pod with this label; the ServiceAccount below names the managed identity.
+    podLabels:
+      azure.workload.identity/use: "true"
+
+    schemaConfig:
+      configs:
+        - from: "2026-01-01"                       # the first deploy day; never change it later
+          store: tsdb
+          object_store: azure
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+
+    storage:
+      type: azure
+      bucketNames:                                 # Blob containers (created by Terraform)
+        chunks: loki-chunks
+        ruler: loki-ruler
+        admin: loki-admin
+      azure:
+        accountName: ""                             # ← SET (environment file)
+        useFederatedToken: true                    # Workload Identity, no keys
+        useManagedIdentity: false
+        requestTimeout: 30s
+        endpointSuffix: blob.core.windows.net      # resolves to the private endpoint
+
+    commonConfig:
+      replication_factor: 3
+
+    server:
+      log_level: warn                              # Loki's own logs never carry log lines at warn
+      grpc_server_max_recv_msg_size: 104857600
+      grpc_server_max_send_msg_size: 104857600
+
+    ingester:
+      chunk_encoding: snappy
+      chunk_target_size: 1572864                   # 1.5 MB compressed chunks
+      chunk_idle_period: 30m
+      max_chunk_age: 2h
+      # Survive a crash without losing acknowledged writes. The WAL lives on the
+      # ingester's zonal Premium SSD (storageClass obs-zonal-ssd).
+      wal:
+        enabled: true
+        dir: /var/loki/wal
+        replay_memory_ceiling: 4GB
+      autoforget_unhealthy: true
+
+    querier:
+      max_concurrent: 8
+      # "a|b" in X-Scope-OrgID reads several tenants at once. Only the gateway
+      # can set that header (the platform view, and cross-tenant alsoRead views).
+      multi_tenant_queries_enabled: true
+
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 4096
+
+    frontend:
+      log_queries_longer_than: 10s
+      compress_responses: true
+
+    compactor:
+      working_directory: /var/loki/compactor
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+      delete_request_store: azure
+      delete_request_cancel_period: 24h
+
+    # Defaults for every tenant. Per-tenant values come from
+    # rendered/values-tenants.yaml (loki.loki.runtimeConfig.overrides) and are
+    # reloaded without a restart.
+    limits_config:
+      ingestion_rate_strategy: global
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+      per_stream_rate_limit: 3MB
+      per_stream_rate_limit_burst: 15MB
+      max_global_streams_per_user: 5000
+      max_label_names_per_series: 15
+      max_label_value_length: 2048
+      max_line_size: 256KB
+      max_line_size_truncate: true
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      creation_grace_period: 10m
+      allow_structured_metadata: true
+      discover_log_levels: true
+      # Logs arrive as OTLP (OpenTelemetry collectors → /otlp/v1/logs). Only
+      # these bounded resource attributes become stream labels (dots become
+      # underscores: k8s_namespace_name, service_name, ...). Every other
+      # resource, scope and log attribute (pod, node, trace_id, ...) is stored
+      # as structured metadata: queryable, but no new stream per pod.
+      otlp_config:
+        resource_attributes:
+          ignore_defaults: true
+          attributes_config:
+            - action: index_label
+              attributes:
+                - k8s.cluster.name
+                - k8s.namespace.name
+                - k8s.container.name
+                - service.name
+      shard_streams:
+        enabled: true
+        desired_rate: 3MB
+      # Read-side shuffle sharding: one tenant's queries only use some of the queriers.
+      max_queriers_per_tenant: 4
+      # Query guardrails.
+      max_query_length: 2161h
+      max_query_series: 1000
+      max_entries_limit_per_query: 5000
+      max_query_parallelism: 32
+      tsdb_max_query_parallelism: 256
+      split_queries_by_interval: 1h
+      query_timeout: 300s
+      max_cache_freshness_per_query: 10m
+      volume_enabled: true
+      # Retention (compactor). Tier/tenant values override this.
+      retention_period: 744h
+      deletion_mode: filter-and-delete
+
+    analytics:
+      reporting_enabled: false                    # no phone-home from a bank
+
+    tracing:
+      enabled: false
+
+  # ---------------------------------------------------------------- identity
+  serviceAccount:
+    create: true
+    name: loki                                     # federated credential subject: system:serviceaccount:loki:loki
+    annotations:
+      azure.workload.identity/client-id: ""        # ← SET (environment file): terraform output loki_client_id
+    # Loki itself never calls the Kubernetes API (no rules sidecar). The
+    # Workload Identity token is a separate projected volume, not this one.
+    automountServiceAccountToken: false
+
+  rbac:
+    namespaced: true
+
+  # The rules sidecar watches ConfigMaps in EVERY namespace and ships a
+  # ClusterRole that can read every Secret. Not in a multi-tenant bank cluster.
+  sidecar:
+    rules:
+      enabled: false
+
+  # ---------------------------------------------------------------- write path
+  distributor:
+    replicas: 3
+    priorityClassName: observability-critical
+    maxUnavailable: 1
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 9
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: {cpu: "1", memory: 1Gi}
+      limits: {memory: 2Gi}
+    nodeSelector: &obsNodes
+      obs.platform/pool: loki
+    tolerations: &obsTolerations
+      - key: obs.platform/dedicated
+        operator: Equal
+        value: loki
+        effect: NoSchedule
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: distributor
+            app.kubernetes.io/name: loki
+
+  ingester:
+    # 2 per zone. Zone-aware: RF3 puts one copy of every stream in each zone.
+    replicas: 6
+    priorityClassName: observability-critical
+    terminationGracePeriodSeconds: 600            # time to flush chunks on shutdown
+    resources:
+      requests: {cpu: "4", memory: 16Gi}
+      limits: {memory: 20Gi}
+    tolerations: *obsTolerations
+    persistence:
+      enabled: true
+      claims:
+        - name: data
+          accessModes: [ReadWriteOnce]
+          size: 100Gi
+          storageClass: obs-zonal-ssd                   # templates/storage-class.yaml (zonal Premium SSD)
+      whenDeleted: Retain
+      whenScaled: Retain
+    zoneAwareReplication:
+      enabled: true
+      maxUnavailablePct: 33                        # one zone at a time
+      # Each zone's StatefulSet is pinned to its zone (nodeSelector, the region's
+      # zone names: set in the environment file) and to the dedicated pool
+      # (extraAffinity; the test-cluster overlay removes it).
+      zoneA: &zonePinning
+        nodeSelector:
+          topology.kubernetes.io/zone: westeurope-1   # ← SET (environment file) for your region
+        extraAffinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - {key: obs.platform/pool, operator: In, values: [loki]}
+      zoneB:
+        <<: *zonePinning
+        nodeSelector:
+          topology.kubernetes.io/zone: westeurope-2   # ← SET (environment file) for your region
+      zoneC:
+        <<: *zonePinning
+        nodeSelector:
+          topology.kubernetes.io/zone: westeurope-3   # ← SET (environment file) for your region
+
+  # Updates ingesters one zone at a time (needed for zone-aware StatefulSets).
+  rollout_operator:
+    enabled: true
+    priorityClassName: observability-high
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+
+  # ---------------------------------------------------------------- read path
+  queryFrontend:
+    replicas: 2
+    priorityClassName: observability-high
+    maxUnavailable: 1
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {memory: 2Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+
+  queryScheduler:
+    replicas: 2
+    priorityClassName: observability-high
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+      limits: {memory: 1Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+
+  querier:
+    replicas: 4
+    priorityClassName: observability-high
+    maxUnavailable: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 16
+      targetCPUUtilizationPercentage: 70
+      behavior:
+        enabled: true
+        scaleDown:
+          stabilizationWindowSeconds: 600
+    resources:
+      requests: {cpu: "2", memory: 6Gi}
+      limits: {memory: 8Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: querier
+            app.kubernetes.io/name: loki
+
+  indexGateway:
+    replicas: 3                                    # one per zone
+    priorityClassName: observability-high
+    maxUnavailable: 1
+    resources:
+      requests: {cpu: "1", memory: 4Gi}
+      limits: {memory: 6Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: index-gateway
+            app.kubernetes.io/name: loki
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: obs-zonal-ssd
+
+  # ---------------------------------------------------------------- backend
+  compactor:
+    replicas: 1                                    # singleton by design; a short outage only delays retention
+    priorityClassName: observability-high
+    resources:
+      requests: {cpu: "2", memory: 8Gi}
+      limits: {memory: 10Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+    persistence:
+      enabled: true
+      claims:
+        - name: data
+          accessModes: [ReadWriteOnce]
+          size: 50Gi
+          storageClass: obs-zonal-ssd
+      whenDeleted: Retain
+
+  # Exposes every tenant's limits as metrics (usage vs quota dashboards).
+  overridesExporter:
+    enabled: true
+    replicas: 1
+    priorityClassName: observability-high
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {memory: 256Mi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+
+  # Tenants alert with Grafana-managed alerts in their own org (docs/02).
+  # The Loki ruler stays off: one component less, no multi-tenant Alertmanager.
+  ruler:
+    enabled: false
+    replicas: 0
+
+  # ---------------------------------------------------------------- caches
+  chunksCache:
+    enabled: true
+    replicas: 3
+    priorityClassName: observability-high
+    allocatedMemory: 8192
+    maxItemMemory: 5
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: memcached-chunks-cache
+            app.kubernetes.io/name: loki
+
+  resultsCache:
+    enabled: true
+    replicas: 2
+    priorityClassName: observability-high
+    allocatedMemory: 2048
+    defaultValidity: 12h
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+
+  # ---------------------------------------------------------------- off
+  gateway:
+    enabled: false        # the read gateway is kgateway (templates/read-gateway.yaml)
+  ingress:
+    enabled: false
+  lokiCanary:
+    enabled: false        # synthetic checks: docs/06-operations-runbook.md
+  test:
+    enabled: false
+  minio:
+    enabled: false
+  networkPolicy:
+    enabled: false        # ours: templates/networkpolicies-*.yaml
+  singleBinary:
+    replicas: 0
+  backend:
+    replicas: 0
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  bloomPlanner:
+    replicas: 0
+  bloomBuilder:
+    replicas: 0
+  bloomGateway:
+    replicas: 0
+  patternIngester:
+    replicas: 0
+
+  # ---------------------------------------------------------------- monitoring
+  # Azure Monitor managed Prometheus scrapes Loki through the PodMonitor in
+  # templates/pod-monitors.yaml (azmonitoring.coreos.com). If you run the Prometheus
+  # Operator instead, turn this on.
+  monitoring:
+    serviceMonitor:
+      enabled: false
+    selfMonitoring:
+      enabled: false
+    lokiCanary:
+      enabled: false
+
+# ---------------------------------------------------------------- OTel agent (opentelemetry-collector 0.173.1)
+# alternateConfig comes from rendered/values-tenants.yaml.
+otelAgent:
+  enabled: true
+  mode: daemonset
+  fullnameOverride: otel-agent
+  namespaceOverride: otel-agent
+  podLabels:
+    obs.platform/role: otel-agent                  # NetworkPolicies select on this
+
+  image:
+    repository: otel/opentelemetry-collector-contrib   # global.imageRegistry is put in front
+    tag: "0.160.0"
+  command:
+    name: otelcol-contrib
+
+  priorityClassName: observability-collector      # a node without an agent loses its logs
+  tolerations:
+    - operator: Exists                             # every node, system pool included
+
+  # The chart's example config is replaced entirely by alternateConfig.
+  presets: {}
+
+  serviceAccount:
+    create: true
+    name: otel-agent
+  # k8s_attributes: pods on THIS node (field selector), their namespaces and
+  # ReplicaSets (to name the Deployment). Nothing else: no Secrets, no pods/log.
+  clusterRole:
+    create: true
+    name: otel-agent
+    rules:
+      - apiGroups: [""]
+        resources: [pods, namespaces]
+        verbs: [get, list, watch]
+      - apiGroups: [apps]
+        resources: [replicasets]
+        verbs: [get, list, watch]
+
+  extraEnvs:
+    - name: CLUSTER_NAME                           # k8s.cluster.name on every record
+      value: "{{ .Values.global.clusterName }}"
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+  extraVolumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+    - name: otelcol-data                           # file_log checkpoints + persistent export queue
+      hostPath:
+        path: /var/lib/otelcol
+        type: DirectoryOrCreate
+  extraVolumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: otelcol-data
+      mountPath: /var/lib/otelcol
+
+  # Reading /var/log/pods needs root on the node's files, and nothing more.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+      add: [DAC_READ_SEARCH]
+    seccompProfile:
+      type: RuntimeDefault
+
+  # OTLP for apps on the same node, through the Service below. NO hostPorts: a
+  # hostPort would let traffic arrive with the node's IP, and the agent could
+  # no longer tell which pod sent it.
+  ports:
+    otlp:
+      enabled: true
+      hostPort: null
+    otlp-http:
+      enabled: true
+      hostPort: null
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    metrics:
+      enabled: true                                # :8888, scraped by managed Prometheus
+
+  # Apps export to otel-agent.otel-agent.svc:4317/4318. internalTrafficPolicy: Local
+  # keeps the connection on the app's own node, so the agent sees the pod's IP.
+  service:
+    enabled: true
+    internalTrafficPolicy: Local
+
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  useGOMEMLIMIT: true
+
+# ---------------------------------------------------------------- OTel gateway (opentelemetry-collector 0.173.1)
+# alternateConfig comes from rendered/values-tenants.yaml.
+otelGateway:
+  enabled: true
+  mode: statefulset
+  fullnameOverride: otel-gateway
+  namespaceOverride: otel
+  podLabels:
+    obs.platform/role: otel-gateway                # NetworkPolicies select on this
+  replicaCount: 3                                  # one per zone; scale in steps of 3
+
+  image:
+    repository: otel/opentelemetry-collector-contrib   # global.imageRegistry is put in front
+    tag: "0.160.0"
+  command:
+    name: otelcol-contrib
+
+  presets: {}
+  priorityClassName: observability-critical        # the write path
+  nodeSelector:
+    obs.platform/pool: loki
+  tolerations:
+    - key: obs.platform/dedicated
+      operator: Equal
+      value: loki
+      effect: NoSchedule
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          obs.platform/role: otel-gateway
+
+  # The gateway never calls the Kubernetes API.
+  serviceAccount:
+    create: true
+    name: otel-gateway
+    automountServiceAccountToken: false
+
+  podSecurityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+
+  # Agents only (NetworkPolicy), over OTLP/gRPC.
+  ports:
+    otlp:
+      enabled: true
+    otlp-http:
+      enabled: false
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    metrics:
+      enabled: true
+
+  # Headless: DNS returns every gateway pod, and the agents balance over them
+  # (dns:///otel-gateway.otel.svc:4317 with round_robin).
+  service:
+    clusterIP: None
+
+  statefulset:
+    podManagementPolicy: Parallel
+    volumeClaimTemplates:
+      - metadata:
+          name: queue
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: obs-zonal-ssd          # templates/storage-class.yaml
+          resources:
+            requests:
+              storage: 100Gi                        # ≥ sum of all tenants' gatewayQueueMiB (docs/05)
+  extraVolumeMounts:
+    - name: queue
+      mountPath: /var/lib/otelcol
+
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+
+  # Scaling a StatefulSet down strands the removed pods' queues until they come
+  # back, so no HPA: scale deliberately, 3 → 6 → 9.
+  autoscaling:
+    enabled: false
+
+  terminationGracePeriodSeconds: 120
+  resources:
+    requests: {cpu: "2", memory: 4Gi}
+    limits: {memory: 6Gi}
+  useGOMEMLIMIT: true
+
+# ---------------------------------------------------------------- Grafana (grafana-community/grafana 13.2.5)
+grafana:
+  enabled: true
+  fullnameOverride: grafana                        # Service grafana.grafana.svc
+  namespaceOverride: grafana
+
+  replicas: 2
+  headlessService: true                            # alerting HA gossip (below)
+  podDisruptionBudget:
+    minAvailable: 1
+  priorityClassName: observability-high
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: grafana
+  nodeSelector:
+    obs.platform/pool: loki
+  tolerations:
+    - key: obs.platform/dedicated
+      operator: Equal
+      value: loki
+      effect: NoSchedule
+
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 2Gi}
+
+  persistence:
+    enabled: false                                 # state is in PostgreSQL
+
+  # Grafana never talks to the Kubernetes API (no sidecars).
+  automountServiceAccountToken: false
+  rbac:
+    create: false
+  serviceAccount:
+    create: true
+    automountServiceAccountToken: false
+  sidecar:
+    dashboards: {enabled: false}
+    datasources: {enabled: false}
+    alerts: {enabled: false}
+    notifiers: {enabled: false}
+    plugins: {enabled: false}
+  testFramework:
+    enabled: false
+  networkPolicy:
+    enabled: false                                 # ours: templates/networkpolicies-grafana.yaml
+
+  # Break-glass admin (server admin). Secret synced from Key Vault by
+  # templates/external-secrets.yaml. Use only via kubectl port-forward.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # GF_AUTH_AZUREAD_CLIENT_SECRET, GF_DATABASE_PASSWORD (Key Vault → ExternalSecret)
+  envFromSecrets:
+    - name: grafana-env
+  # GF_AUTH_AZUREAD_ORG_MAPPING, GF_AUTH_AZUREAD_ALLOWED_GROUPS (templates/grafana-org-mapping.yaml)
+  envFromConfigMaps:
+    - name: grafana-org-mapping
+
+  grafana.ini:
+    server:
+      root_url: ""                                 # ← SET (environment file)
+      enforce_domain: true
+    log:
+      mode: console
+      level: warn
+    database:
+      type: postgres
+      host: ""                                     # ← SET (environment file): terraform output postgres_fqdn:5432
+      name: grafana
+      user: grafana
+      ssl_mode: require
+      # password: GF_DATABASE_PASSWORD
+    auth:
+      disable_login_form: true                     # Entra ID only
+      login_maximum_lifetime_duration: 12h
+      login_maximum_inactive_lifetime_duration: 2h
+    auth.basic:
+      enabled: true                                # break-glass admin over port-forward only
+    auth.anonymous:
+      enabled: false
+    auth.azuread:
+      enabled: true
+      name: Bank SSO
+      auto_login: true
+      allow_sign_up: true
+      client_id: ""                                # ← SET (environment file): app registration
+      # client_secret: GF_AUTH_AZUREAD_CLIENT_SECRET
+      scopes: openid email profile
+      auth_url: ""                                 # ← SET (environment file)
+      token_url: ""                                # ← SET (environment file)
+      allowed_organizations: ""                    # ← SET (environment file): Entra tenant ID
+      use_pkce: true
+      use_refresh_token: true
+      # Org + role come from group membership (org_mapping). Nobody becomes a
+      # Grafana server admin through SSO.
+      skip_org_role_sync: false
+      allow_assign_grafana_admin: false
+      # allowed_groups and org_mapping: env vars from the generated ConfigMap.
+    users:
+      allow_sign_up: false
+      allow_org_create: false
+      # Anyone who logs in lands in Main Org (id 1) first. Main Org has NO data
+      # sources, so landing there shows nothing.
+      auto_assign_org: true
+      auto_assign_org_id: 1
+      auto_assign_org_role: Viewer
+      viewers_can_edit: false
+    security:
+      cookie_secure: true
+      cookie_samesite: lax                         # strict breaks the OAuth redirect back from Entra
+      disable_gravatar: true
+      strict_transport_security: true
+      content_security_policy: true
+      x_content_type_options: true
+      x_xss_protection: true
+      disable_initial_admin_creation: false
+    unified_alerting:
+      enabled: true
+      # Two replicas evaluate rules once, not twice, and dedupe notifications.
+      # POD_IP is set by the chart; Grafana expands ${VAR} in its config.
+      ha_listen_address: "${POD_IP}:9094"
+      ha_advertise_address: "${POD_IP}:9094"
+      ha_peers: grafana-headless.grafana.svc.cluster.local:9094
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+      feedback_links_enabled: false
+    news:
+      news_feed_enabled: false
+    plugins:
+      public_key_retrieval_disabled: true          # no calls to grafana.com
+    snapshots:
+      external_enabled: false                      # no public snapshots
+    explore:
+      enabled: true

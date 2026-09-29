@@ -1,0 +1,195 @@
+# OpenTelemetry Collector AGENT: one pod per node (DaemonSet).
+#
+# TEMPLATE: scripts/render-tenants.py fills in the namespace → tenant
+# statements (transform/tenant) and writes it, as otelAgent.alternateConfig,
+# into rendered/values-tenants.yaml. Edit this file, never the rendered one.
+# CLUSTER_NAME comes from the chart (global.clusterName).
+#
+# Two ways in, one way out:
+#   file_log  container stdout/stderr from /var/log/pods  (the default: apps change nothing)
+#   otlp      apps that export logs with an OpenTelemetry SDK, to the agent on their own node
+#   → otlp_grpc to the gateway tier, through a persistent queue on the node's disk
+#
+# Tenancy rule: nothing a workload sends decides its tenant. For files, the
+# namespace comes from the file path (written by the kubelet). For OTLP, any
+# k8s.* attribute the app sent is deleted and replaced with what the Kubernetes
+# API says about the pod behind the connection's source IP.
+extensions:
+  health_check:
+    endpoint: ${env:MY_POD_IP}:13133
+  # Checkpoints of file_log (where each file was read up to) AND the export
+  # queue both live on the node (hostPath /var/lib/otelcol): a restarted agent
+  # neither re-sends nor skips lines, and queued data survives the restart.
+  file_storage:
+    directory: /var/lib/otelcol/storage
+    create_directory: true
+    compaction:
+      on_start: true
+      on_rebound: true
+      directory: /var/lib/otelcol/storage
+
+receivers:
+  file_log:
+    include: [/var/log/pods/*/*/*.log]
+    start_at: end                      # a new node doesn't replay rotated history
+    include_file_path: true            # the container parser reads the namespace from it
+    include_file_name: false
+    max_log_size: 256KiB
+    storage: file_storage
+    retry_on_failure:
+      enabled: true                    # back-pressure: stop reading instead of dropping
+    operators:
+      # CRI format → timestamp, stream, body; path → k8s.namespace.name,
+      # k8s.pod.name, k8s.pod.uid, k8s.container.name (resource attributes).
+      - type: container
+        id: container-parser
+        add_metadata_from_filepath: true
+  otlp:
+    protocols:
+      grpc:
+        endpoint: ${env:MY_POD_IP}:4317
+        max_recv_msg_size_mib: 16
+      http:
+        endpoint: ${env:MY_POD_IP}:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # OTLP input is untrusted: drop every attribute that could claim an identity.
+  resource/untrusted:
+    attributes:
+      - {key: obs.tenant, action: delete}
+      - {key: k8s.cluster.name, action: delete}
+      - {key: k8s.namespace.name, action: delete}
+      - {key: k8s.pod.name, action: delete}
+      - {key: k8s.pod.uid, action: delete}
+      - {key: k8s.pod.ip, action: delete}
+      - {key: k8s.node.name, action: delete}
+      - {key: k8s.deployment.name, action: delete}
+      - {key: k8s.statefulset.name, action: delete}
+      - {key: k8s.daemonset.name, action: delete}
+      - {key: k8s.container.name, action: delete}
+
+  # Files: the pod is known from the path (k8s.pod.uid); add workload metadata.
+  k8s_attributes/files:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    pod_association:
+      - sources:
+          - {from: resource_attribute, name: k8s.pod.uid}
+    extract:
+      metadata: [k8s.namespace.name, k8s.pod.name, k8s.pod.uid, k8s.node.name,
+                 k8s.deployment.name, k8s.statefulset.name, k8s.daemonset.name]
+      labels:
+        - {tag_name: app, key: app.kubernetes.io/name, from: pod}
+
+  # OTLP: the pod is identified ONLY by the connection's source IP. The pod IP
+  # can't be forged in-cluster (CNI anti-spoofing); resource attributes can.
+  k8s_attributes/otlp:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    pod_association:
+      - sources:
+          - {from: connection}
+    extract:
+      metadata: [k8s.namespace.name, k8s.pod.name, k8s.pod.uid, k8s.node.name,
+                 k8s.deployment.name, k8s.statefulset.name, k8s.daemonset.name]
+      labels:
+        - {tag_name: app, key: app.kubernetes.io/name, from: pod}
+
+  resource/cluster:
+    attributes:
+      - {key: k8s.cluster.name, value: "${env:CLUSTER_NAME}", action: upsert}
+      - {key: log.file.path, action: delete}
+
+  # service.name: the app's own (OTLP), else the app label, else the container.
+  transform/service_name:
+    error_mode: ignore
+    log_statements:
+      - context: resource
+        statements:
+          - set(resource.attributes["service.name"], resource.attributes["app"]) where resource.attributes["service.name"] == nil and resource.attributes["app"] != nil
+          - set(resource.attributes["service.name"], resource.attributes["k8s.container.name"]) where resource.attributes["service.name"] == nil
+          - delete_key(resource.attributes, "app")
+
+  # THE tenancy decision. Default unassigned, then platform, then each tenant;
+  # last match wins. Generated from tenants/tenants.yaml.
+  transform/tenant:
+    error_mode: propagate
+    log_statements:
+      - context: resource
+        statements: []                 # @@TENANT_STATEMENTS@@
+
+  # Data protection: mask what must never be stored. Tune per bank; test with
+  # scripts/pipeline-test.sh. ($$ is a literal $ in collector config.)
+  transform/mask:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          # Card numbers (PAN): 13-16 digits starting 3-6, keep the last 4.
+          - replace_pattern(log.body, "\\b[3-6]\\d{8,11}(\\d{4})\\b", "************$${1}") where IsString(log.body)
+          - replace_all_patterns(log.attributes, "value", "\\b[3-6]\\d{8,11}(\\d{4})\\b", "************$${1}")
+          # IBAN: keep the country code + check digits and the last 4.
+          - replace_pattern(log.body, "\\b([A-Z]{2}\\d{2})[A-Z0-9]{7,26}([A-Z0-9]{4})\\b", "$${1}****$${2}") where IsString(log.body)
+          - replace_all_patterns(log.attributes, "value", "\\b([A-Z]{2}\\d{2})[A-Z0-9]{7,26}([A-Z0-9]{4})\\b", "$${1}****$${2}")
+          # Bearer / Basic authorization values.
+          - replace_pattern(log.body, "(?i)(authorization[\"']?\\s*[:=]\\s*[\"']?(?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]+", "$${1}<redacted>") where IsString(log.body)
+          - replace_all_patterns(log.attributes, "value", "(?i)((?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]+", "$${1}<redacted>")
+
+exporters:
+  # To the gateway tier. Client-side round robin over the gateway pods
+  # (headless Service), zstd, and a PERSISTENT queue on the node's disk:
+  # if the gateways or Loki are down, logs wait here (up to queue_size).
+  otlp_grpc/gateway:
+    endpoint: dns:///otel-gateway.otel.svc.cluster.local:4317   # headless Service: one address per gateway pod
+    balancer_name: round_robin
+    tls:
+      insecure: true                   # in-cluster; see docs/03 for mTLS
+    compression: zstd
+    timeout: 60s
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      sizer: bytes
+      queue_size: 2147483648           # 2 GiB per node before back-pressure
+      num_consumers: 8
+      batch:
+        flush_timeout: 1s
+        sizer: bytes
+        min_size: 524288
+        max_size: 4194304
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 60s
+      max_elapsed_time: 0s             # never give up while the queue has room
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: ${env:MY_POD_IP}
+                port: 8888
+  pipelines:
+    logs/files:
+      receivers: [file_log]
+      processors: [memory_limiter, k8s_attributes/files, resource/cluster, transform/service_name, transform/tenant, transform/mask]
+      exporters: [otlp_grpc/gateway]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/untrusted, k8s_attributes/otlp, resource/cluster, transform/service_name, transform/tenant, transform/mask]
+      exporters: [otlp_grpc/gateway]

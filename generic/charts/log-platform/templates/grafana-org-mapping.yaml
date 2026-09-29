@@ -1,0 +1,14 @@
+# Entra ID group → Grafana org + role, and who may log in at all (rendered
+# from tenants/tenants.yaml). Grafana reads GF_AUTH_AZUREAD_* at startup; the
+# checksum annotation on the Grafana pods is not wired, so install.sh restarts
+# Grafana when this changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-org-mapping
+  namespace: grafana
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+data:
+  GF_AUTH_AZUREAD_ORG_MAPPING: {{ .Values.grafanaOrgMapping.orgMapping | quote }}
+  GF_AUTH_AZUREAD_ALLOWED_GROUPS: {{ .Values.grafanaOrgMapping.allowedGroups | quote }}

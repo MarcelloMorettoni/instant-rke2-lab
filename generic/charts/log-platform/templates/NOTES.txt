@@ -1,0 +1,12 @@
+Log platform installed ({{ .Values.global.clusterName }}).
+
+  Write: pods → otel-agent.otel-agent.svc:4317/4318 (OTLP) or stdout
+         → otel-gateway.otel (per-tenant queues) → loki-distributor.loki /otlp
+  Read:  Grafana ({{ .Values.grafanaAccess.hostname }}) → obs-gateway.loki:8080/<view>/ → Loki
+
+  {{ len .Values.readViews }} read views, {{ len .Values.grafanaOrgs }} Grafana orgs.
+  Images from: {{ default "the upstream registries" .Values.global.imageRegistry }}
+
+Next:
+  kubectl -n grafana create job --from=cronjob/grafana-sync grafana-sync-now
+  scripts/smoke-test.sh

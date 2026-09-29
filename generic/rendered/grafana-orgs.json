@@ -1,0 +1,48 @@
+[
+  {
+    "org": "platform",
+    "title": "Platform",
+    "view": "platform",
+    "tenants": [
+      "platform",
+      "unassigned",
+      "payments",
+      "cards",
+      "lending",
+      "shared-services"
+    ]
+  },
+  {
+    "org": "payments",
+    "title": "Payments",
+    "view": "payments",
+    "tenants": [
+      "payments"
+    ]
+  },
+  {
+    "org": "cards",
+    "title": "Cards",
+    "view": "cards",
+    "tenants": [
+      "cards",
+      "shared-services"
+    ]
+  },
+  {
+    "org": "lending",
+    "title": "Lending",
+    "view": "lending",
+    "tenants": [
+      "lending"
+    ]
+  },
+  {
+    "org": "shared-services",
+    "title": "Shared services",
+    "view": "shared-services",
+    "tenants": [
+      "shared-services"
+    ]
+  }
+]

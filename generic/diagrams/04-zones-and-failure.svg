@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="760" viewBox="0 0 1240 760" role="img" aria-labelledby="t">
+<title id="t">Zone layout and what survives a failure</title>
+<defs></defs>
+<rect x="0.5" y="0.5" width="1239" height="759" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Zone layout and what survives a failure</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">One Loki node pool per availability zone. Losing a zone costs capacity, not data or availability.</text>
+<rect x="32" y="92" width="386" height="452" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="46" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Availability zone 1  ·  node pool loki1</text>
+<text x="46" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">Standard_D16ds_v5 · AzureLinux · 2-5 nodes · taint obs.platform/dedicated</text>
+<rect x="46" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="60" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">ingester-zone-a ×2</text>
+<text x="60" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">WAL on zonal disk</text>
+<rect x="228" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="242" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">distributor</text>
+<text x="242" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA across zones</text>
+<rect x="46" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="60" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">querier ×1-2+</text>
+<text x="60" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA 4 → 16</text>
+<rect x="228" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="242" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">index-gateway</text>
+<text x="242" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 per zone</text>
+<rect x="46" y="334" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="60" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">chunks-cache</text>
+<text x="60" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">memcached</text>
+<rect x="228" y="334" width="172" height="78" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="242" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#075985" text-anchor="start">obs-gateway</text>
+<text x="242" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">kgateway, PDB 2</text>
+<rect x="46" y="426" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="60" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">frontend / scheduler</text>
+<text x="60" y="470" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2 each, spread</text>
+<rect x="228" y="426" width="172" height="78" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="242" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#5B21B6" text-anchor="start">grafana</text>
+<text x="242" y="470" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2 replicas</text>
+<rect x="46" y="516" width="358" height="22" rx="11" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+<text x="225.0" y="531" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">Premium SSD (CMK) · ephemeral OS disk</text>
+<rect x="434" y="92" width="386" height="452" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="448" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Availability zone 2  ·  node pool loki2</text>
+<text x="448" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">Standard_D16ds_v5 · AzureLinux · 2-5 nodes · taint obs.platform/dedicated</text>
+<rect x="448" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="462" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">ingester-zone-b ×2</text>
+<text x="462" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">WAL on zonal disk</text>
+<rect x="630" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="644" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">distributor</text>
+<text x="644" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA across zones</text>
+<rect x="448" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="462" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">querier ×1-2+</text>
+<text x="462" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA 4 → 16</text>
+<rect x="630" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="644" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">index-gateway</text>
+<text x="644" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 per zone</text>
+<rect x="448" y="334" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="462" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">chunks-cache</text>
+<text x="462" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">memcached</text>
+<rect x="630" y="334" width="172" height="78" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="644" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#075985" text-anchor="start">obs-gateway</text>
+<text x="644" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">kgateway, PDB 2</text>
+<rect x="448" y="426" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="462" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">frontend / scheduler</text>
+<text x="462" y="470" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2 each, spread</text>
+<rect x="630" y="426" width="172" height="78" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="644" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#5B21B6" text-anchor="start">grafana</text>
+<text x="644" y="470" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2 replicas</text>
+<rect x="448" y="516" width="358" height="22" rx="11" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+<text x="627.0" y="531" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">Premium SSD (CMK) · ephemeral OS disk</text>
+<rect x="836" y="92" width="386" height="452" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="850" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Availability zone 3  ·  node pool loki3</text>
+<text x="850" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#64748B" text-anchor="start">Standard_D16ds_v5 · AzureLinux · 2-5 nodes · taint obs.platform/dedicated</text>
+<rect x="850" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="864" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">ingester-zone-c ×2</text>
+<text x="864" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">WAL on zonal disk</text>
+<rect x="1032" y="150" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="1046" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">distributor</text>
+<text x="1046" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA across zones</text>
+<rect x="850" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="864" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">querier ×1-2+</text>
+<text x="864" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA 4 → 16</text>
+<rect x="1032" y="242" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="1046" y="266" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">index-gateway</text>
+<text x="1046" y="286" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 per zone</text>
+<rect x="850" y="334" width="172" height="78" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="864" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#3730A3" text-anchor="start">chunks-cache</text>
+<text x="864" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">memcached</text>
+<rect x="1032" y="334" width="172" height="78" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="1046" y="358" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#075985" text-anchor="start">obs-gateway</text>
+<text x="1046" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">kgateway, PDB 2</text>
+<rect x="850" y="516" width="358" height="22" rx="11" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+<text x="1029.0" y="531" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">Premium SSD (CMK) · ephemeral OS disk</text>
+<rect x="32" y="562" width="1190" height="72" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="46" y="586" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#92400E" text-anchor="start">Azure Blob Storage (GZRS): one account, synchronously in all 3 zones, async copy to the paired region</text>
+<text x="46" y="606" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Chunks and index are safe from any single zone failure. Loki reads and writes through one private endpoint.</text>
+<rect x="32" y="648" width="580" height="92" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="46" y="672" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#166534" text-anchor="start">Zone lost: what happens</text>
+<text x="46" y="692" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">writes: 2 of 3 replicas still ack (quorum) → no push fails</text>
+<text x="46" y="709" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">reads: ingesters of 2 zones + Blob → complete results</text>
+<text x="46" y="726" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">then: autoscaler adds nodes in the surviving zones</text>
+<rect x="642" y="648" width="580" height="92" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="656" y="672" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">PostgreSQL (Grafana)</text>
+<text x="656" y="692" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">primary zone 1, synchronous standby zone 2</text>
+<text x="656" y="709" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">automatic failover ~60-120 s; Grafana reconnects</text>
+<text x="656" y="726" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Loki keeps ingesting: Grafana is only the read UI</text>
+</svg>

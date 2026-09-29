@@ -1,0 +1,30 @@
+{{- if .Values.namespaces.create }}
+# Platform-owned namespaces. Tenants get no RBAC in any of them. The names are
+# fixed: NetworkPolicies, the collectors' endpoints and the views use them.
+# `loki` is this release's namespace, so it can't create it: the
+# log-platform-operators chart does, with the same Pod Security labels.
+# PSA: baseline enforced (restricted warned/audited); otel-agent is privileged
+# because the agent mounts hostPath /var/log/pods (read-only) and /var/lib/otelcol.
+{{- range $ns := list "otel" "grafana" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+{{- end }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+{{- end }}

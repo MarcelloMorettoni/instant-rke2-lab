@@ -1,0 +1,162 @@
+{{- if .Values.network.policies }}
+# Namespace `loki`: default deny, then exactly these paths.
+#   ingress  otel/otel-gateway ──► distributor :3100 (OTLP push)
+#            loki/obs-gateway ───► query-frontend :3100 (read; header set by the view)
+#            grafana/grafana ────► obs-gateway :8080
+#            ama-metrics ────────► metrics ports;  API server ──► rollout-operator :8443
+#   egress   DNS, Loki ◄──► Loki, Blob private endpoint, Entra ID, API server (rollout-operator)
+# Tenant namespaces appear nowhere: they can neither push nor query.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: loki}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-dns, namespace: loki}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    {{- include "lp.dnsEgress" . | nindent 4 }}
+---
+# Loki components (and memcached) talk to each other: 3100, 9095, 7946, 11211.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: loki-internal, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: loki}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: loki}
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: rollout-operator}
+      ports:
+        - {port: 3100, protocol: TCP}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: loki}
+---
+# THE write path: only the platform's OTel gateway may push.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: distributor-from-otel-gateway, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: distributor}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: otel}
+          podSelector:
+            matchLabels: {obs.platform/role: otel-gateway}
+      ports:
+        - {port: 3100, protocol: TCP}
+---
+# THE read path: only the read gateway reaches the query-frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: query-frontend-from-read-gateway, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: query-frontend}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {gateway.networking.k8s.io/gateway-name: obs-gateway}
+      ports:
+        - {port: 3100, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: obs-gateway, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {gateway.networking.k8s.io/gateway-name: obs-gateway}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: grafana}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: grafana}
+      ports:
+        - {port: 8080, protocol: TCP}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: query-frontend}
+      ports:
+        - {port: 3100, protocol: TCP}
+    - to:                                   # config (xDS) from the kgateway controller
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kgateway-system}
+      ports:
+        - {port: 9977, protocol: TCP}
+---
+# Object storage + identity (Workload Identity token exchange with Entra ID).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: loki-to-azure, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: loki}
+  policyTypes: [Egress]
+  egress:
+    {{- with .Values.network.blobPrivateEndpointCidrs }}
+    - to:
+        {{- include "lp.cidrs" . | nindent 8 }}
+      ports:
+        - {port: 443, protocol: TCP}
+    {{- end }}
+    {{- if .Values.network.internetEgress443 }}
+    {{- include "lp.internet443" . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: rollout-operator, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: rollout-operator}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Admission webhooks called by the API server (failurePolicy: Fail: node
+    # drains and AKS upgrades depend on them). TLS only; open to all sources.
+    - ports:
+        - {port: 8443, protocol: TCP}
+  egress:
+    - to:
+        {{- include "lp.cidrs" .Values.network.apiServerCidrs | nindent 8 }}
+      ports:
+        - {port: 443, protocol: TCP}
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: loki}
+      ports:
+        - {port: 3100, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: metrics-from-ama, namespace: loki}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+      ports:
+        - {port: 3100, protocol: TCP}      # Loki /metrics
+        - {port: 9150, protocol: TCP}      # memcached exporter
+        - {port: 9091, protocol: TCP}      # read-gateway proxy stats (envoy)
+        - {port: 8001, protocol: TCP}      # rollout-operator
+{{- end }}

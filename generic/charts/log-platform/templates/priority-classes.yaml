@@ -1,0 +1,16 @@
+{{- if .Values.priorityClasses.create }}
+# Who survives when a node runs out of room. All below the system-* classes.
+{{- range $pc := list (list "observability-collector" 1000000 "OTel agent: a node without it loses its logs.") (list "observability-critical" 900000 "Write path: OTel gateway, Loki ingesters and distributors.") (list "observability-high" 800000 "Loki read path, caches, compactor, gateways, Grafana.") }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ index $pc 0 }}
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+value: {{ index $pc 1 }}
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: {{ index $pc 2 | quote }}
+{{- end }}
+{{- end }}

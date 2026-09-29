@@ -1,0 +1,9 @@
+# Overlay for a cluster WITHOUT availability zones (test only): ingesters are
+# not pinned to zones; replication factor 3 still keeps 3 copies on 3 pods.
+loki:
+  ingester:
+    replicas: 3
+    zoneAwareReplication:
+      enabled: false
+  rollout_operator:
+    enabled: false

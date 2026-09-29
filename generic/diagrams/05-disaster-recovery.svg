@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="640" viewBox="0 0 1240 640" role="img" aria-labelledby="t">
+<title id="t">Disaster recovery: region loss</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker></defs>
+<rect x="0.5" y="0.5" width="1239" height="639" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Disaster recovery: region loss</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">The log store is geo-replicated; compute is rebuilt from code. Pick the tier the bank&#x27;s RPO needs.</text>
+<rect x="32" y="92" width="560" height="330" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="46" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Primary region (e.g. West Europe)</text>
+<rect x="52" y="130" width="250" height="130" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="66" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">AKS + Loki</text>
+<text x="66" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">ingesters hold the last ≤ 2 h</text>
+<text x="66" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">of logs (not yet in Blob)</text>
+<rect x="322" y="130" width="250" height="130" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="336" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Blob Storage GZRS</text>
+<text x="336" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">everything older than ~2 h</text>
+<text x="336" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">3 zones, synchronous</text>
+<rect x="322" y="276" width="250" height="126" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="336" y="300" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">PostgreSQL HA</text>
+<text x="336" y="320" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Grafana dashboards, orgs,</text>
+<text x="336" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">alert rules</text>
+<rect x="52" y="276" width="250" height="126" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="66" y="300" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#166534" text-anchor="start">Key Vault</text>
+<text x="66" y="320" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">CMKs + secrets</text>
+<text x="66" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">(Azure replicates to the</text>
+<text x="66" y="354" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">paired region, read-only)</text>
+<rect x="648" y="92" width="560" height="330" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="662" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Paired region (e.g. North Europe)</text>
+<rect x="938" y="130" width="250" height="130" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="952" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">AKS + Loki (standby)</text>
+<text x="952" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Terraform + install.sh</text>
+<text x="952" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">same tenants.yaml</text>
+<text x="952" y="208" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">RTO: hours (tier A)</text>
+<rect x="668" y="130" width="250" height="130" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="682" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Blob secondary</text>
+<text x="682" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">async copy (typically</text>
+<text x="682" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">&lt; 15 min behind, no SLA)</text>
+<text x="682" y="208" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">after account failover:</text>
+<text x="682" y="225" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">read-write</text>
+<rect x="668" y="276" width="250" height="126" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="682" y="300" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">PostgreSQL geo-restore</text>
+<text x="682" y="320" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">from geo-redundant backup</text>
+<text x="682" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">RPO ≤ 1 h</text>
+<rect x="938" y="276" width="250" height="126" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="952" y="300" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#166534" text-anchor="start">Tier B: second Loki</text>
+<text x="952" y="320" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">OTel gateway exports to</text>
+<text x="952" y="337" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">BOTH regions (2 exporters)</text>
+<text x="952" y="354" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">RPO ≈ 0, 2× cost</text>
+<path d="M572,195 L668,195" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ah16A34A)"/>
+<text x="620.0" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#16A34A" text-anchor="middle">async</text>
+<path d="M572,340 L668,340" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ah16A34A)"/>
+<text x="620.0" y="331" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#16A34A" text-anchor="middle">backup</text>
+<rect x="32" y="456" width="1176" height="34" fill="#F1F5F9" stroke="#E2E8F0"/>
+<text x="48" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="start"></text>
+<text x="300" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#475569" text-anchor="start">Tier A: rebuild (default)</text>
+<text x="760" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#475569" text-anchor="start">Tier B: dual-write</text>
+<rect x="32" y="490" width="1176" height="34" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="48" y="512" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="start">RPO (logs)</text>
+<text x="300" y="512" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">unflushed ≤ 2 h + Blob lag</text>
+<text x="760" y="512" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">≈ 0</text>
+<rect x="32" y="524" width="1176" height="34" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="48" y="546" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="start">RTO</text>
+<text x="300" y="546" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">2-4 h: infra + deploy + DNS</text>
+<text x="760" y="546" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">minutes: switch Grafana</text>
+<rect x="32" y="558" width="1176" height="34" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="48" y="580" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="start">Cost</text>
+<text x="300" y="580" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">storage replication only</text>
+<text x="760" y="580" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">2× compute + storage</text>
+<rect x="32" y="592" width="1176" height="34" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="48" y="614" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#0F172A" text-anchor="start">Use when</text>
+<text x="300" y="614" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">logs are operational</text>
+<text x="760" y="614" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="start">logs are records (audit)</text>
+</svg>

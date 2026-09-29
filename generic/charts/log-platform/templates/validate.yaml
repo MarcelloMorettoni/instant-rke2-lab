@@ -1,0 +1,25 @@
+{{- /* Refuse to render a half-configured platform. */ -}}
+{{- if ne .Release.Namespace "loki" }}
+{{- fail "install this chart into namespace loki (helm -n loki): Loki's rollout-operator runs in the release namespace" }}
+{{- end }}
+{{- if and .Values.otelAgent.enabled (not .Values.otelAgent.alternateConfig) }}
+{{- fail "otelAgent.alternateConfig is empty: add -f rendered/values-tenants.yaml (scripts/render-tenants.py)" }}
+{{- end }}
+{{- if and .Values.otelGateway.enabled (not .Values.otelGateway.alternateConfig) }}
+{{- fail "otelGateway.alternateConfig is empty: add -f rendered/values-tenants.yaml (scripts/render-tenants.py)" }}
+{{- end }}
+{{- if not .Values.global.clusterName }}
+{{- fail "global.clusterName is required (environments/<env>/values.yaml)" }}
+{{- end }}
+{{- if not .Values.keyVault.url }}
+{{- fail "keyVault.url is required (environments/<env>/values.yaml)" }}
+{{- end }}
+{{- if and .Values.network.policies (not .Values.network.apiServerCidrs) }}
+{{- fail "network.apiServerCidrs is required when network.policies is true: the OTel agents and the rollout-operator must reach the API server" }}
+{{- end }}
+{{- if and .Values.loki.enabled (not .Values.loki.loki.storage.azure.accountName) }}
+{{- fail "loki.loki.storage.azure.accountName is required (terraform output storage_account_name)" }}
+{{- end }}
+{{- if and .Values.grafanaAccess.enabled (not .Values.grafanaAccess.hostname) }}
+{{- fail "grafanaAccess.hostname is required when grafanaAccess.enabled" }}
+{{- end }}

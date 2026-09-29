@@ -1,0 +1,45 @@
+{{- if and .Values.network.policies .Values.network.ciliumFqdn.enabled }}
+# Azure CNI powered by Cilium + ACNS: FQDN egress for Loki, and an L7 rule so
+# the OTel gateway may only POST /otlp/v1/logs. Set network.internetEgress443
+# to false with this, so the 0.0.0.0/0:443 rules go away.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: loki-egress-fqdn, namespace: loki}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: loki}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: "53", protocol: ANY}]
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: login.microsoftonline.com
+        - matchName: {{ printf "%s.blob.core.windows.net" .Values.loki.loki.storage.azure.accountName }}
+        - matchName: {{ printf "%s.privatelink.blob.core.windows.net" .Values.loki.loki.storage.azure.accountName }}
+      toPorts:
+        - ports: [{port: "443", protocol: TCP}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: distributor-otlp-push-only, namespace: loki}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: distributor}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: otel
+            obs.platform/role: otel-gateway
+      toPorts:
+        - ports: [{port: "3100", protocol: TCP}]
+          rules:
+            http:
+              - method: POST
+                path: /otlp/v1/logs
+{{- end }}

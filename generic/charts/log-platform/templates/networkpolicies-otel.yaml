@@ -1,0 +1,79 @@
+{{- if .Values.network.policies }}
+# The OpenTelemetry write path.
+#   tenant pods ──OTLP 4317/4318──► otel-agent (same node; tenants need an egress rule for it)
+#   otel-agent  ──OTLP/gRPC 4317──► otel-gateway   (agents only: they set obs.tenant)
+#   otel-gateway ──OTLP/HTTP 3100─► loki-distributor
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: otel-agent}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: otel-agent, namespace: otel-agent}
+spec:
+  podSelector:
+    matchLabels: {obs.platform/role: otel-agent}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:                                 # any pod may export OTLP to its node's agent
+        - namespaceSelector: {}
+      ports:
+        - {port: 4317, protocol: TCP}
+        - {port: 4318, protocol: TCP}
+    - from:
+        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+      ports:
+        - {port: 8888, protocol: TCP}
+  egress:
+    {{- include "lp.dnsEgress" . | nindent 4 }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: otel}
+          podSelector:
+            matchLabels: {obs.platform/role: otel-gateway}
+      ports:
+        - {port: 4317, protocol: TCP}
+    - to:                                   # k8s_attributes: pods, namespaces, ReplicaSets
+        {{- include "lp.cidrs" .Values.network.apiServerCidrs | nindent 8 }}
+      ports:
+        - {port: 443, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: otel}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: otel-gateway, namespace: otel}
+spec:
+  podSelector:
+    matchLabels: {obs.platform/role: otel-gateway}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:                                 # ONLY the agents
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: otel-agent}
+          podSelector:
+            matchLabels: {obs.platform/role: otel-agent}
+      ports:
+        - {port: 4317, protocol: TCP}
+    - from:
+        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+      ports:
+        - {port: 8888, protocol: TCP}
+  egress:
+    {{- include "lp.dnsEgress" . | nindent 4 }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: loki}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: distributor}
+      ports:
+        - {port: 3100, protocol: TCP}
+{{- end }}

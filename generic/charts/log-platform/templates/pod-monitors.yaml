@@ -1,0 +1,30 @@
+{{- if .Values.monitoring.azurePodMonitors }}
+# Scrape targets for AKS managed Prometheus (azmonitoring.coreos.com).
+{{- range $m := list (list "loki" "loki" "app.kubernetes.io/name" "loki" "http-metrics" "") (list "loki-read-gateway" "loki" "gateway.networking.k8s.io/gateway-name" "obs-gateway" "" "/stats/prometheus") (list "otel-agent" "otel-agent" "obs.platform/role" "otel-agent" "metrics" "") (list "otel-gateway" "otel" "obs.platform/role" "otel-gateway" "metrics" "") }}
+---
+apiVersion: azmonitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ index $m 0 }}
+  namespace: {{ index $m 1 }}
+spec:
+  selector:
+    matchLabels:
+      {{ index $m 2 }}: {{ index $m 3 }}
+  podMetricsEndpoints:
+    - {{ if index $m 4 }}port: {{ index $m 4 }}{{ else }}portNumber: 9091{{ end }}
+      path: {{ default "/metrics" (index $m 5) }}
+      interval: 30s
+      relabelings:
+        {{- if eq (index $m 0) "loki" }}
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+          targetLabel: component
+        - sourceLabels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app_kubernetes_io_component]
+          separator: /
+          targetLabel: job
+        {{- else }}
+        - targetLabel: job
+          replacement: {{ index $m 0 | replace "-" "/" | replace "loki/read/gateway" "loki/read-gateway" }}
+        {{- end }}
+{{- end }}
+{{- end }}

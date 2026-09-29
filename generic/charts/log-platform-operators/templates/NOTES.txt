@@ -1,0 +1,7 @@
+Prerequisites installed:
+  - Gateway API + kgateway CRDs (from crds/; upgrade them with kubectl apply --server-side)
+  - kgateway controller in {{ .Release.Namespace }}
+  - External Secrets Operator in {{ index .Values "external-secrets" "namespaceOverride" }}
+  - namespace loki (the log-platform release goes there)
+
+Next: the log-platform chart (docs/09-helm-charts.md).

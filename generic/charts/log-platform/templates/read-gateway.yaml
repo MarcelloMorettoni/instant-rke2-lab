@@ -1,0 +1,175 @@
+# The read gateway (kgateway): the ONLY way into Loki's query path. Each view
+# (one per Grafana org, from readViews) opens only with that view's key and
+# SETS X-Scope-OrgID to the view's tenant list, replacing anything sent.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: obs-gateway
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  kube:
+    deployment:
+      replicas: {{ .Values.readGateway.replicas }}
+    service:
+      type: ClusterIP                  # internal only: Grafana is the one client
+    {{- with .Values.global.imageRegistry }}
+    envoyContainer:
+      image:
+        registry: {{ printf "%s/kgateway-dev" (trimSuffix "/" .) }}
+    {{- end }}
+    podTemplate:
+      priorityClassName: observability-high
+      {{- include "lp.placement" . | nindent 6 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              gateway.networking.k8s.io/gateway-name: obs-gateway
+      terminationGracePeriodSeconds: 60
+      gracefulShutdown:
+        enabled: true
+        sleepTimeSeconds: 20
+    podDisruptionBudget:
+      spec:
+        minAvailable: {{ sub (int .Values.readGateway.replicas) 1 }}
+    horizontalPodAutoscaler:
+      spec:
+        minReplicas: {{ .Values.readGateway.replicas }}
+        maxReplicas: {{ .Values.readGateway.maxReplicas }}
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: obs-gateway
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: obs-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080                       # not 8082/9091: the proxy uses those itself
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+# Access log (tenant list, view path, status; never the key) → stdout → OTel
+# agent → `platform` tenant: the audit trail of reads. Paths are normalised
+# before routing, so /payments/../cards/ can't jump views.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: ListenerPolicy
+metadata:
+  name: obs-gateway
+  namespace: loki
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: obs-gateway
+  default:
+    httpSettings:
+      accessLog:
+        - fileSink:
+            path: /dev/stdout
+            stringFormat: >
+              tenant=%REQ(X-SCOPE-ORGID)%
+              "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%" %RESPONSE_CODE% %BYTES_SENT% %DURATION%ms
+      normalizePath: true
+      mergeSlashes: true
+      upgradeConfig:
+        enabledUpgrades: ["websocket"]
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: DirectResponse
+metadata:
+  name: read-only
+  namespace: loki
+spec:
+  status: 403
+  body: "read-only gateway\n"
+{{- range $v := .Values.readViews }}
+{{- $hdr := join "|" $v.tenants }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-{{ $v.view }}
+  namespace: loki
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+    obs.platform/view: {{ $v.view }}
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    {{- range $r := list (list "/loki/api/v1" "300s") (list "/loki/api/v1/tail" "0s") }}
+    - matches:
+        - path: {type: PathPrefix, value: {{ printf "/%s%s" $v.view (index $r 0) }}}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: {{ $hdr | quote }}}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: {{ index $r 0 }}}
+      backendRefs:
+        - {name: loki-query-frontend, port: 3100}
+      timeouts: {request: {{ index $r 1 }}}
+    {{- end }}
+    - matches:
+        - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/delete}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-{{ $v.view }}
+  namespace: loki
+  labels:
+    obs.platform/view: {{ $v.view }}
+spec:
+  targetRefs:
+    - {group: gateway.networking.k8s.io, kind: HTTPRoute, name: view-{{ $v.view }}}
+  apiKeyAuth:
+    secretRef:
+      name: obs-key-{{ $v.view }}
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false
+---
+# The view's key lives only in Key Vault (scripts/tenant-keys.sh creates it).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: obs-key-{{ $v.view }}
+  namespace: loki
+  labels:
+    obs.platform/view: {{ $v.view }}
+spec:
+  refreshInterval: 15m
+  secretStoreRef: {kind: ClusterSecretStore, name: {{ $.Values.keyVault.storeName }}}
+  target: {name: obs-key-{{ $v.view }}, creationPolicy: Owner}
+  data:
+    - secretKey: {{ $v.view }}
+      remoteRef: {key: obs-key-{{ $v.view }}}
+{{- end }}

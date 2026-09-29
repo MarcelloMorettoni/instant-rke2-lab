@@ -1,0 +1,75 @@
+{{- if .Values.grafanaAccess.enabled }}
+# HTTPS to Grafana through an INTERNAL Azure load balancer only.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: grafana-ingress
+  namespace: grafana
+spec:
+  kube:
+    deployment:
+      replicas: 2
+    service:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      extraAnnotations:
+        service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+        {{- with .Values.grafanaAccess.loadBalancerSubnet }}
+        service.beta.kubernetes.io/azure-load-balancer-internal-subnet: {{ . | quote }}
+        {{- end }}
+    {{- with .Values.global.imageRegistry }}
+    envoyContainer:
+      image:
+        registry: {{ printf "%s/kgateway-dev" (trimSuffix "/" .) }}
+    {{- end }}
+    podTemplate:
+      priorityClassName: observability-high
+      {{- include "lp.placement" . | nindent 6 }}
+    podDisruptionBudget:
+      spec:
+        minAvailable: 1
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: grafana-ingress
+  namespace: grafana
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: grafana-ingress
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.grafanaAccess.hostname | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: grafana-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: grafana
+spec:
+  parentRefs:
+    - name: grafana-ingress
+      sectionName: https
+  hostnames: [{{ .Values.grafanaAccess.hostname | quote }}]
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      backendRefs:
+        - name: grafana
+          port: 80
+      timeouts:
+        request: 300s
+{{- end }}

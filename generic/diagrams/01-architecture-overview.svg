@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="t">
+<title id="t">Multi-tenant Loki on AKS with OpenTelemetry: the whole picture</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker></defs>
+<rect x="0.5" y="0.5" width="1399" height="779" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Multi-tenant Loki on AKS with OpenTelemetry: the whole picture</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">Tenants never pick their tenant: OpenTelemetry collectors decide it, the read gateway decides who sees it</text>
+<rect x="24" y="88" width="1106" height="506" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="38" y="108" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">AKS cluster (private, 3 availability zones)</text>
+<text x="44" y="130" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">WRITE PATH: OPENTELEMETRY (OTLP END TO END)</text>
+<rect x="44" y="142" width="176" height="170" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="58" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">Tenant namespaces</text>
+<text x="58" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">stdout / stderr</text>
+<text x="58" y="203" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">or an OTel SDK</text>
+<text x="58" y="220" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">(OTLP to the node&#x27;s</text>
+<text x="58" y="237" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">agent)</text>
+<rect x="58" y="280" width="148" height="22" rx="11" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+<text x="132.0" y="295" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">namespace → tenant</text>
+<rect x="250" y="142" width="196" height="170" rx="10" fill="#F0FDFA" stroke="#5EEAD4" stroke-width="1.5"/>
+<text x="264" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#115E59" text-anchor="start">OTel agent</text>
+<text x="264" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">DaemonSet, 1 per node</text>
+<text x="264" y="203" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">files + OTLP in</text>
+<text x="264" y="220" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">tenant from namespace</text>
+<text x="264" y="237" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">masks PAN/IBAN/tokens</text>
+<rect x="264" y="280" width="168" height="22" rx="11" fill="#FFFFFF" stroke="#5EEAD4" stroke-width="1"/>
+<text x="348.0" y="295" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">queue on node disk</text>
+<rect x="476" y="142" width="196" height="170" rx="10" fill="#F0FDFA" stroke="#5EEAD4" stroke-width="1.5"/>
+<text x="490" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#115E59" text-anchor="start">OTel gateway</text>
+<text x="490" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">StatefulSet, 3 pods</text>
+<text x="490" y="203" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">routes by tenant</text>
+<text x="490" y="220" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 exporter per tenant</text>
+<text x="490" y="237" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">own queue per tenant</text>
+<rect x="490" y="280" width="168" height="22" rx="11" fill="#FFFFFF" stroke="#5EEAD4" stroke-width="1"/>
+<text x="574.0" y="295" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">queues on zonal SSD</text>
+<rect x="702" y="142" width="150" height="170" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="716" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Distributors</text>
+<text x="716" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">per-tenant</text>
+<text x="716" y="203" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">limits</text>
+<text x="716" y="220" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">HPA 3 → 9</text>
+<rect x="716" y="280" width="122" height="22" rx="11" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1"/>
+<text x="777.0" y="295" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">OTLP /otlp</text>
+<rect x="882" y="142" width="228" height="170" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="896" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Ingesters: 3 zones</text>
+<text x="896" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">RF 3, WAL on zonal disk</text>
+<rect x="894" y="218" width="66" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="927.0" y="244.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">zone a</text>
+<text x="927.0" y="258.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">2 pods</text>
+<rect x="966" y="218" width="66" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="999.0" y="244.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">zone b</text>
+<text x="999.0" y="258.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">2 pods</text>
+<rect x="1038" y="218" width="66" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="1071.0" y="244.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">zone c</text>
+<text x="1071.0" y="258.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">2 pods</text>
+<path d="M220,227 L250,227" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<path d="M446,227 L476,227" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<text x="461.0" y="218" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#16A34A" text-anchor="middle">gRPC</text>
+<path d="M672,227 L702,227" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<path d="M852,227 L882,227" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<text x="867.0" y="218" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#16A34A" text-anchor="middle">×3</text>
+<text x="44" y="360" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">READ PATH</text>
+<rect x="44" y="372" width="176" height="160" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="58" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">Bank users</text>
+<text x="58" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Entra ID sign-in</text>
+<text x="58" y="433" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">security group</text>
+<text x="58" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">per tenant</text>
+<rect x="58" y="500" width="148" height="22" rx="11" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+<text x="132.0" y="515" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">no local users</text>
+<rect x="250" y="372" width="196" height="160" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="264" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">Grafana (2 replicas)</text>
+<text x="264" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">one org per tenant</text>
+<text x="264" y="433" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">group → org + role</text>
+<text x="264" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Viewer / Editor only</text>
+<rect x="264" y="500" width="168" height="22" rx="11" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1"/>
+<text x="348.0" y="515" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">/payments/ + key</text>
+<rect x="476" y="372" width="196" height="160" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="490" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#075985" text-anchor="start">obs-gateway</text>
+<text x="490" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">kgateway (Envoy)</text>
+<text x="490" y="433" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">one view per org</text>
+<text x="490" y="450" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">SETS X-Scope-OrgID</text>
+<rect x="490" y="500" width="168" height="22" rx="11" fill="#FFFFFF" stroke="#7DD3FC" stroke-width="1"/>
+<text x="574.0" y="515" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">read-only</text>
+<rect x="702" y="372" width="408" height="160" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="716" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Query path + caches</text>
+<text x="716" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">frontend → scheduler → queriers → index gateways</text>
+<rect x="716" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="761.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">results</text>
+<text x="761.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
+<rect x="814" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="859.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">queriers</text>
+<text x="859.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">4 → 16</text>
+<rect x="912" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="957.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">chunks</text>
+<text x="957.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
+<rect x="1010" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="1055.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">index gw</text>
+<text x="1055.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">disk</text>
+<path d="M220,452 L250,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M446,452 L476,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M672,452 L702,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M996,372 L996,312" fill="none" stroke="#4338CA" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ah4338CA)"/>
+<text x="1030" y="346" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#4338CA" text-anchor="middle">recent</text>
+<rect x="1160" y="142" width="216" height="390" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="1174" y="166" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Azure Blob Storage</text>
+<text x="1174" y="186" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">chunks + TSDB index</text>
+<text x="1174" y="203" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1174" y="220" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">GZRS: 3 zones +</text>
+<text x="1174" y="237" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">paired region</text>
+<text x="1174" y="254" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1174" y="271" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">private endpoint only</text>
+<text x="1174" y="288" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">no shared keys</text>
+<text x="1174" y="305" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Workload Identity</text>
+<text x="1174" y="322" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">CMK (Key Vault, HSM)</text>
+<text x="1174" y="339" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1174" y="356" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Cool 30 d, Cold 180 d,</text>
+<text x="1174" y="373" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">never Archive</text>
+<text x="1174" y="390" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1174" y="407" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">retention per tenant</text>
+<rect x="1174" y="500" width="188" height="22" rx="11" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1"/>
+<text x="1268.0" y="515" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">&lt;tenant&gt;/ prefix</text>
+<path d="M1110,227 L1160,227" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<text x="1135.0" y="218" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#16A34A" text-anchor="middle">flush</text>
+<path d="M1110,452 L1160,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<text x="1135.0" y="443" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#4338CA" text-anchor="middle">read</text>
+<rect x="44" y="546" width="628" height="34" rx="8" fill="#FFF1F2" stroke="#FDA4AF"/>
+<circle cx="64" cy="563" r="10" fill="#FFFFFF" stroke="#DC2626" stroke-width="2"/>
+<path d="M60,559 L68,567 M68,559 L60,567" stroke="#DC2626" stroke-width="2.2"/>
+<text x="84" y="567" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#9F1239" text-anchor="start">Tenant pods reach only their node&#x27;s OTel agent: never the gateway, Loki or Grafana&#x27;s backends</text>
+<rect x="24" y="614" width="1352" height="144" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="38" y="634" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">Azure platform services (Terraform: infra/terraform)</text>
+<rect x="44" y="640" width="246" height="96" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="58" y="664" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#166534" text-anchor="start">Entra ID</text>
+<text x="58" y="684" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Grafana SSO (groups → orgs)</text>
+<text x="58" y="701" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Workload Identity (Loki, ESO)</text>
+<rect x="310" y="640" width="246" height="96" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
+<text x="324" y="664" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#166534" text-anchor="start">Key Vault (premium, HSM)</text>
+<text x="324" y="684" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">CMKs: Blob + disks</text>
+<text x="324" y="701" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">read-gateway keys → ESO</text>
+<rect x="576" y="640" width="246" height="96" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="590" y="664" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">PostgreSQL flexible</text>
+<text x="590" y="684" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Grafana state</text>
+<text x="590" y="701" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">zone-redundant HA</text>
+<rect x="842" y="640" width="246" height="96" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="856" y="664" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">Azure Monitor</text>
+<text x="856" y="684" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">managed Prometheus: Loki,</text>
+<text x="856" y="701" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">collectors, gateway; alerts</text>
+<rect x="1108" y="640" width="246" height="96" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="1122" y="664" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">Log Analytics / SIEM</text>
+<text x="1122" y="684" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">storage, Key Vault, database</text>
+<text x="1122" y="701" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">audit logs</text>
+</svg>

@@ -1,0 +1,32 @@
+# log-platform-operators: cluster-level prerequisites.
+#
+#   helm upgrade --install log-platform-operators charts/log-platform-operators \
+#     -n kgateway-system --create-namespace \
+#     -f environments/<env>/operators.yaml \
+#     -f environments/<env>/generated-images.yaml
+#
+# CRDs (Gateway API v1.6.1, kgateway v2.4.5) are in crds/: Helm installs them
+# on the first install but NEVER upgrades them. To upgrade CRDs:
+#   kubectl apply --server-side -f charts/log-platform-operators/crds/
+#
+# Image registry: set global.imageRegistry in environments/<env>/values.yaml
+# and run scripts/render-images.py <env>; it writes the kgateway and ESO image
+# fields below into environments/<env>/generated-images.yaml.
+
+# kgateway: the Gateway API controller behind the read gateway and the Grafana
+# ingress. Installed in the release namespace (kgateway-system).
+kgateway:
+  image:
+    registry: cr.kgateway.dev/kgateway-dev      # generated-images.yaml overrides it
+
+# External Secrets Operator: Key Vault → Kubernetes Secrets, with Workload Identity.
+external-secrets:
+  namespaceOverride: external-secrets
+  installCRDs: true
+  serviceAccount:
+    create: true
+    name: external-secrets                       # federated credential subject (Terraform)
+    annotations:
+      azure.workload.identity/client-id: ""      # ← SET: terraform output eso_client_id
+  podLabels:
+    azure.workload.identity/use: "true"

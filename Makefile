@@ -2,7 +2,8 @@ SHELL := /usr/bin/env bash
 S := scripts
 
 .PHONY: help all prereqs image vms cluster kubeconfig verify destroy status \
-        ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean
+        ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean \
+        generic-render generic-validate generic-pipeline-test
 
 help:
 	@echo "instant-rke2-lab — RKE2 + Cilium on libvirt/KVM"
@@ -23,6 +24,10 @@ help:
 	@echo "                            Grafana stack per tenant, kgateway. Grafana logins: password test-tenant"
 	@echo "  make soft-tenancy-verify  Re-run the network, observability and ingress checks"
 	@echo "  make soft-tenancy-clean   Remove everything soft-tenancy created"
+	@echo
+	@echo "  make generic-render        Production AKS Loki design (./generic): render tenants.yaml"
+	@echo "  make generic-validate      Offline checks: charts, Loki/OTel configs, CRD schemas, alerts, Terraform"
+	@echo "  make generic-pipeline-test OTel agent → gateway → Loki in Docker (tenancy, masking, spoofing)"
 	@echo
 	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
@@ -78,3 +83,12 @@ soft-tenancy-verify:
 
 soft-tenancy-clean:
 	soft-tenancy/99-cleanup.sh
+
+generic-render:
+	python3 generic/scripts/render-tenants.py
+
+generic-validate:
+	generic/scripts/validate.sh
+
+generic-pipeline-test:
+	generic/scripts/pipeline-test.sh

@@ -1,0 +1,3 @@
+# Overlays (environments/overlays/*.yaml) applied after values.yaml, one per line.
+# A test cluster without dedicated Loki node pools:
+# test-cluster.yaml

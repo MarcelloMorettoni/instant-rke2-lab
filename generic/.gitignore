@@ -1,0 +1,5 @@
+.cache/
+config.env
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/terraform.tfvars

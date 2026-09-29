@@ -1,0 +1,68 @@
+# OpenTelemetry Collector GATEWAY: a StatefulSet, 3 pods across zones.
+#
+# TEMPLATE: scripts/render-tenants.py adds the routing table, one exporter and
+# one pipeline per tenant, and writes it, as otelGateway.alternateConfig, into
+# rendered/values-tenants.yaml.
+#
+# The agents are the only clients (NetworkPolicy): obs.tenant is trusted here
+# because only the agents set it. Each tenant gets its own exporter with its
+# own PERSISTENT queue on the pod's disk, so:
+#   - one tenant over its Loki limit (429) only backs up its own queue;
+#   - the other tenants keep flowing;
+#   - a Loki outage is absorbed on disk (per tenant, up to queue_size).
+extensions:
+  health_check:
+    endpoint: ${env:MY_POD_IP}:13133
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    create_directory: true
+    compaction:
+      on_start: true
+      on_rebound: true
+      directory: /var/lib/otelcol/queue
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: ${env:MY_POD_IP}:4317
+        max_recv_msg_size_mib: 32
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  resource/internal:
+    attributes:
+      - {key: obs.tenant, action: delete}
+
+connectors:
+  routing:
+    default_pipelines: [logs/unassigned]
+    table: []                          # @@ROUTES@@
+
+exporters: {}                          # @@EXPORTERS@@ one otlp_http/<tenant> each, like:
+#  otlp_http/payments:
+#    endpoint: http://loki-distributor.loki.svc.cluster.local:3100/otlp
+#    headers: {X-Scope-OrgID: payments}
+#    sending_queue: {storage: file_storage, sizer: bytes, queue_size: ...}
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: ${env:MY_POD_IP}
+                port: 8888
+  pipelines:
+    logs/in:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [routing]
+    # @@PIPELINES@@ logs/<tenant>: routing → resource/internal → otlp_http/<tenant>

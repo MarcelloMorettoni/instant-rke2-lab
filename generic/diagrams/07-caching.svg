@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="600" viewBox="0 0 1400 600" role="img" aria-labelledby="t">
+<title id="t">Caching: on the read path only, and never the source of truth</title>
+<defs><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker></defs>
+<rect x="0.5" y="0.5" width="1399" height="599" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Caching: on the read path only, and never the source of truth</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">Three caches make repeated and dashboard queries cheap. Losing any of them costs speed, never data.</text>
+<rect x="32" y="110" width="200" height="150" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="46" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">Grafana</text>
+<text x="46" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">dashboard refresh,</text>
+<text x="46" y="171" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Explore query</text>
+<rect x="272" y="110" width="220" height="150" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="286" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Query frontend</text>
+<text x="286" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">splits by 1 h, shards</text>
+<text x="286" y="171" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="286" y="188" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">asks the RESULTS cache</text>
+<text x="286" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">first</text>
+<rect x="532" y="110" width="200" height="150" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="546" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Queriers</text>
+<text x="546" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">run what the</text>
+<text x="546" y="171" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">results cache</text>
+<text x="546" y="188" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">didn&#x27;t have</text>
+<rect x="772" y="110" width="250" height="150" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="786" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Index gateways ×3</text>
+<text x="786" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">TSDB index on local</text>
+<text x="786" y="171" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">disk (50 Gi each)</text>
+<text x="786" y="188" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="786" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">queriers don&#x27;t each</text>
+<text x="786" y="222" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">download the index</text>
+<rect x="1062" y="110" width="306" height="150" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="1076" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Azure Blob Storage</text>
+<text x="1076" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">the source of truth</text>
+<text x="1076" y="171" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1076" y="188" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">every chunk and index file</text>
+<text x="1076" y="205" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="1076" y="222" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">per-GB read cost in Cool/Cold</text>
+<path d="M232,185 L272,185" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M492,185 L532,185" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M732,185 L772,185" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M1022,185 L1062,185" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<rect x="272" y="300" width="220" height="128" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="286" y="324" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#075985" text-anchor="start">Results cache</text>
+<text x="286" y="344" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">memcached ×2, 2 GB each</text>
+<text x="286" y="361" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">per query slice, 12 h</text>
+<text x="286" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="286" y="395" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">hits: dashboards, re-runs</text>
+<rect x="532" y="300" width="490" height="128" rx="10" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.5"/>
+<text x="546" y="324" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#075985" text-anchor="start">Chunks cache</text>
+<text x="546" y="344" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">memcached ×3 (one per zone), 8 GB each = 24 GB</text>
+<text x="546" y="361" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">compressed chunks, as fetched from Blob</text>
+<text x="546" y="378" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start"></text>
+<text x="546" y="395" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">hits: the last hours/days, the queries everyone runs</text>
+<path d="M382,260 L382,300" fill="none" stroke="#4338CA" stroke-width="2" marker-start="url(#ah4338CA)" marker-end="url(#ah4338CA)"/>
+<path d="M632,260 L632,300" fill="none" stroke="#4338CA" stroke-width="2" marker-start="url(#ah4338CA)" marker-end="url(#ah4338CA)"/>
+<path d="M1022,364 L1215,364 L1215,260" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<text x="1150" y="356" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#4338CA" text-anchor="middle">on miss</text>
+<rect x="32" y="452" width="1336" height="24" fill="#F1F5F9" stroke="#E2E8F0"/>
+<text x="44" y="468" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">Question</text>
+<text x="330" y="468" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#475569" text-anchor="start">Answer</text>
+<rect x="32" y="476" width="1336" height="24" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="492" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">Why no cache on the write path?</text>
+<text x="330" y="492" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">A write cache is a buffer: the agent/gateway queues and the Loki WAL already are. No second copy to lose.</text>
+<rect x="32" y="500" width="1336" height="24" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="516" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">Why memcached, not Redis?</text>
+<text x="330" y="516" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Loki&#x27;s recommended, tested cache; chart-managed; no persistence needed. Redis adds nothing here.</text>
+<rect x="32" y="524" width="1336" height="24" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="540" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">What if a cache dies?</text>
+<text x="330" y="540" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Queries go to Blob: slower and a bit more read cost for a while. No data loss, no errors.</text>
+<rect x="32" y="548" width="1336" height="24" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="564" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">Is tenant data isolated in cache?</text>
+<text x="330" y="564" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Keys include the tenant ID; only Loki pods can reach memcached (NetworkPolicy).</text>
+<rect x="32" y="572" width="1336" height="24" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="588" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">When to grow it?</text>
+<text x="330" y="588" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Chunks-cache hit rate &lt; 80 %, or Blob read costs rising: add replicas or memory.</text>
+</svg>
