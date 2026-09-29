@@ -91,6 +91,12 @@ spec:
     {{- if .Values.network.internetEgress443 }}
     {{- include "lp.internet443" . | nindent 4 }}
     {{- end }}
+    {{- with .Values.network.identityProviderCidrs }}
+    - to:                                   # Keycloak / OIDC provider on a private address
+        {{- include "lp.cidrs" . | nindent 8 }}
+      ports:
+        - {port: 443, protocol: TCP}
+    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

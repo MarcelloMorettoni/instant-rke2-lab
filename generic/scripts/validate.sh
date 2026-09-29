@@ -34,6 +34,26 @@ helm template log-platform charts/log-platform -n loki --kube-version 1.33.0 \
 helm template log-platform charts/log-platform -n loki --kube-version 1.33.0 \
   "${ENV_VALUES[@]}" -f environments/overlays/test-cluster.yaml -f rendered/values-tenants.yaml > "${OUT}/platform-test.yaml"
 ok "charts render ($(grep -c '^kind:' "${OUT}/platform.yaml") platform objects)"
+# Every sign-in provider renders; each missing setting fails with its message.
+for args in "entra" \
+            "keycloak --set auth.keycloak.url=https://sso.example --set auth.keycloak.realm=bank" \
+            "oidc --set auth.oidc.clientId=g --set auth.oidc.authUrl=https://i/a --set auth.oidc.tokenUrl=https://i/t --set auth.oidc.apiUrl=https://i/u" \
+            "disabled"; do
+  # shellcheck disable=SC2086
+  helm template log-platform charts/log-platform -n loki "${ENV_VALUES[@]}" -f rendered/values-tenants.yaml \
+    --set auth.provider=${args} >/dev/null || die "auth.provider ${args%% *} does not render"
+done
+expect_fail() {  # expect_fail "<message part>" <helm args...>
+  local msg=$1; shift
+  helm template log-platform charts/log-platform -n loki "${ENV_VALUES[@]}" -f rendered/values-tenants.yaml "$@" \
+    >/dev/null 2>"${OUT}/err" && die "expected a failure ($msg), but it rendered"
+  grep -q "$msg" "${OUT}/err" || { cat "${OUT}/err"; die "wrong failure, expected: $msg"; }
+}
+expect_fail "auth.provider \"ldap\"" --set auth.provider=ldap
+expect_fail "needs auth.keycloak.url" --set auth.provider=keycloak
+expect_fail "needs auth.entra.tenantId" --set auth.provider=entra --set auth.entra.tenantId=
+expect_fail "is not a tenant view" --set auth.provider=disabled --set "auth.mock.users[0].login=zed" --set "auth.mock.users[0].org=nope" --set "auth.mock.users[0].role=Editor"
+ok "sign-in: entra, keycloak, oidc and disabled render; missing settings are refused"
 
 log "3/7 Loki config and per-tenant limits in ${LOKI_IMAGE}"
 python3 - "${OUT}" <<'PY'

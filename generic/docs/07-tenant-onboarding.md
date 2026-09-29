@@ -11,7 +11,8 @@ cluster, and no change needs Terraform.
 - namespaces (or the naming prefix);
 - tier;
 - data owner;
-- two Entra ID security groups (viewers, editors), created through the bank's IAM process.
+- two groups (viewers, editors) in the bank's identity provider, created through the IAM
+  process: Entra ID object IDs (`groups.entra`), and/or Keycloak/OIDC group names (`groups.oidc`).
 
 1. Add the entry:
    ```yaml
@@ -20,9 +21,13 @@ cluster, and no change needs Terraform.
      tier: silver
      status: active
      namespaces: treasury(-.+)?
-     entraGroups:
-       viewer: <object id of sg-obs-treasury-viewers>
-       editor: <object id of sg-obs-treasury-editors>
+     groups:
+       entra:
+         viewer: <object id of sg-obs-treasury-viewers>
+         editor: <object id of sg-obs-treasury-editors>
+       oidc:                                       # if a cluster uses Keycloak / OIDC
+         viewer: obs-treasury-viewers
+         editor: obs-treasury-editors
    ```
 2. Check the mapping, then render:
    ```bash
@@ -58,7 +63,7 @@ there. They are not moved.
 | Retention | `tier:` or `limits.retention_period` | next compactor run. **Shortening deletes data** |
 | Add a namespace pattern | `namespaces:` | step 30 (chart upgrade): the collectors roll out |
 | Cross-tenant read | `alsoRead:` | step 30 (chart upgrade): the view's header changes |
-| Groups | `entraGroups:` | step 30 (chart upgrade): Grafana restarts, users re-map at next login |
+| Groups | `groups:` | step 30 (chart upgrade): Grafana restarts, users re-map at next login |
 
 ## Suspend a tenant
 

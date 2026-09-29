@@ -32,8 +32,9 @@ Once per environment, in this order:
    \c grafana
    GRANT ALL ON SCHEMA public TO grafana;
    ```
-5. **Entra app registration** for Grafana ([02](02-tenancy-and-access.md#entra-id-app-registration));
-   its secret goes into Key Vault as `grafana-entra-client-secret`.
+5. **Sign-in provider** for Grafana ([02](02-tenancy-and-access.md#sign-in-to-grafana-authprovider)): the Entra app registration or the Keycloak client;
+   its secret goes into Key Vault as `grafana-entra-client-secret` or `grafana-oidc-client-secret`
+   (not needed with `auth.provider: disabled`, the mock for test clusters).
 6. **Fill in `environments/<env>/`** ([09 · Helm charts](09-helm-charts.md)):
    - `values.yaml`: registry, cluster name, CIDRs, zone names, hostnames, Entra IDs;
    - `cluster.env`: the kubectl context;
@@ -171,14 +172,20 @@ scripts/tenant-keys.sh --rotate payments
 This writes the new key to Key Vault, forces the External Secrets refresh, and updates the
 org's data source. Expect a few seconds of 401 for that org.
 
-### Rotate the Grafana break-glass password
+### The local admin's password
 
-After every use:
+The first thing to do after an install: sign in at `https://<grafana>/login?disableAutoLogin=true`
+as `admin` / `change-me-now` (or the Key Vault password with `auth.admin.fromKeyVault`), then
+change the password under profile → change password. The chart never resets it.
+
+If the admin password is lost, the automation account can set a new one:
 
 ```bash
-az keyvault secret set --vault-name kv-obs-prod-weu --name grafana-admin-password --file <(openssl rand -hex 24)
-kubectl -n grafana annotate externalsecret grafana-admin force-sync=$(date +%s) --overwrite
-kubectl -n grafana exec deploy/grafana -- grafana cli admin reset-admin-password "$(kubectl -n grafana get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d)"
+auto="$(kubectl -n grafana get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d)"
+kubectl -n grafana port-forward svc/grafana 3000:80 &
+id="$(curl -s -u "grafana-sync:${auto}" 'http://127.0.0.1:3000/api/users/lookup?loginOrEmail=admin' | jq .id)"
+curl -s -u "grafana-sync:${auto}" -X PUT -H 'Content-Type: application/json' \
+  "http://127.0.0.1:3000/api/admin/users/${id}/password" -d '{"password":"<new password>"}'
 ```
 
 ### Deletion requests

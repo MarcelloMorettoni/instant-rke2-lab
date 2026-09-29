@@ -23,3 +23,33 @@
 {{- if and .Values.grafanaAccess.enabled (not .Values.grafanaAccess.hostname) }}
 {{- fail "grafanaAccess.hostname is required when grafanaAccess.enabled" }}
 {{- end }}
+{{- $p := .Values.auth.provider }}
+{{- if not (has $p (list "entra" "keycloak" "oidc" "disabled")) }}
+{{- fail (printf "auth.provider %q: use entra, keycloak, oidc or disabled" $p) }}
+{{- end }}
+{{- if and (eq $p "entra") (or (not .Values.auth.entra.tenantId) (not .Values.auth.entra.clientId)) }}
+{{- fail "auth.provider entra needs auth.entra.tenantId and auth.entra.clientId" }}
+{{- end }}
+{{- if and (eq $p "keycloak") (or (not .Values.auth.keycloak.url) (not .Values.auth.keycloak.realm) (not .Values.auth.keycloak.clientId)) }}
+{{- fail "auth.provider keycloak needs auth.keycloak.url, .realm and .clientId" }}
+{{- end }}
+{{- if and (eq $p "oidc") (or (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.authUrl) (not .Values.auth.oidc.tokenUrl) (not .Values.auth.oidc.apiUrl)) }}
+{{- fail "auth.provider oidc needs auth.oidc.clientId, .authUrl, .tokenUrl and .apiUrl" }}
+{{- end }}
+{{- if and (ne $p "disabled") (not (index .Values.grafanaOrgMapping (ternary "entra" "oidc" (eq $p "entra"))).orgMapping) }}
+{{- fail (printf "auth.provider %s: no groups for it in tenants.yaml (groups.%s), so nobody could log in" $p (ternary "entra" "oidc" (eq $p "entra"))) }}
+{{- end }}
+{{- if and (ne $p "disabled") (not (index .Values.grafana "grafana.ini" "server" "root_url")) }}
+{{- fail "grafana.grafana.ini.server.root_url is required for SSO (the redirect URI)" }}
+{{- end }}
+{{- if eq $p "disabled" }}
+{{- $orgs := list }}{{- range .Values.grafanaOrgs }}{{- $orgs = append $orgs .org }}{{- end }}
+{{- range .Values.auth.mock.users }}
+{{- if not (has .org $orgs) }}
+{{- fail (printf "auth.mock.users: %s's org %q is not a tenant view (tenants.yaml, active)" .login .org) }}
+{{- end }}
+{{- if not (has .role (list "Viewer" "Editor")) }}
+{{- fail (printf "auth.mock.users: %s's role must be Viewer or Editor" .login) }}
+{{- end }}
+{{- end }}
+{{- end }}

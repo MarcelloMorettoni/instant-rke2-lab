@@ -74,6 +74,26 @@ Other things to know:
 - If the proxy needs credentials, add `imagePullSecrets` per chart, or better, configure
   AKS to authenticate to it (kubelet identity / ACR connected registry).
 
+## Sign-in provider
+
+```yaml
+auth:
+  provider: entra        # entra | keycloak | oidc | disabled (mock: alice, bob, carol + admin)
+  admin:                 # a local admin in EVERY mode (server admin, every tenant)
+    user: admin
+    password: change-me-now   # initial only; change it at first login
+  mock:
+    password: change-me-now   # initial password of the mock users
+```
+
+**The local admin exists in every mode, with the default password `change-me-now` until
+someone changes it.** Change it right after the install. `helm install` NOTES and
+`smoke-test.sh` warn while it's still the default.
+
+The settings each provider needs, the Keycloak client setup, and the mock users are in
+[02 · Sign-in to Grafana](02-tenancy-and-access.md#sign-in-to-grafana-authprovider). The
+chart refuses to render if a provider's required settings are missing.
+
 ## Commands
 
 ```bash
@@ -137,8 +157,25 @@ and also with the test-cluster overlay), then:
 - loads the Loki config and every tenant's limits into Loki 3.6.11;
 - loads both collector configs into `otelcol-contrib` 0.160.0;
 - validates all 33 custom resources against their CRD schemas;
+- renders every `auth.provider`, and checks that each missing setting is refused;
 - runs `promtool` on the alerts;
 - runs Terraform `validate` and `test`.
 
 The test-cluster overlay was also checked by inspecting the rendered pods: none requires the
 dedicated node pool, and the ingesters stay pinned to their zones.
+
+`scripts/auth-test.sh` starts the chart's Grafana image with each provider's rendered
+settings and accounts, and runs the real `grafana-sync` code against it (36 checks):
+- **Every mode**: `admin` / `change-me-now` signs in, is server admin, and is Admin of the
+  platform org. The password form is at `/login?disableAutoLogin=true`, and the sync runs as
+  its own automation account.
+- **`entra` and `keycloak`**: Grafana redirects to the right endpoint with the client ID,
+  PKCE and scopes.
+- **`disabled`**:
+  - alice, bob and carol (`change-me-now`) are each in exactly their org, and can't read
+    another org's data source;
+  - passwords changed by the admin and by alice survive the next sync run;
+  - the sync keeps working after the admin changed its password.
+
+What needs a real identity provider: a real login, and the check that group membership in the
+token maps to the right org.

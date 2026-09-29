@@ -4,8 +4,16 @@ For every entry in /config/orgs.json:
   - ensure a Grafana org named after the view (the tenant id, or "platform");
   - ensure ONE Loki data source (uid loki-<view>) pointing at that view on the
     read gateway, with the view's current key from Key Vault (/keys/obs-key-<view>).
-Users are not created here: Entra ID group membership maps them to orgs.
-Idempotent. Never prints a key. Exits non-zero if any org failed.
+Local people (/config/users.json):
+  - the admin (every mode): created once with its INITIAL password, made Grafana
+    server admin and Admin of the platform org (every tenant);
+  - the mock users (auth.provider: disabled): created once with their initial
+    password, each a member of exactly its own org.
+Passwords are set ONLY when a user is created, never reset: a password someone
+changed in Grafana stays changed. SSO users are mapped to orgs by group at login.
+This job signs in as the automation account (GF_ADMIN_*), not as the admin, so
+changing the admin's password never breaks it.
+Idempotent. Never prints a key or a password. Exits non-zero if anything failed.
 """
 import base64
 import json
@@ -47,6 +55,72 @@ def wait_for_grafana():
     sys.exit("grafana not reachable")
 
 
+def org_id(name):
+    status, body = api("GET", f"/api/orgs/name/{name}")
+    return body.get("id") if status == 200 else None
+
+
+def initial_password(login):
+    for path in (f"/local/{login}", "/breakglass/password"):
+        if os.path.exists(path):
+            return open(path).read().strip()
+    return None
+
+
+def ensure_user(login, org=None):
+    """Create the user if missing (with its initial password). Returns its id."""
+    status, body = api("GET", f"/api/users/lookup?loginOrEmail={login}")
+    if status == 200:
+        return body.get("id"), False
+    password = initial_password(login)
+    if not password:
+        print(f"user {login}: no initial password (Secret grafana-local-users / grafana-breakglass)")
+        return None, False
+    body = {"name": login, "login": login, "email": f"{login}@local", "password": password}
+    if org:
+        body["OrgId"] = org
+    status, body = api("POST", "/api/admin/users", body)
+    return body.get("id"), True
+
+
+def set_membership(uid, login, org, role, only=False):
+    if api("POST", f"/api/orgs/{org}/users", {"loginOrEmail": login, "role": role})[0] >= 400:
+        api("PATCH", f"/api/orgs/{org}/users/{uid}", {"role": role})
+    api("POST", f"/api/users/{uid}/using/{org}")
+    if only and org != 1:
+        api("DELETE", f"/api/orgs/1/users/{uid}")
+
+
+def sync_local_users():
+    """The admin and the mock users. Returns the number of failures."""
+    try:
+        local = json.load(open("/config/users.json"))
+    except (OSError, ValueError):
+        return 0
+    failed = 0
+    for u in local.get("users") or []:
+        login, org_name, role = u["login"], u["org"], u["role"]
+        org = org_id(org_name)
+        uid, created = ensure_user(login, org)
+        if not (uid and org):
+            print(f"mock user {login}: failed (org {org_name} exists: {bool(org)})")
+            failed += 1
+            continue
+        set_membership(uid, login, org, role, only=True)
+        print(f"mock user {login}: {role} in org {org_name}{' (created)' if created else ''}")
+    admin = local.get("admin")
+    if admin:
+        uid, created = ensure_user(admin)
+        platform = org_id("platform")
+        if not (uid and platform):
+            print(f"admin {admin}: failed")
+            return failed + 1
+        api("PUT", f"/api/admin/users/{uid}/permissions", {"isGrafanaAdmin": True})
+        set_membership(uid, admin, platform, "Admin")
+        print(f"admin {admin}: server admin, Admin in org platform{' (created)' if created else ''}")
+    return failed
+
+
 def main():
     wait_for_grafana()
     orgs = json.load(open("/config/orgs.json"))
@@ -80,6 +154,7 @@ def main():
             failed += 1
             continue
         print(f"org {view} (id {org}): Loki -> {GATEWAY}/{view} [{', '.join(o['tenants'])}]")
+    failed += sync_local_users()
     status, main_ds = api("GET", "/api/datasources", org=1)
     if status == 200 and main_ds:
         print(f"WARNING: Main Org has {len(main_ds)} data source(s); unmapped logins land there")

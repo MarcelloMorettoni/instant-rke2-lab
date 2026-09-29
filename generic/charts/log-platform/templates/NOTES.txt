@@ -7,6 +7,18 @@ Log platform installed ({{ .Values.global.clusterName }}).
   {{ len .Values.readViews }} read views, {{ len .Values.grafanaOrgs }} Grafana orgs.
   Images from: {{ default "the upstream registries" .Values.global.imageRegistry }}
 
+Sign-in: {{ .Values.auth.provider }}{{ if eq .Values.auth.provider "disabled" }} (MOCK, test only){{ end }}
+  Local admin: {{ .Values.auth.admin.user }} (server admin, every tenant), at /login?disableAutoLogin=true
+{{- if and (not .Values.auth.admin.fromKeyVault) (eq .Values.auth.admin.password "change-me-now") }}
+  !! Its initial password is the DEFAULT "change-me-now". Change it now: anyone who
+  !! can reach Grafana can sign in as admin until you do.
+{{- end }}
+{{- if eq .Values.auth.provider "disabled" }}
+  Mock users: {{ range .Values.auth.mock.users }}{{ .login }} → {{ .org }}; {{ end }}
+{{- if eq .Values.auth.mock.password "change-me-now" }} initial password "change-me-now".{{ end }}
+{{- end }}
+  Initial passwords: kubectl -n grafana get secret grafana-local-users -o jsonpath='{.data.<login>}' | base64 -d
+
 Next:
   kubectl -n grafana create job --from=cronjob/grafana-sync grafana-sync-now
   scripts/smoke-test.sh

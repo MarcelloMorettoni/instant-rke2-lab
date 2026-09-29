@@ -1,0 +1,117 @@
+{{- /*
+Sign-in to Grafana, from the top-level `auth:` values. Grafana reads these
+GF_<SECTION>_<KEY> variables at startup; they override grafana.ini.
+scripts/install.sh restarts Grafana when this ConfigMap changes.
+*/ -}}
+{{- $a := .Values.auth }}
+{{- $p := $a.provider }}
+{{- $rootUrl := trimSuffix "/" (index .Values.grafana "grafana.ini" "server" "root_url") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-auth
+  namespace: grafana
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    obs.platform/auth-provider: {{ $p }}
+data:
+  GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: {{ $a.sessionMaxLifetime | quote }}
+  GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: {{ $a.sessionMaxInactive | quote }}
+  # Basic auth: grafana-sync's automation account, and the local users.
+  GF_AUTH_BASIC_ENABLED: "true"
+  GF_AUTH_AZUREAD_ENABLED: {{ eq $p "entra" | quote }}
+  GF_AUTH_GENERIC_OAUTH_ENABLED: {{ or (eq $p "keycloak") (eq $p "oidc") | quote }}
+  # Password form: for the local admin (and the mock users). With SSO and
+  # autoLogin, people are sent to the provider; the form is at
+  # /login?disableAutoLogin=true.
+  GF_AUTH_DISABLE_LOGIN_FORM: {{ not (or $a.localLogin (eq $p "disabled")) | quote }}
+{{- if eq $p "entra" }}
+{{- $m := .Values.grafanaOrgMapping.entra }}
+  GF_AUTH_AZUREAD_NAME: {{ $a.displayName | quote }}
+  GF_AUTH_AZUREAD_AUTO_LOGIN: {{ $a.autoLogin | quote }}
+  GF_AUTH_AZUREAD_ALLOW_SIGN_UP: "true"
+  GF_AUTH_AZUREAD_CLIENT_ID: {{ $a.entra.clientId | quote }}
+  GF_AUTH_AZUREAD_SCOPES: "openid email profile"
+  GF_AUTH_AZUREAD_AUTH_URL: {{ printf "https://login.microsoftonline.com/%s/oauth2/v2.0/authorize" $a.entra.tenantId | quote }}
+  GF_AUTH_AZUREAD_TOKEN_URL: {{ printf "https://login.microsoftonline.com/%s/oauth2/v2.0/token" $a.entra.tenantId | quote }}
+  GF_AUTH_AZUREAD_ALLOWED_ORGANIZATIONS: {{ $a.entra.tenantId | quote }}
+  GF_AUTH_AZUREAD_USE_PKCE: "true"
+  GF_AUTH_AZUREAD_USE_REFRESH_TOKEN: "true"
+  GF_AUTH_AZUREAD_SKIP_ORG_ROLE_SYNC: "false"
+  GF_AUTH_AZUREAD_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+  # Entra group object ID → org + role; only members of mapped groups may log in.
+  GF_AUTH_AZUREAD_ORG_MAPPING: {{ $m.orgMapping | quote }}
+  GF_AUTH_AZUREAD_ALLOWED_GROUPS: {{ $m.allowedGroups | quote }}
+{{- else if or (eq $p "keycloak") (eq $p "oidc") }}
+{{- $m := .Values.grafanaOrgMapping.oidc }}
+{{- $c := $a.oidc }}
+{{- $auth := $c.authUrl }}{{- $token := $c.tokenUrl }}{{- $api := $c.apiUrl }}{{- $logout := $c.signoutRedirectUrl }}
+{{- if eq $p "keycloak" }}
+{{- $c = $a.keycloak }}
+{{- $base := printf "%s/realms/%s/protocol/openid-connect" (trimSuffix "/" $a.keycloak.url) $a.keycloak.realm }}
+{{- $auth = printf "%s/auth" $base }}{{- $token = printf "%s/token" $base }}{{- $api = printf "%s/userinfo" $base }}
+{{- $logout = printf "%s/logout?client_id=%s&post_logout_redirect_uri=%s" $base $a.keycloak.clientId (urlquery (printf "%s/login" $rootUrl)) }}
+{{- end }}
+  GF_AUTH_GENERIC_OAUTH_NAME: {{ $a.displayName | quote }}
+  GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: {{ $a.autoLogin | quote }}
+  GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+  GF_AUTH_GENERIC_OAUTH_CLIENT_ID: {{ $c.clientId | quote }}
+  GF_AUTH_GENERIC_OAUTH_SCOPES: {{ $c.scopes | quote }}
+  GF_AUTH_GENERIC_OAUTH_AUTH_URL: {{ $auth | quote }}
+  GF_AUTH_GENERIC_OAUTH_TOKEN_URL: {{ $token | quote }}
+  GF_AUTH_GENERIC_OAUTH_API_URL: {{ $api | quote }}
+  {{- with $logout }}
+  GF_AUTH_SIGNOUT_REDIRECT_URL: {{ . | quote }}
+  {{- end }}
+  GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+  GF_AUTH_GENERIC_OAUTH_USE_REFRESH_TOKEN: "true"
+  GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: {{ $a.claims.login | quote }}
+  GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH: {{ $a.claims.email | quote }}
+  GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: {{ $a.claims.name | quote }}
+  GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH: {{ $a.claims.groups | quote }}
+  GF_AUTH_GENERIC_OAUTH_ORG_ATTRIBUTE_PATH: {{ $a.claims.groups | quote }}
+  GF_AUTH_GENERIC_OAUTH_SKIP_ORG_ROLE_SYNC: "false"
+  GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+  # Group name → org + role; only members of mapped groups may log in.
+  GF_AUTH_GENERIC_OAUTH_ORG_MAPPING: {{ $m.orgMapping | quote }}
+  GF_AUTH_GENERIC_OAUTH_ALLOWED_GROUPS: {{ $m.allowedGroups | quote }}
+{{- end }}
+{{- /* Local accounts. Existing passwords are kept across upgrades (lookup). */ -}}
+{{- $local := (lookup "v1" "Secret" "grafana" "grafana-local-users").data | default dict }}
+{{- $auto := (lookup "v1" "Secret" "grafana" "grafana-admin").data | default dict }}
+---
+# Grafana's built-in admin = the automation account used only by grafana-sync.
+# Random password, never shown to people.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin
+  namespace: grafana
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+type: Opaque
+data:
+  admin-user: {{ "grafana-sync" | b64enc | quote }}
+  admin-password: {{ index $auto "admin-password" | default (randAlphaNum 32 | b64enc) | quote }}
+---
+# INITIAL passwords of the local people: the admin (unless it comes from Key
+# Vault) and, in mock mode, the mock users. grafana-sync sets them only when it
+# creates the user; changing a password in Grafana is permanent.
+#   kubectl -n grafana get secret grafana-local-users -o jsonpath='{.data.admin}' | base64 -d
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-local-users
+  namespace: grafana
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+type: Opaque
+data:
+  {{- if not $a.admin.fromKeyVault }}
+  {{ $a.admin.user }}: {{ $a.admin.password | default (randAlphaNum 24) | b64enc | quote }}
+  {{- end }}
+  {{- if eq $p "disabled" }}
+  {{- range $u := $a.mock.users }}
+  {{ $u.login }}: {{ $a.mock.password | default (index $local $u.login | default "" | b64dec) | default (randAlphaNum 24) | b64enc | quote }}
+  {{- end }}
+  {{- end }}

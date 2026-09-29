@@ -13,7 +13,7 @@ membership (IAM process) or the gateway's config. Those are what the design trus
 | Loki (write) | who can connect | NetworkPolicy: only the OTel gateway (ns `otel`) reaches the distributors |
 | Loki (read) | `X-Scope-OrgID` | set by the gateway view, never by the caller |
 | Gateway view | per-view key | kgateway `apiKeyAuth`, key only in Key Vault → Grafana |
-| Grafana org | Entra ID group object IDs | `org_mapping` + `allowed_groups` (generated) |
+| Grafana org | identity-provider group (Entra object ID, or Keycloak/OIDC group name) | `org_mapping` + `allowed_groups` (generated per provider) |
 | Grafana data source | org membership | one data source per org, users never org Admin |
 
 ## The tenant registry
@@ -41,9 +41,9 @@ A tenant entry:
   namespaces: cards(-.+)?        # RE2, full match: cards, cards-batch, cards-uat...
   alsoRead: [shared-services]    # optional: cross-tenant READ access
   limits: {ingestion_rate_mb: 40}  # optional: override one tier value
-  entraGroups:
-    viewer: <group object id>
-    editor: <group object id>
+  groups:                        # who signs in to this tenant's org, per identity provider
+    entra: {viewer: <group object id>, editor: <group object id>}
+    oidc:  {viewer: obs-cards-viewers, editor: obs-cards-editors}   # Keycloak / OIDC group names
 ```
 
 ### Special tenants
@@ -69,41 +69,130 @@ namespaces and how they are named:
   doesn't match its `tenant` label, as in the lab's
   [`01-namespaces/namespace-guard.yaml`](../../soft-tenancy/01-namespaces/namespace-guard.yaml).
 
-## Access model in Grafana
+## Sign-in to Grafana: `auth.provider`
 
-- **Login**: Entra ID only (`[auth.azuread]`), PKCE, restricted to the bank's
-  Entra tenant (`allowed_organizations`). Only members of a **mapped** group can
-  log in (`allowed_groups`, generated).
-- **Org and role**: from group membership (`org_mapping`, generated):
-  `<viewer-group>:<tenant>:Viewer` and `<editor-group>:<tenant>:Editor`.
-  A person in several tenants' groups is a member of several orgs and switches between them.
-- **Nobody becomes org Admin or server admin through SSO**
-  (`allow_assign_grafana_admin = false`). An org Admin can edit data sources. Even
-  then they would need another view's key, which only Key Vault and the
-  gateway have.
-- **Main Org** (id 1) is where unmapped logins would land. It has no data
-  sources, and the `grafana-sync` job warns if it ever gets one.
-- **Break-glass**: the local `platform-breakglass` admin (password in Key Vault),
-  used only over `kubectl port-forward`. Rotate the password after every use.
+One chart setting selects the identity provider:
 
-### Entra ID app registration
+| `auth.provider` | Sign-in | Users land in their org by | For |
+|---|---|---|---|
+| `entra` (default) | Microsoft Entra ID | Entra security groups: `groups.entra` (object IDs) | production |
+| `keycloak` | Keycloak realm (OIDC) | the token's groups claim: `groups.oidc` (names) | banks with Keycloak as IAM, or brokering several IdPs |
+| `oidc` | any other OIDC provider, with explicit endpoints | the groups claim: `groups.oidc` | other IdPs |
+| `disabled` | **mock**: no identity provider, local users | fixed users (`auth.mock`) | **test clusters only** |
+
+The chart turns `auth:` into ConfigMap `grafana/grafana-auth` (Grafana's `GF_AUTH_*`
+settings) and adds the client secret to `grafana-env` from Key Vault. `install.sh` restarts
+Grafana when those settings change.
+
+Whatever the provider, the rules stay the same:
+- **Only members of a mapped group can log in** (`allowed_groups`).
+- **The org and role come from group membership** (`org_mapping`, generated from `tenants.yaml`).
+- **Nobody becomes Grafana server admin through sign-in.** Tenant users are Viewer or Editor,
+  never org Admin: an Admin could add a data source, but would still need another view's key.
+- **Main Org** (id 1) has no data sources, so a stray login sees nothing. `grafana-sync`
+  warns if Main Org ever gets a data source.
+- **The tenant is never taken from the token**: the read gateway's per-view key decides it.
+  Switching providers doesn't change the isolation.
+- **A local admin exists in every mode**: `admin`, initial password **`change-me-now`**
+  (`auth.admin`).
+  - It signs in with the password form at `/login?disableAutoLogin=true`; normal users are
+    sent straight to SSO.
+  - It is Grafana server admin, and Admin of the platform org, which reads every tenant.
+  - `grafana-sync` creates it once and **never resets its password**. Change the password at
+    first login; it stays changed.
+  - **Until it's changed, anyone who can reach Grafana can sign in as server admin.** The chart
+    NOTES and `smoke-test.sh` warn while the default is still active.
+  - `auth.admin.fromKeyVault: true` takes the initial password from Key Vault
+    (`grafana-admin-password`) instead.
+  - `auth.localLogin: false` hides the form (the admin can then only use the API).
+- **Automation account**: `grafana-sync` signs in as its own account, Grafana's built-in admin
+  `grafana-sync`, whose random password is in Secret `grafana-admin`. Changing the human
+  admin's password therefore never breaks the sync.
+
+### Entra ID (`auth.provider: entra`)
+
+```yaml
+auth:
+  provider: entra
+  entra:
+    tenantId: <directory (tenant) ID>
+    clientId: <application (client) ID>
+```
 
 1. Create an app registration "Grafana observability" with redirect URI
-   `https://grafana.obs.bank.internal/login/azuread`.
-2. **Token configuration → groups claim → "Groups assigned to the application"**.
-   This avoids the >200-group overage problem, where the token carries no groups at all.
-3. **Enterprise application → Assignment required = Yes**, and assign every
-   `sg-obs-*` group. Only assigned users can get a token.
-4. Client secret or certificate → Key Vault secret `grafana-entra-client-secret`.
-5. Put the application (client) ID and tenant ID in `environments/<env>/values.yaml` (`grafana.grafana.ini.auth.azuread`).
+   `https://<grafana host>/login/azuread`.
+2. **Token configuration → groups claim → "Groups assigned to the application"**. This avoids
+   the >200-group overage problem, where the token carries no groups at all.
+3. **Enterprise application → Assignment required = Yes**, and assign every `sg-obs-*` group.
+4. Store the client secret (or use a certificate) in Key Vault as `grafana-entra-client-secret`,
+   or the name set in `auth.clientSecretKeyVaultName`.
+5. Put the groups' object IDs into `tenants.yaml` under `groups.entra`.
 
-### Using Keycloak instead of (or in front of) Entra ID
+### Keycloak (`auth.provider: keycloak`)
 
-If the bank brokers Entra ID through Keycloak, replace `[auth.azuread]` with
-`[auth.generic_oauth]` pointed at the Keycloak realm, and emit a `groups` claim
-(or a `tenant` claim) from Keycloak. `org_mapping` works the same way
-([Grafana generic OAuth](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/generic-oauth/)).
-Nothing else changes: the gateway keys, not the user's token, decide the tenant.
+```yaml
+auth:
+  provider: keycloak
+  keycloak:
+    url: https://sso.bank.internal      # without /realms
+    realm: bank
+    clientId: grafana
+network:
+  identityProviderCidrs: [10.30.4.0/24]  # if Keycloak has a private address
+```
+
+1. In the realm, create client `grafana`:
+   - OpenID Connect, client authentication ON;
+   - standard flow only;
+   - PKCE S256;
+   - valid redirect URI `https://<grafana host>/login/generic_oauth`;
+   - valid post-logout redirect URI `https://<grafana host>/login`.
+2. Add a **"Group Membership" mapper** to the client: token claim name `groups`, **"Full group
+   path" OFF**, added to the ID token, access token and userinfo.
+3. Create one group per tenant and role (`obs-payments-viewers`, `obs-payments-editors`, ...),
+   and put the names into `tenants.yaml` under `groups.oidc`.
+4. Store the client secret in Key Vault as `grafana-oidc-client-secret`.
+
+If Keycloak brokers Entra ID, users still come from Entra, but Grafana sees Keycloak's groups.
+Map Entra groups to Keycloak groups in the identity provider's mappers.
+
+The chart derives the auth, token, userinfo and logout endpoints from `url` + `realm`. If
+Keycloak's certificate comes from the bank's internal CA, mount the CA into Grafana
+(`grafana.extraConfigmapMounts`) and set `grafana.grafana.ini.auth.generic_oauth.tls_client_ca`
+to its path.
+
+### Other OIDC providers (`auth.provider: oidc`)
+
+Same as Keycloak, with explicit endpoints: `auth.oidc.clientId`, `authUrl`, `tokenUrl`,
+`apiUrl` (userinfo) and, optionally, `signoutRedirectUrl`. If the provider names claims
+differently, set `auth.claims.groups`, `login`, `email` and `name` (JMESPath).
+
+### Mock (`auth.provider: disabled`): test clusters only
+
+No identity provider at all. The chart creates local users; `grafana-sync` makes each one a
+member of **exactly** its org:
+
+| Login | Initial password | Org | Role |
+|---|---|---|---|
+| `alice` | `change-me-now` | payments | Editor |
+| `bob` | `change-me-now` | cards | Editor |
+| `carol` | `change-me-now` | lending | Editor |
+| `admin` | `change-me-now` | platform (reads every tenant) | Admin; also Grafana server admin |
+
+- Passwords are **initial** passwords: set when `grafana-sync` creates the user, never reset.
+  Each person changes theirs in Grafana (profile → change password).
+- `auth.mock.password: ""` gives each mock user a random password instead, kept in Secret
+  `grafana/grafana-local-users`:
+  ```bash
+  kubectl -n grafana get secret grafana-local-users -o jsonpath='{.data.alice}' | base64 -d
+  ```
+- Change the users in `auth.mock.users`. The chart refuses a user whose org isn't an active
+  tenant.
+- Everything else stays real: the read gateway, the per-view keys, and the network isolation.
+  A mock user can only read its tenant's logs.
+
+**Never use `disabled` in production:** the passwords live in the cluster, and there is no
+MFA or central user lifecycle.
 
 ## Cross-tenant reading (`alsoRead`)
 

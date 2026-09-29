@@ -13,6 +13,9 @@ data:
   grafana-sync.py: |
     {{- .Files.Get "files/grafana-sync.py" | nindent 4 }}
   orgs.json: {{ .Values.grafanaOrgs | toJson | quote }}
+  # Local people: the admin (every mode) and the mock users (disabled mode).
+  # Logins, orgs and roles only; initial passwords are in Secrets.
+  users.json: {{ dict "admin" .Values.auth.admin.user "users" (ternary .Values.auth.mock.users (list) (eq .Values.auth.provider "disabled")) | toJson | quote }}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -35,7 +38,7 @@ spec:
           labels:
             app.kubernetes.io/name: grafana-sync
           annotations:
-            checksum/config: {{ printf "%s%s" (.Files.Get "files/grafana-sync.py") (toJson .Values.grafanaOrgs) | sha256sum }}
+            checksum/config: {{ printf "%s%s%s" (.Files.Get "files/grafana-sync.py") (toJson .Values.grafanaOrgs) (toJson .Values.auth.mock) (toJson .Values.auth.admin) | sha256sum }}
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
@@ -68,9 +71,19 @@ spec:
               volumeMounts:
                 - {name: config, mountPath: /config, readOnly: true}
                 - {name: keys, mountPath: /keys, readOnly: true}
+                - {name: local-users, mountPath: /local, readOnly: true}
+                {{- if .Values.auth.admin.fromKeyVault }}
+                - {name: breakglass, mountPath: /breakglass, readOnly: true}
+                {{- end }}
           volumes:
             - name: config
               configMap: {name: grafana-sync}
             - name: keys
               secret: {secretName: obs-gateway-keys, optional: true}
+            - name: local-users
+              secret: {secretName: grafana-local-users}
+            {{- if .Values.auth.admin.fromKeyVault }}
+            - name: breakglass
+              secret: {secretName: grafana-breakglass, optional: true}
+            {{- end }}
 {{- end }}

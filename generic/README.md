@@ -20,7 +20,7 @@ regulated environment.
 5. **Azure Blob Storage (GZRS)** holds everything: private endpoint only, no shared keys, CMK in an HSM Key Vault.
 6. **Entra Workload Identity**: no storage keys and no client secrets in the cluster.
 7. **Per-tenant limits and retention** (tiers: bronze/silver/gold) from the same registry, reloaded without restarts.
-8. **Grafana: one org per tenant**, Entra ID groups → org + role; users are Viewer or Editor, never Admin.
+8. **Grafana: one org per tenant**. Sign-in via `auth.provider`: Entra ID (default), Keycloak, any OIDC provider, or `disabled` (mock users alice/bob/carol for test clusters). Groups → org + role; users are Viewer or Editor, never Admin. A local `admin` exists in every mode, initial password **`change-me-now`**: change it after the install.
 9. **Read gateway (kgateway)**: one view per org, opened only by that org's key; it **sets** `X-Scope-OrgID`.
 10. **NetworkPolicies**: only the OTel gateway can push, only the read gateway can query, and tenants reach nothing but their node's agent.
 
@@ -43,7 +43,7 @@ regulated environment.
 | [`collector/`](collector/) | OTel agent + gateway config templates (the generator adds the tenants) |
 | [`alerts/`](alerts/) | Alert rules (Prometheus format → Azure managed Prometheus via Terraform) |
 | [`infra/terraform/`](infra/terraform/) | Azure: Blob, Key Vault + CMKs, identities, zonal node pools, PostgreSQL, alerts, diagnostics |
-| [`scripts/`](scripts/) | `install.sh <env>`, `validate.sh`, `render-tenants.py`, `render-images.py`, `images.sh`, `tenant-keys.sh`, `smoke-test.sh`, `pipeline-test.sh`, `kind-e2e.sh` |
+| [`scripts/`](scripts/) | `install.sh <env>`, `validate.sh`, `render-tenants.py`, `render-images.py`, `images.sh`, `tenant-keys.sh`, `smoke-test.sh`, `pipeline-test.sh`, `auth-test.sh`, `kind-e2e.sh` |
 
 ## Quick start
 
@@ -92,7 +92,13 @@ Onboarding a tenant afterwards: [docs/07-tenant-onboarding.md](docs/07-tenant-on
   Gateway API v1.6.1, External Secrets 2.11.0, Cilium 1.17 and the PodMonitor schema.
   Unknown fields count as errors.
 - The **alert rules** pass `promtool`.
-- The **grafana-sync** job was run against a mock Grafana API. It creates the orgs, is
+- **Sign-in** (`scripts/auth-test.sh`, a real Grafana 13.2.2 in Docker, 36 checks):
+  - Entra ID and Keycloak settings redirect correctly, with PKCE;
+  - the local `admin` (`change-me-now`) works in every mode;
+  - in mock mode, alice, bob and carol each see exactly their org, and admin sees every
+    tenant;
+  - changed passwords are never reset.
+- The **grafana-sync** job was also run against a mock Grafana API. It creates the orgs, is
   idempotent, sets the correct view URL and key per org, flags a missing key, and never prints a key.
 - **Terraform** passes `validate` and a mocked `terraform test` plan with azurerm 4.81.
 

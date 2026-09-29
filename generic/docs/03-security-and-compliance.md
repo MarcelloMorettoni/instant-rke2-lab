@@ -107,6 +107,7 @@ numbers. `docs/06` shows how to test a pattern.
 | Risk | Note |
 |---|---|
 | Platform admins can read everything | By design (the platform view, and cluster-admin). Control with PIM for AKS admin roles, and audit the gateway log. |
+| **Default local admin password** | `admin` / `change-me-now` exists in every mode (`auth.admin`). Until someone changes it, anyone who can reach Grafana's internal load balancer can sign in as server admin. Change it at first login, and keep `network.grafanaClientCidrs` narrow. For production, use `auth.admin.fromKeyVault: true` or `auth.localLogin: false`. NOTES and the smoke test warn while the default is still active. |
 | Shared nodes | Loki runs on dedicated tainted pools; tenants' pods share nodes with the OTel agent only. Soft tenancy: see the lab's "limits" section. |
 | Masking misses a format | Defence in depth only; the application must not log secrets. |
 | In-cluster traffic unencrypted | Decide per policy; see "In transit" above. |

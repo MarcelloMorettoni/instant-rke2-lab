@@ -1,6 +1,6 @@
-# ADR 0009 · Grafana signs in with Entra ID directly; Keycloak is optional
+# ADR 0009 · Grafana signs in with Entra ID directly; Keycloak is a supported option
 
-**Status:** accepted · **Date:** 2026-09-29
+**Status:** accepted (revised 2026-09-29: the provider is now a chart setting) · **Date:** 2026-09-29
 
 ## Context
 Users need single sign-on to Grafana, and each user must land in the right tenant's org with
@@ -34,6 +34,7 @@ No Keycloak.
 - Tenants push logs with their own credentials (client-credentials flows).
 
 ## If revisited
-Replace `grafana.grafana.ini.auth.azuread` with `auth.generic_oauth` pointed at the Keycloak
-realm, with a `groups` claim; `org_mapping` works the same way (docs/02). The read gateway,
+The provider is a chart setting: `auth.provider: keycloak`, plus `auth.keycloak.url`, `realm`
+and `clientId`, and the tenants' `groups.oidc` names in `tenants.yaml` (docs/02). `oidc`
+covers other providers, and `disabled` gives mock users for test clusters. The read gateway,
 views, collectors and Loki don't change.

@@ -97,10 +97,12 @@ resource "azurerm_key_vault_secret" "grafana_admin_user" {
   depends_on   = [azurerm_role_assignment.deployer_kv_admin, azurerm_private_endpoint.vault]
 }
 
+# Used only with auth.admin.fromKeyVault: true (the chart's default is the
+# initial password change-me-now). grafana-admin-user is kept for reference.
 resource "azurerm_key_vault_secret" "grafana_admin_password" {
   name         = "grafana-admin-password"
   value        = random_password.grafana_admin.result
-  content_type = "break-glass; rotate after every use"
+  content_type = "initial password of the Grafana local admin (auth.admin.fromKeyVault)"
   key_vault_id = azurerm_key_vault.obs.id
   depends_on   = [azurerm_role_assignment.deployer_kv_admin, azurerm_private_endpoint.vault]
 }

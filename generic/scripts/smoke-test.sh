@@ -43,6 +43,27 @@ check "view ${other} with ${view}'s key: refused" fail curl -sf -H "X-Api-Key: $
 check "push through the gateway: refused" fail curl -sf -X POST -H "X-Api-Key: ${key}" "${G}/${view}/loki/api/v1/push"
 check "delete through the gateway: refused" fail curl -sf -X POST -H "X-Api-Key: ${key}" "${G}/${view}/loki/api/v1/delete?query=%7Ba%3D%22b%22%7D"
 
+kubectl -n grafana port-forward svc/grafana 13000:80 >/dev/null 2>&1 &
+PF2=$!; sleep 3
+PROVIDER="$(kubectl -n grafana get configmap grafana-auth -o jsonpath='{.metadata.labels.obs\.platform/auth-provider}')"
+ADMIN="$(kubectl -n grafana get configmap grafana-sync -o jsonpath='{.data.users\.json}' | jq -r .admin)"
+log "Local admin ${ADMIN} (sign-in provider: ${PROVIDER})"
+check "admin ${ADMIN} exists and is a Grafana server admin" ok bash -c "
+  pw=\$(kubectl -n grafana get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d)
+  curl -sf -u grafana-sync:\${pw} http://127.0.0.1:13000/api/users/lookup?loginOrEmail=${ADMIN} | jq -e .isGrafanaAdmin"
+if curl -sf -o /dev/null -u "${ADMIN}:change-me-now" http://127.0.0.1:13000/api/user; then
+  warn "WARNING  ${ADMIN} still has the DEFAULT password change-me-now: change it now"
+fi
+if [[ "${PROVIDER}" == disabled ]]; then
+  log "Mock sign-in: each mock user sees exactly its org"
+  for login in $(kubectl -n grafana get configmap grafana-sync -o jsonpath='{.data.users\.json}' | jq -r '.users[].login'); do
+    pw="$(kubectl -n grafana get secret grafana-local-users -o jsonpath="{.data.${login}}" | base64 -d)"
+    n="$(curl -sf -u "${login}:${pw}" http://127.0.0.1:13000/api/user/orgs | jq length || echo 0)"
+    check "mock user ${login} is in exactly one org (if its password is unchanged)" ok test "${n}" = 1
+  done
+fi
+kill "${PF2}" 2>/dev/null || true
+
 log "Network isolation: a pod in the default namespace (no tenant rights)"
 # SMOKE_IMAGE: any image with curl (default: curlimages/curl through the registry).
 probe() {  # probe <url>: run curl from a short-lived pod in `default`

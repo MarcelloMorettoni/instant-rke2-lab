@@ -36,6 +36,10 @@ OUT = ROOT / "rendered"
 
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
 GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+# OIDC group names/paths (Keycloak, others): no spaces, colons or commas, since
+# Grafana's org_mapping is "<group>:<org>:<role>" separated by spaces.
+OIDC_GROUP_RE = re.compile(r"^[A-Za-z0-9._/@-]{1,200}$")
+PROVIDER_GROUPS = ("entra", "oidc")          # oidc = keycloak and any other OIDC provider
 STATUSES = {"active", "suspended", "offboarding"}
 RESERVED = {"platform", "unassigned"}
 
@@ -56,11 +60,21 @@ def load() -> dict:
     tiers = reg.get("tiers") or {}
     seen: set[str] = set()
 
-    def check_groups(owner: str, groups: dict | None) -> None:
+    def check_groups(owner: dict, name: str) -> None:
+        # Old format: entraGroups: {viewer, editor}  ->  groups: {entra: {...}}
+        if "entraGroups" in owner:
+            owner.setdefault("groups", {}).setdefault("entra", owner.pop("entraGroups"))
+        groups = owner.get("groups") or {}
+        for provider in groups:
+            if provider not in PROVIDER_GROUPS:
+                die(f"{name}: groups.{provider}: use one of {PROVIDER_GROUPS}")
         for role in ("viewer", "editor"):
-            gid = (groups or {}).get(role)
+            gid = (groups.get("entra") or {}).get(role)
             if gid and not GUID_RE.match(str(gid)):
-                die(f"{owner}: entraGroups.{role} must be an Entra object ID (GUID), got {gid!r}")
+                die(f"{name}: groups.entra.{role} must be an Entra object ID (GUID), got {gid!r}")
+            gname = (groups.get("oidc") or {}).get(role)
+            if gname and not OIDC_GROUP_RE.match(str(gname)):
+                die(f"{name}: groups.oidc.{role} {gname!r}: no spaces, colons or commas")
 
     for name, tier in tiers.items():
         if not isinstance(tier.get("loki"), dict) or not isinstance(tier.get("gatewayQueueMiB"), int):
@@ -70,7 +84,7 @@ def load() -> dict:
             die(f"`{key}.id` must be {key!r}")
         if reg[key].get("tier") not in tiers:
             die(f"{key}: unknown tier {reg[key].get('tier')!r}")
-    check_groups("platform", reg["platform"].get("entraGroups"))
+    check_groups(reg["platform"], "platform")
     re.compile(ns_regex(reg["platform"]["namespaces"]))
 
     for t in reg.get("tenants") or []:
@@ -91,7 +105,7 @@ def load() -> dict:
             die(f"{tid}: bad or missing namespaces regex: {e}")
         if '"' in t["namespaces"]:
             die(f"{tid}: namespaces regex must not contain double quotes")
-        check_groups(tid, t.get("entraGroups"))
+        check_groups(t, tid)
     for t in reg.get("tenants") or []:
         for other in t.get("alsoRead") or []:
             if other not in seen:
@@ -200,24 +214,25 @@ def readable_tenants(reg: dict) -> dict[str, list[str]]:
 
 # --------------------------------------------------------------------------- Grafana
 def render_grafana(reg: dict) -> tuple[list[dict], dict]:
+    """Orgs for grafana-sync, and per provider: org_mapping + allowed_groups."""
     views = readable_tenants(reg)
-    orgs, mapping, groups_allowed = [], [], []
     owners = [{"id": "platform", "name": "Platform", **reg["platform"]}] + [
         t for t in reg["tenants"] if t["id"] in views
     ]
-    for o in owners:
-        orgs.append({"org": o["id"], "title": o.get("name", o["id"]),
-                     "view": o["id"], "tenants": views[o["id"]]})
-        groups = o.get("entraGroups") or {}
-        if groups.get("viewer"):
-            mapping.append(f"{groups['viewer']}:{o['id']}:Viewer")
-            groups_allowed.append(groups["viewer"])
-        if groups.get("editor"):
-            mapping.append(f"{groups['editor']}:{o['id']}:Editor")
-            groups_allowed.append(groups["editor"])
-    # Grafana [auth.azuread] org_mapping and allowed_groups: only members of a
-    # mapped group may log in at all.
-    return orgs, {"orgMapping": " ".join(mapping), "allowedGroups": " ".join(groups_allowed)}
+    orgs = [{"org": o["id"], "title": o.get("name", o["id"]), "view": o["id"], "tenants": views[o["id"]]}
+            for o in owners]
+    mappings = {}
+    for provider in PROVIDER_GROUPS:
+        mapping, allowed = [], []
+        for o in owners:
+            groups = (o.get("groups") or {}).get(provider) or {}
+            for role, grafana_role in (("viewer", "Viewer"), ("editor", "Editor")):
+                if groups.get(role):
+                    mapping.append(f"{groups[role]}:{o['id']}:{grafana_role}")
+                    allowed.append(str(groups[role]))
+        # Grafana org_mapping + allowed_groups: only members of a mapped group log in.
+        mappings[provider] = {"orgMapping": " ".join(mapping), "allowedGroups": " ".join(allowed)}
+    return orgs, mappings
 
 
 # --------------------------------------------------------------------------- main

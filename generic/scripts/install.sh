@@ -31,12 +31,12 @@ if step 20 "read-gateway keys in Key Vault (one per view; created only if missin
 fi
 
 if step 30 "log platform (Loki, OTel agent + gateway, Grafana, policies, views)"; then
-  before="$(kubectl -n grafana get configmap grafana-org-mapping -o jsonpath='{.data}' 2>/dev/null || true)"
+  before="$(kubectl -n grafana get configmap grafana-auth -o jsonpath='{.data}' 2>/dev/null || true)"
   helm upgrade --install log-platform charts/log-platform -n loki \
     "${ENV_VALUES[@]}" -f rendered/values-tenants.yaml --wait --timeout 20m
-  after="$(kubectl -n grafana get configmap grafana-org-mapping -o jsonpath='{.data}')"
+  after="$(kubectl -n grafana get configmap grafana-auth -o jsonpath='{.data}')"
   if [[ -n "${before}" && "${before}" != "${after}" ]]; then
-    log "Entra group → org mapping changed: restarting Grafana (it reads it at startup)"
+    log "sign-in settings (provider or group → org mapping) changed: restarting Grafana"
     kubectl -n grafana rollout restart deploy/grafana
     kubectl -n grafana rollout status deploy/grafana --timeout=5m
   fi

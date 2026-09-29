@@ -50,6 +50,7 @@ network:
   blobPrivateEndpointCidrs: []  # ← SET: subnet of the Blob private endpoint
   postgresCidrs: []             # ← SET: PostgreSQL subnet
   grafanaClientCidrs: []        # ← SET: users' networks allowed to open Grafana
+  identityProviderCidrs: []     # keycloak/oidc on a private address: Grafana's egress to it (:443)
   # Entra ID (token exchange, SSO) and alert webhooks are public endpoints,
   # reached through the hub firewall. false once ciliumFqdn allows them by name.
   internetEgress443: true
@@ -72,6 +73,78 @@ grafanaAccess:
     fromKeyVault: true          # Key Vault certificate → Secret grafana-tls (else create grafana-tls yourself)
     keyVaultCertificate: grafana-obs-tls
 
+# ---------------------------------------------------------------- sign-in
+# How people sign in to Grafana, and how they land in their tenant's org.
+# Rendered into ConfigMap grafana-auth (GF_AUTH_* variables, which override
+# grafana.ini), the client secret into grafana-env (External Secrets).
+auth:
+  # entra     Microsoft Entra ID. Groups: tenants.yaml groups.entra (object IDs).
+  # keycloak  a Keycloak realm (OIDC). Groups: tenants.yaml groups.oidc (names).
+  # oidc      any other OIDC provider, with explicit endpoints. Groups: groups.oidc.
+  # disabled  MOCK, for test clusters only: no identity provider; local users
+  #           (auth.mock): one per tenant in mock.users, plus the admin.
+  provider: entra
+  displayName: Bank SSO                  # text on the login button
+  autoLogin: true                        # go straight to the provider; break-glass: /login?disableAutoLogin=true
+  # Key Vault secret holding the OAuth client secret (→ GF_AUTH_*_CLIENT_SECRET).
+  # "" = grafana-entra-client-secret (entra) or grafana-oidc-client-secret (keycloak, oidc).
+  clientSecretKeyVaultName: ""
+  publicClient: false                    # true = no client secret (PKCE only)
+  sessionMaxLifetime: 12h
+  sessionMaxInactive: 2h
+
+  entra:
+    tenantId: ""                         # ← SET for entra: directory (tenant) ID
+    clientId: ""                         # ← SET for entra: app registration (client) ID
+
+  keycloak:
+    url: ""                              # ← SET for keycloak: e.g. https://sso.bank.internal (without /realms)
+    realm: ""                            # ← SET for keycloak
+    clientId: grafana
+    scopes: openid profile email
+
+  oidc:
+    clientId: ""                         # ← SET for oidc
+    authUrl: ""                          # ← SET for oidc: authorization endpoint
+    tokenUrl: ""                         # ← SET for oidc: token endpoint
+    apiUrl: ""                           # ← SET for oidc: userinfo endpoint
+    signoutRedirectUrl: ""               # optional: the provider's logout endpoint
+    scopes: openid profile email
+
+  # keycloak + oidc: where Grafana finds things in the ID token / userinfo
+  # (JMESPath). Keycloak: add a "Group Membership" mapper to the client with
+  # token claim name "groups" and "Full group path" OFF, so the claim holds
+  # names like obs-payments-viewers (tenants.yaml groups.oidc).
+  claims:
+    groups: groups
+    login: preferred_username
+    email: email
+    name: name
+
+  # Local sign-in: the password form at /login?disableAutoLogin=true (normal
+  # users still go straight to SSO). Needed by the local admin below in the SSO
+  # modes; always on in mock mode.
+  localLogin: true
+
+  # The local admin, in EVERY mode: Grafana server admin, and Admin of the
+  # platform org (reads every tenant). Created once by grafana-sync with this
+  # INITIAL password, which is never reset afterwards: change it at first login.
+  # WARNING: until changed, anyone who can reach Grafana can sign in as admin.
+  admin:
+    user: admin
+    password: change-me-now
+    fromKeyVault: false                  # true = initial password from Key Vault secret grafana-admin-password
+
+  # disabled only. Test clusters: local Grafana users, no identity provider.
+  mock:
+    users:                               # one per tenant org; org = tenant id in tenants.yaml
+      - {login: alice, org: payments, role: Editor}
+      - {login: bob, org: cards, role: Editor}
+      - {login: carol, org: lending, role: Editor}
+    # INITIAL password of every mock user (set at creation, never reset).
+    # "" = a random one per user, kept in Secret grafana/grafana-local-users.
+    password: change-me-now
+
 # Keeps every Grafana org's Loki data source pointed at its read-gateway view
 # with its current key (from Key Vault). A CronJob, so key rotations apply
 # within one schedule interval; install.sh also runs it once right away.
@@ -91,8 +164,8 @@ monitoring:
 readViews: []
 grafanaOrgs: []
 grafanaOrgMapping:
-  orgMapping: ""
-  allowedGroups: ""
+  entra: {orgMapping: "", allowedGroups: ""}
+  oidc: {orgMapping: "", allowedGroups: ""}
 
 # ================================================================ subcharts
 # ---------------------------------------------------------------- Loki (grafana/loki 7.3.0)
@@ -775,19 +848,20 @@ grafana:
   networkPolicy:
     enabled: false                                 # ours: templates/networkpolicies-grafana.yaml
 
-  # Break-glass admin (server admin). Secret synced from Key Vault by
-  # templates/external-secrets.yaml. Use only via kubectl port-forward.
+  # Grafana's built-in admin = the AUTOMATION account `grafana-sync` (random
+  # password, templates/grafana-auth.yaml). People use auth.admin instead, so
+  # changing the human admin's password never breaks grafana-sync.
   admin:
     existingSecret: grafana-admin
     userKey: admin-user
     passwordKey: admin-password
 
-  # GF_AUTH_AZUREAD_CLIENT_SECRET, GF_DATABASE_PASSWORD (Key Vault → ExternalSecret)
+  # GF_DATABASE_PASSWORD and the OAuth client secret (Key Vault → ExternalSecret)
   envFromSecrets:
     - name: grafana-env
-  # GF_AUTH_AZUREAD_ORG_MAPPING, GF_AUTH_AZUREAD_ALLOWED_GROUPS (templates/grafana-org-mapping.yaml)
+  # Sign-in: every GF_AUTH_* setting for auth.provider (templates/grafana-auth.yaml)
   envFromConfigMaps:
-    - name: grafana-org-mapping
+    - name: grafana-auth
 
   grafana.ini:
     server:
@@ -803,32 +877,10 @@ grafana:
       user: grafana
       ssl_mode: require
       # password: GF_DATABASE_PASSWORD
-    auth:
-      disable_login_form: true                     # Entra ID only
-      login_maximum_lifetime_duration: 12h
-      login_maximum_inactive_lifetime_duration: 2h
-    auth.basic:
-      enabled: true                                # break-glass admin over port-forward only
+    # Sign-in (login form, basic auth, azuread, generic_oauth) is set by the
+    # top-level `auth:` values, as GF_AUTH_* variables (templates/grafana-auth.yaml).
     auth.anonymous:
       enabled: false
-    auth.azuread:
-      enabled: true
-      name: Bank SSO
-      auto_login: true
-      allow_sign_up: true
-      client_id: ""                                # ← SET (environment file): app registration
-      # client_secret: GF_AUTH_AZUREAD_CLIENT_SECRET
-      scopes: openid email profile
-      auth_url: ""                                 # ← SET (environment file)
-      token_url: ""                                # ← SET (environment file)
-      allowed_organizations: ""                    # ← SET (environment file): Entra tenant ID
-      use_pkce: true
-      use_refresh_token: true
-      # Org + role come from group membership (org_mapping). Nobody becomes a
-      # Grafana server admin through SSO.
-      skip_org_role_sync: false
-      allow_assign_grafana_admin: false
-      # allowed_groups and org_mapping: env vars from the generated ConfigMap.
     users:
       allow_sign_up: false
       allow_org_create: false

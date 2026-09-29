@@ -48,17 +48,25 @@ loki:
       zoneB: {nodeSelector: {topology.kubernetes.io/zone: westeurope-2}}
       zoneC: {nodeSelector: {topology.kubernetes.io/zone: westeurope-3}}
 
+# Sign-in to Grafana: entra | keycloak | oidc | disabled (mock users, test only).
+auth:
+  provider: entra
+  entra:
+    tenantId: 00000000-0000-0000-0000-000000000000                   # Entra directory (tenant) ID
+    clientId: 00000000-0000-0000-0000-000000000000                   # app registration
+  # provider: keycloak
+  # keycloak:
+  #   url: https://sso.bank.internal
+  #   realm: bank
+  #   clientId: grafana
+  # provider: disabled          # alice→payments, bob→cards, carol→lending, admin→everything
+
 grafana:
   grafana.ini:
     server:
       root_url: https://grafana.obs-test.bank.internal
     database:
       host: psql-grafana-test-weu.postgres.database.azure.com:5432   # terraform output postgres_fqdn
-    auth.azuread:
-      client_id: 00000000-0000-0000-0000-000000000000                # Entra app registration
-      auth_url: https://login.microsoftonline.com/<ENTRA_TENANT_ID>/oauth2/v2.0/authorize
-      token_url: https://login.microsoftonline.com/<ENTRA_TENANT_ID>/oauth2/v2.0/token
-      allowed_organizations: <ENTRA_TENANT_ID>
 
 # Used by the log-platform-operators chart.
 external-secrets:

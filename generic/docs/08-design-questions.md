@@ -222,6 +222,6 @@ every login path, and it wouldn't add anything here: tenants are decided by name
 read-gateway keys, not by token claims.
 
 It becomes the right choice for external tenants with their own identity providers, users
-from several Entra tenants, or if the bank's IAM standard is Keycloak. Switching is a Grafana
-config change only. See [ADR 0009](adr/0009-entra-id-not-keycloak.md).
+from several Entra tenants, or if the bank's IAM standard is Keycloak. Switching is one
+chart setting, `auth.provider: keycloak`. See [ADR 0009](adr/0009-entra-id-not-keycloak.md).
 

@@ -563,8 +563,14 @@ grafanaOrgs:
   tenants:
   - shared-services
 grafanaOrgMapping:
-  orgMapping: 11111111-1111-1111-1111-111111111111:platform:Viewer 22222222-2222-2222-2222-222222222222:platform:Editor 33333333-3333-3333-3333-333333333333:payments:Viewer 44444444-4444-4444-4444-444444444444:payments:Editor
-    55555555-5555-5555-5555-555555555555:cards:Viewer 66666666-6666-6666-6666-666666666666:cards:Editor 77777777-7777-7777-7777-777777777777:lending:Viewer 88888888-8888-8888-8888-888888888888:lending:Editor
-    99999999-9999-9999-9999-999999999999:shared-services:Viewer aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:shared-services:Editor
-  allowedGroups: 11111111-1111-1111-1111-111111111111 22222222-2222-2222-2222-222222222222 33333333-3333-3333-3333-333333333333 44444444-4444-4444-4444-444444444444 55555555-5555-5555-5555-555555555555
-    66666666-6666-6666-6666-666666666666 77777777-7777-7777-7777-777777777777 88888888-8888-8888-8888-888888888888 99999999-9999-9999-9999-999999999999 aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+  entra:
+    orgMapping: 11111111-1111-1111-1111-111111111111:platform:Viewer 22222222-2222-2222-2222-222222222222:platform:Editor 33333333-3333-3333-3333-333333333333:payments:Viewer 44444444-4444-4444-4444-444444444444:payments:Editor
+      55555555-5555-5555-5555-555555555555:cards:Viewer 66666666-6666-6666-6666-666666666666:cards:Editor 77777777-7777-7777-7777-777777777777:lending:Viewer 88888888-8888-8888-8888-888888888888:lending:Editor
+      99999999-9999-9999-9999-999999999999:shared-services:Viewer aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:shared-services:Editor
+    allowedGroups: 11111111-1111-1111-1111-111111111111 22222222-2222-2222-2222-222222222222 33333333-3333-3333-3333-333333333333 44444444-4444-4444-4444-444444444444 55555555-5555-5555-5555-555555555555
+      66666666-6666-6666-6666-666666666666 77777777-7777-7777-7777-777777777777 88888888-8888-8888-8888-888888888888 99999999-9999-9999-9999-999999999999 aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+  oidc:
+    orgMapping: obs-platform-viewers:platform:Viewer obs-platform-sre:platform:Editor obs-payments-viewers:payments:Viewer obs-payments-editors:payments:Editor obs-cards-viewers:cards:Viewer obs-cards-editors:cards:Editor
+      obs-lending-viewers:lending:Viewer obs-lending-editors:lending:Editor obs-shared-services-viewers:shared-services:Viewer obs-shared-services-editors:shared-services:Editor
+    allowedGroups: obs-platform-viewers obs-platform-sre obs-payments-viewers obs-payments-editors obs-cards-viewers obs-cards-editors obs-lending-viewers obs-lending-editors obs-shared-services-viewers
+      obs-shared-services-editors
