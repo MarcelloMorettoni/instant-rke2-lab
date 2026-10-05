@@ -6,107 +6,101 @@ would change.
 
 ## Kafka
 
-![Durability without Kafka](../diagrams/06-durability-without-kafka.png)
+![Durability and buffers](../diagrams/06-durability-and-buffers.png)
 
-### "Why is there no Kafka (or Event Hubs) in front of Loki?"
+### "Where does Kafka go, and why?"
 
-Because the job a bus would do, **not losing logs while something downstream
-is down**, is already done at every hop, on disk. A bus would be a fourth
-buffer, and a third stateful system to run.
+Between the two OpenTelemetry tiers, in the cluster
+([ADR 0010](adr/0010-kafka-in-cluster.md)):
+
+```
+agent (every node) ──TLS + SCRAM──► Kafka topic otel-logs ──consumer group──► gateway ──► Loki
+```
+
+- Strimzi runs Kafka in namespace `kafka`: 3 brokers (one per zone) and 3 KRaft
+  controllers. Replication factor 3, `acks=all`, `min.insync.replicas` 2, 24 h retention.
+- **Not in front of Loki's distributors**, and not a Loki feature: the gateway still does
+  the per-tenant routing, queueing and `X-Scope-OrgID`. Loki is unchanged.
+- The tenant travels in the OTLP resource attributes inside each message, and only the
+  agents can produce:
+  - Kafka ACLs: the `otel-agent` user may only write, `otel-gateway` may only read;
+  - Strimzi's NetworkPolicy admits only the agent and gateway pods.
+
+What it adds, compared with the earlier design without a bus ([ADR 0006](adr/0006-no-kafka-buffer.md)):
+- **The outage backlog leaves the nodes.** While the gateways or Loki are down, logs pile up
+  in Kafka, replicated across 3 zones, instead of in each node's 2 GiB agent queue. A node
+  lost during an outage no longer takes its backlog with it.
+- **Up to 24 h of Loki or gateway outage**, replayed in order (`kafka.topic.retentionHours`,
+  sized in [05](05-sizing-and-capacity.md#kafka)). Without Kafka it was about 1 h in the
+  gateway queues at the M profile.
+- **Replay and fan-out.** Another consumer (SIEM, data lake) can read the same topic with its
+  own consumer group and a read ACL, without touching the pipeline.
+
+### "Every hop still has a buffer. Which one does what?"
 
 | Hop | Durable buffer | Survives |
 |---|---|---|
 | Container → node | kubelet log files (`/var/log/pods`) | the agent being down (for as long as rotation allows) |
-| OTel agent | read checkpoints + **persistent queue, 2 GiB per node**, on the node's disk | agent restart; gateway or Loki outage |
-| OTel gateway | **persistent queue per tenant** (1-4 GiB by tier) × 3 pods, on zonal SSDs (CMK); retried up to 6 h | gateway pod restart; a Loki outage; **one tenant being throttled** |
+| OTel agent | read checkpoints + **persistent queue, 2 GiB per node** | agent restart; a Kafka outage |
+| **Kafka** | topic `otel-logs`, **3 replicas in 3 zones**, 24 h | node, broker or zone loss; gateway or Loki outage up to 24 h |
+| OTel gateway | **persistent queue per tenant** on zonal SSDs; offset committed once queued | gateway pod restart; **one tenant being throttled** |
 | Loki ingesters | WAL on zonal SSD, **3 copies in 3 zones**, ack after 2 | pod crash; a whole zone |
-| Blob Storage | GZRS (3 zones sync + paired region async), soft delete | zone loss; region loss (with lag) |
+| Object storage | Blob GZRS (3 zones + paired region), or the S3 store's own replication | zone loss; region loss (Blob, with lag) |
 
-How long the buffers last is a sizing choice:
-- **Gateway tier**: the example registry gives 15 GiB of queue per gateway pod (the sum of
-  every tenant's `gatewayQueueMiB`), so 45 GiB over 3 pods. At the M profile's ~12 MB/s
-  average, that is **about an hour of every tenant's logs** while Loki is down.
-- **Agents**: each node's 2 GiB queue adds more on top.
+### "Doesn't a shared topic break tenant isolation?"
 
-To ride out longer outages, raise `gatewayQueueMiB` and the gateway PVC
-([05](05-sizing-and-capacity.md#collectors)). Queued data is retried for up to 6 h.
+Not toward Loki. Each tenant still has its own gateway queue and exporter, so a tenant at
+its Loki limit (429) only fills **its** queue.
 
-Each tenant's queue is its own, so a tenant hitting its Loki limit fills **its**
-queue, not the others' ([limits below](#limits-of-the-no-kafka-design)).
+The limit is one step further. If a tenant's gateway queue is **completely full**:
+- the gateway can't accept that tenant's records, so it doesn't commit the offset;
+- the partition is retried with backoff (`message_marking.after: true`, `error_backoff`);
+- other tenants whose streams share that partition wait with it. They are delayed, not lost:
+  their records stay in Kafka.
+
+`OtelGatewayTenantQueueFilling` fires at 50 %, and `KafkaConsumerLagHigh` when the gateways
+fall behind. The fix is operational: raise the tenant's limit or its `gatewayQueueMiB`.
+
+Without Kafka, the same full queue pushes back on the agents of the nodes that send that
+tenant's logs, which is the same blast radius in another place. One topic per tenant would
+remove it, at the cost of hundreds of topics; ADR 0010 records when to revisit.
+
+### "What does Kafka cost us?"
+
+- **A third stateful system**:
+  - brokers, KRaft quorum, disks (3 × 500 Gi at M);
+  - Strimzi and Kafka upgrades;
+  - partitions, ACLs, capacity;
+  - its own alerts and runbook ([06](06-operations-runbook.md#kafka)).
+- **A second copy of every log line for 24 h**, with the same encryption and access controls
+  as the rest of the pipeline. Disk encryption is the cluster's (CMK on AKS); the listener
+  is TLS.
+- **A little latency**: agents batch for up to 1 s and Kafka adds milliseconds. Logs reach
+  Grafana a second or two later than without it.
+
+### "Can we turn it off?"
+
+Yes. List `no-kafka.yaml` in `environments/<env>/overlays.txt`:
+- the agents send OTLP straight to the gateways again (ADR 0006);
+- the chart drops the Kafka objects;
+- the NetworkPolicies switch back.
+
+Nothing else changes. `scripts/validate.sh` checks both variants.
+
+### "Why not Event Hubs, or Loki's own Kafka mode?"
+
+- **Event Hubs (Kafka endpoint)**: an Azure dependency. The generic installation must run
+  without Azure ([ADR 0011](adr/0011-two-installation-profiles.md)), and one backend design is
+  validated for both. It also needs Entra OAuth or connection strings instead of SCRAM.
+- **Loki's Kafka-based ingest** (`-distributor.kafka-writes-enabled`, block builders) is
+  still experimental in Loki 3.6. Revisit when it is GA.
 
 What was verified:
-- The queues, retries and routing are configured and pass the collector's own validation
-  (`scripts/validate.sh`).
-- `scripts/pipeline-test.sh` runs agent → gateway → Loki and checks per-tenant delivery
-  through the queues.
-- The failure metrics used by the alerts (`otelcol_exporter_enqueue_failed_log_records`,
-  `…send_failed…`) were produced by forcing failures.
-
-### "What does Kafka buy that this doesn't?"
-
-| Kafka gives | Here |
-|---|---|
-| Buffer during outages | ✔ node + per-tenant gateway queues + Loki WAL |
-| Absorb bursts | ✔ queues + Loki's per-tenant burst limits |
-| **Replay** (re-read the last N days) | ✘ Not needed for Loki today. Needed if a second system must re-consume the stream. |
-| **Fan-out** to other consumers (SIEM, data lake, fraud analytics) with independent offsets | Partly: the gateway can export to a second destination directly. A bus is better once there are several independent consumers. |
-| Decoupling teams (producers/consumers deployed separately) | Not relevant: the platform owns both ends |
-
-### "What would Kafka cost us?"
-
-- **Another stateful platform**:
-  - brokers (or an Event Hubs namespace), partitions, consumer groups;
-  - ACLs (whoever can produce to the log topic can write into any tenant);
-  - capacity planning, upgrades, DR, and its own monitoring.
-- **A second full copy** of every log line, plus its own encryption, retention and audit
-  controls, which a bank must also evidence.
-- **More latency and more failure modes** between the pod and Grafana.
-- A **tenant-isolation risk** to design around: a shared topic partition is shared
-  head-of-line blocking. Per-tenant gateway queues avoid it, up to the limit below.
-
-### "When would we add it, and how?"
-
-Add a bus when **one** of these becomes true:
-1. Planned Loki downtime must regularly exceed what the gateway queues can reasonably hold.
-   About 1 h at the M profile as shipped; more with bigger queues.
-2. **Other consumers** need the same stream with replay: SIEM, a data lake, fraud analytics.
-3. Scale reaches multiple TB/day and Loki's Kafka-based ingest architecture is GA. It exists
-   in Loki 3.6 (`-distributor.kafka-writes-enabled`) but is still experimental.
-
-How it would fit:
-- On Azure, **Event Hubs (Premium or Dedicated)** with the Kafka endpoint, a private endpoint,
-  a CMK and Entra auth.
-- It goes **between the agent and the gateway**, using OpenTelemetry's own
-  `kafka` exporter (agent) and `kafka` receiver (gateway). Both are in the contrib
-  collector already pinned here, so no new software.
-- The tenant travels in the OTLP resource attributes inside each record.
-- Only the agents' identity may produce to the topic.
-
-The rest of the design doesn't change. See [ADR 0006](adr/0006-no-kafka-buffer.md).
-
-### Limits of the no-Kafka design
-
-Be upfront about these when asked:
-- **A tenant whose gateway queue is completely full** (throttled for longer than its
-  queue lasts) makes the gateway reject new data for that tenant. The agents then retry
-  their whole batch, so other tenants' records on the same nodes are **delayed**.
-  They are not lost: they wait in the agents' queues, and Loki drops exact duplicates.
-  - `OtelGatewayTenantQueueFilling` fires at 50 %, long before that point.
-  - The fix is operational: raise the tenant's limit, or its queue.
-- Data retried for more than 6 h at the gateway is dropped and counted
-  (`OtelDroppingLogs`, critical).
-- A node lost **together with** a gateway outage loses what was still in that node's queue.
-
-A Kafka design has equivalent limits: partitions shared between tenants, broker disk
-full, retention expiring during a long consumer outage.
-
-### "Isn't a DaemonSet with a disk queue less safe than Kafka?"
-
-The node queue exists for short outages and restarts. The durable, zone-spread,
-per-tenant buffer is the **gateway** tier, on persistent disks that outlive pod and node
-failures. After that come Loki's replicated WAL and zone-redundant storage. A lost node
-loses at most the data still in its own queue, and only if the gateways were down at the
-same time. Kafka would have the same exposure for data not yet produced from that node.
+- The Kafka exporter, receiver, queues, retries and routing pass the collector's own
+  validation, with and without Kafka (`scripts/validate.sh`).
+- The Strimzi resources pass the Strimzi 1.2.0 CRD schemas.
+- `scripts/pipeline-test.sh` runs agent → **Kafka** → gateway → Loki in containers and checks
+  per-tenant delivery.
 
 ## Caching
 
@@ -176,7 +170,7 @@ See [ADR 0008](adr/0008-caching.md).
 | A tenant throttled by Loki (429) | blocks that node's shared queue, and every tenant on it | only that tenant's gateway queue grows |
 | Durable buffer on persistent disks | node disks only | zonal SSDs, zone-spread |
 | Batching efficiency | small per-node batches | large per-tenant batches |
-| Where a bus would go | nowhere clean | between the tiers, if ever needed |
+| Where the bus goes | nowhere clean | between the tiers: Kafka (ADR 0010) |
 
 This is the standard OpenTelemetry deployment pattern: agents near the workloads,
 gateways in front of the backend.

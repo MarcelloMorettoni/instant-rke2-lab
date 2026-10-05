@@ -35,8 +35,13 @@ cluster, and no change needs Terraform.
    scripts/render-tenants.py
    scripts/validate.sh
    ```
-3. In the Entra enterprise app "Grafana observability", **assign both groups**.
-   Otherwise the group claim won't carry them.
+3. **Entra ID**: in the enterprise app "Grafana observability", **assign both groups**, or the
+   group claim won't carry them. **Keycloak** (your own, or the one `keycloak.install` installs):
+   create the two groups in the realm (`obs` when installed), with exactly the `groups.oidc`
+   names. The installed realm is imported once, so new groups are never added by the chart
+   ([06](06-operations-runbook.md#keycloak-generic-installation)). If Keycloak brokers Entra
+   ID, also add an "Advanced Claim to Group" mapper on the `entra` identity provider: claim
+   `groups` = the Entra object ID → the new group.
 4. Open the pull request. The reviewer checks:
    - the regex doesn't overlap another tenant (`--which`);
    - the tier matches what was agreed;
@@ -45,7 +50,7 @@ cluster, and no change needs Terraform.
    ```bash
    scripts/install.sh <env> 20    # key in Key Vault, then the chart, then grafana-sync
    ```
-   Step 20 creates the view's key in Key Vault. Step 30 upgrades the chart: agent mapping,
+   Step 20 creates the view's key in Key Vault (generic: the chart generates it at step 30). Step 30 upgrades the chart: agent mapping,
    gateway exporter and queue, Loki overrides, read view, and org mapping (Grafana restarts
    if that changed). Step 40 runs grafana-sync now instead of at its next schedule.
 6. Tell the team: "Sign in at https://grafana.obs.bank.internal. Your logs are in the
@@ -77,7 +82,7 @@ read the logs. Use this for security incidents or disputes.
 2. Deploy. Within about a day, the compactor deletes the tenant's data.
 3. Once `loki_distributor_lines_received_total{tenant="<id>"}` stays at zero and the data is
    gone, remove the entry. Then delete its Grafana org (Administration → Organizations, as the
-   break-glass admin): grafana-sync never deletes orgs. That also deletes the org
+   local `admin`): grafana-sync never deletes orgs. That also deletes the org
    and its dashboards.
 4. Delete the Key Vault secret `obs-key-<id>`, and remove the groups from the enterprise app.
 

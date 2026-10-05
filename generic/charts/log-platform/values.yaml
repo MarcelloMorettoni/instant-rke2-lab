@@ -8,7 +8,7 @@
 #     -f rendered/values-tenants.yaml
 #
 # Defaults here are the production ("M") shape. Everything environment-specific
-# lives in environments/<env>/values.yaml (see environments/example/).
+# lives in environments/<env>/values.yaml (see environments/azure/).
 # Design: docs/01-architecture.md. Components: docs/table.md.
 
 global:
@@ -21,6 +21,14 @@ global:
   clusterName: ""                                # ← SET (environment file)
   dnsService: kube-dns
   dnsNamespace: kube-system
+  # Grafana's database: a Secret in ns grafana with the keys host, port,
+  # dbname, user, password (Percona's pguser Secret format). The chart fills it
+  # from `postgres:` below. Read by the Grafana subchart (envValueFrom).
+  grafanaDatabase:
+    secretName: grafana-db
+
+# Where the log-platform-operators release runs (kgateway controller, Strimzi).
+operatorsNamespace: platform-operators
 
 # ---------------------------------------------------------------- platform objects
 namespaces:
@@ -48,8 +56,9 @@ network:
   policies: true                # NetworkPolicies for loki, otel, otel-agent, grafana
   apiServerCidrs: []            # ← SET: API server (VNet integration subnet or IP), for the agents and rollout-operator
   blobPrivateEndpointCidrs: []  # ← SET: subnet of the Blob private endpoint
+  objectStoreEgress: []         # other object storage (overlays/s3-storage.yaml): NetworkPolicy egress rules for Loki
   postgresCidrs: []             # ← SET: PostgreSQL subnet
-  grafanaClientCidrs: []        # ← SET: users' networks allowed to open Grafana
+  grafanaClientCidrs: []        # ← SET: users' networks allowed to open Grafana (and Keycloak)
   identityProviderCidrs: []     # keycloak/oidc on a private address: Grafana's egress to it (:443)
   # Entra ID (token exchange, SSO) and alert webhooks are public endpoints,
   # reached through the hub firewall. false once ciliumFqdn allows them by name.
@@ -57,9 +66,102 @@ network:
   ciliumFqdn:
     enabled: false              # needs Azure CNI powered by Cilium + ACNS
 
+# Secrets. enabled: Azure Key Vault through External Secrets (Workload
+# Identity): view keys, OAuth client secrets, TLS certificates, DB passwords.
+# false: no Key Vault, no External Secrets; the chart generates what it can
+# (view keys, Keycloak's client secret, self-signed TLS) and keeps it across
+# upgrades. Set the same value in the operators chart (it installs ESO).
 keyVault:
-  url: ""                       # ← SET: terraform output key_vault_uri
+  enabled: true
+  url: ""                       # ← SET when enabled: terraform output key_vault_uri
   storeName: azure-keyvault
+
+# ---------------------------------------------------------------- PostgreSQL
+# Grafana's (and Keycloak's) database.
+postgres:
+  # azure    Azure Database for PostgreSQL flexible server (Terraform). Host
+  #          below, password from Key Vault. Needs keyVault.enabled.
+  # percona  in-cluster PostgreSQL run by the Percona operator (you bring it,
+  #          see examples/percona-postgresql.yaml). The chart copies each
+  #          user's Secret <cluster>-pguser-<user> into the namespace that uses
+  #          it, at install time (Helm lookup).
+  provider: azure
+  sslMode: require
+  azure:
+    host: ""                    # ← SET for azure: terraform output postgres_fqdn
+    port: 5432
+    grafana: {database: grafana, user: grafana, passwordKeyVaultName: grafana-db-password}
+    keycloak: {database: keycloak, user: keycloak, passwordKeyVaultName: keycloak-db-password}
+  percona:
+    namespace: postgres         # where the PerconaPGCluster runs
+    cluster: obs-pg             # its name
+    grafanaUser: grafana        # → Secret obs-pg-pguser-grafana
+    keycloakUser: keycloak      # → Secret obs-pg-pguser-keycloak
+
+# ---------------------------------------------------------------- Kafka
+# Kafka between the OTel agents and gateways (docs/adr/0010): a replicated,
+# node-independent buffer. Run by Strimzi (operators chart) in ns kafka.
+#   agents --SCRAM-SHA-512 over TLS:9093--> topic otel-logs --> gateways (consumer group)
+# Without Kafka (environments/overlays/no-kafka.yaml), agents send OTLP to the
+# gateways directly.
+kafka:
+  enabled: true                 # cluster `logs`: bootstrap logs-kafka-bootstrap.kafka.svc:9093
+  version: 4.3.1                # a version Strimzi 1.2.0 supports (4.2.x, 4.3.x)
+  rackAware: true               # one broker per zone (hard spread); replicas across zones. false without zones
+  # Separate KRaft controllers (production), or 3 nodes doing both (test).
+  dualRole: false
+  controllers:
+    replicas: 3
+    storage: 20Gi
+    resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 2Gi}}
+    jvmOptions: {"-Xms": 512m, "-Xmx": 512m}
+  brokers:
+    replicas: 3                 # ≥ 3: replication factor 3, min.insync.replicas 2
+    storage: 500Gi              # retention × compressed volume × 3 replicas / brokers (docs/05)
+    resources: {requests: {cpu: "2", memory: 8Gi}, limits: {memory: 8Gi}}
+    jvmOptions: {"-Xms": 3g, "-Xmx": 3g}
+  topic:
+    name: otel-logs
+    partitions: 24              # ≥ gateway pods × consumers; only ever increase
+    retentionHours: 24          # how long Kafka holds logs if the gateways or Loki stop
+    maxMessageBytes: 8388608    # an agent batch (≤ 4 MiB uncompressed) fits in one message
+  # The listener's certificate: a CA and a server certificate generated by the
+  # chart (kept across upgrades), so the collectors can verify the brokers
+  # without reading Strimzi's Secrets in another namespace.
+  tlsValidityDays: 3650
+  exporter: true                # Kafka Exporter: consumer lag, under-replicated partitions
+
+# ---------------------------------------------------------------- Keycloak
+# keycloak.install: Keycloak (2 instances) in ns keycloak, run by the Keycloak
+# operator (operators chart, same switch). It imports realm `obs` once: the
+# grafana client, the groups of tenants.yaml (groups.oidc), optional test
+# users, and optionally Entra ID as an identity provider (brokering).
+# Use with auth.provider: keycloak; the chart then wires Grafana to it.
+keycloak:
+  install: false
+  version: 26.8.0               # the operator's version (operators chart)
+  instances: 2
+  hostname: ""                  # ← SET when installed: e.g. sso.obs.bank.internal (on the Grafana load balancer)
+  tls:
+    fromKeyVault: false         # Key Vault certificate keyVaultCertificate → Secret grafana/keycloak-tls
+    keyVaultCertificate: keycloak-obs-tls
+    selfSigned: true            # else create Secret grafana/keycloak-tls yourself
+  resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 2Gi}}
+  realm:
+    name: obs
+    # People for a lab: created in the realm with a TEMPORARY password
+    # (changed at first login). Groups: names from tenants.yaml groups.oidc.
+    users: []
+    #  - {username: alice, groups: [obs-payments-editors]}
+    initialPassword: change-me-now
+    # Sign in with Entra ID through Keycloak. Its groups claim (object IDs) is
+    # mapped to the realm groups with tenants.yaml groups.entra → groups.oidc.
+    # Client secret: Key Vault keycloak-entra-client-secret (keyVault.enabled),
+    # else Secret keycloak/keycloak-entra (key client-secret) that you create.
+    entraBroker:
+      enabled: false
+      tenantId: ""
+      clientId: ""
 
 readGateway:
   replicas: 3
@@ -68,15 +170,19 @@ readGateway:
 grafanaAccess:
   enabled: true
   hostname: ""                  # ← SET: e.g. grafana.obs.bank.internal
-  loadBalancerSubnet: ""        # ← SET: subnet for the internal load balancer
+  loadBalancerSubnet: ""        # ← SET (AKS): subnet for the internal load balancer
+  # Service annotations of the load balancer (default: Azure internal LB).
+  loadBalancerAnnotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
   tls:
-    fromKeyVault: true          # Key Vault certificate → Secret grafana-tls (else create grafana-tls yourself)
+    fromKeyVault: true          # Key Vault certificate → Secret grafana-tls (needs keyVault.enabled)
     keyVaultCertificate: grafana-obs-tls
+    selfSigned: false           # neither: create Secret grafana/grafana-tls yourself
 
 # ---------------------------------------------------------------- sign-in
 # How people sign in to Grafana, and how they land in their tenant's org.
 # Rendered into ConfigMap grafana-auth (GF_AUTH_* variables, which override
-# grafana.ini), the client secret into grafana-env (External Secrets).
+# grafana.ini), the client secret into Secret grafana-oauth.
 auth:
   # entra     Microsoft Entra ID. Groups: tenants.yaml groups.entra (object IDs).
   # keycloak  a Keycloak realm (OIDC). Groups: tenants.yaml groups.oidc (names).
@@ -85,9 +191,12 @@ auth:
   #           (auth.mock): one per tenant in mock.users, plus the admin.
   provider: entra
   displayName: Bank SSO                  # text on the login button
-  autoLogin: true                        # go straight to the provider; break-glass: /login?disableAutoLogin=true
-  # Key Vault secret holding the OAuth client secret (→ GF_AUTH_*_CLIENT_SECRET).
-  # "" = grafana-entra-client-secret (entra) or grafana-oidc-client-secret (keycloak, oidc).
+  autoLogin: true                        # go straight to the provider; local admin: /login?disableAutoLogin=true
+  # The OAuth client secret (→ GF_AUTH_*_CLIENT_SECRET in Secret grafana/grafana-oauth):
+  #   keycloak.install   generated by the chart, shared with the realm's grafana client
+  #   keyVault.enabled   from this Key Vault secret; "" = grafana-entra-client-secret
+  #                      (entra) or grafana-oidc-client-secret (keycloak, oidc)
+  #   otherwise          create Secret grafana/grafana-oauth yourself
   clientSecretKeyVaultName: ""
   publicClient: false                    # true = no client secret (PKCE only)
   sessionMaxLifetime: 12h
@@ -98,8 +207,9 @@ auth:
     clientId: ""                         # ← SET for entra: app registration (client) ID
 
   keycloak:
-    url: ""                              # ← SET for keycloak: e.g. https://sso.bank.internal (without /realms)
-    realm: ""                            # ← SET for keycloak
+    url: ""                              # ← SET for keycloak: e.g. https://sso.bank.internal (without /realms); keycloak.install: https://<keycloak.hostname>
+    internalUrl: ""                      # Grafana's server-side calls (token, userinfo); keycloak.install: the in-cluster Service
+    realm: ""                            # ← SET for keycloak; keycloak.install: keycloak.realm.name
     clientId: grafana
     scopes: openid profile email
 
@@ -157,6 +267,12 @@ grafanaSync:
 
 monitoring:
   azurePodMonitors: true        # azmonitoring.coreos.com PodMonitors (AKS managed Prometheus)
+  # Any Prometheus Operator (kube-prometheus-stack, ...): monitoring.coreos.com
+  # PodMonitors + a PrometheusRule with alerts/loki-alerts.yaml.
+  prometheusOperator:
+    enabled: false
+    namespace: monitoring       # where Prometheus runs (NetworkPolicies let it scrape)
+    labels: {}                  # e.g. {release: kube-prometheus-stack}, if Prometheus selects on them
 
 # ---------------------------------------------------------------- per tenant
 # Rendered from tenants/tenants.yaml by scripts/render-tenants.py into
@@ -166,6 +282,7 @@ grafanaOrgs: []
 grafanaOrgMapping:
   entra: {orgMapping: "", allowedGroups: ""}
   oidc: {orgMapping: "", allowedGroups: ""}
+keycloakGroups: []
 
 # ================================================================ subcharts
 # ---------------------------------------------------------------- Loki (grafana/loki 7.3.0)
@@ -630,6 +747,9 @@ otelAgent:
       valueFrom:
         fieldRef:
           fieldPath: spec.nodeName
+    - name: KAFKA_PASSWORD                         # Kafka user otel-agent (templates/kafka.yaml)
+      valueFrom:
+        secretKeyRef: {name: kafka-client, key: password, optional: true}
 
   extraVolumes:
     - name: varlogpods
@@ -639,12 +759,17 @@ otelAgent:
       hostPath:
         path: /var/lib/otelcol
         type: DirectoryOrCreate
+    - name: kafka-client                           # the Kafka listener's CA
+      secret: {secretName: kafka-client, optional: true, items: [{key: ca.crt, path: ca.crt}]}
   extraVolumeMounts:
     - name: varlogpods
       mountPath: /var/log/pods
       readOnly: true
     - name: otelcol-data
       mountPath: /var/lib/otelcol
+    - name: kafka-client
+      mountPath: /etc/kafka-client
+      readOnly: true
 
   # Reading /var/log/pods needs root on the node's files, and nothing more.
   securityContext:
@@ -745,7 +870,7 @@ otelGateway:
     capabilities:
       drop: [ALL]
 
-  # Agents only (NetworkPolicy), over OTLP/gRPC.
+  # Input from Kafka; without Kafka, OTLP/gRPC from the agents only (NetworkPolicy).
   ports:
     otlp:
       enabled: true
@@ -778,9 +903,19 @@ otelGateway:
           resources:
             requests:
               storage: 100Gi                        # ≥ sum of all tenants' gatewayQueueMiB (docs/05)
+  extraEnvs:
+    - name: KAFKA_PASSWORD                         # Kafka user otel-gateway (templates/kafka.yaml)
+      valueFrom:
+        secretKeyRef: {name: kafka-client, key: password, optional: true}
+  extraVolumes:
+    - name: kafka-client                           # the Kafka listener's CA
+      secret: {secretName: kafka-client, optional: true, items: [{key: ca.crt, path: ca.crt}]}
   extraVolumeMounts:
     - name: queue
       mountPath: /var/lib/otelcol
+    - name: kafka-client
+      mountPath: /etc/kafka-client
+      readOnly: true
 
   podDisruptionBudget:
     enabled: true
@@ -856,10 +991,25 @@ grafana:
     userKey: admin-user
     passwordKey: admin-password
 
-  # GF_DATABASE_PASSWORD and the OAuth client secret (Key Vault → ExternalSecret)
+  # The OAuth client secret (templates/secrets-*.yaml); absent in mock mode.
   envFromSecrets:
-    - name: grafana-env
-  # Sign-in: every GF_AUTH_* setting for auth.provider (templates/grafana-auth.yaml)
+    - name: grafana-oauth
+      optional: true
+  # The database: Secret global.grafanaDatabase.secretName (keys host, port,
+  # dbname, user, password), read into grafana.ini below as $__env{...}.
+  envValueFrom:
+    PG_HOST:
+      secretKeyRef: {name: "{{ .Values.global.grafanaDatabase.secretName }}", key: host}
+    PG_PORT:
+      secretKeyRef: {name: "{{ .Values.global.grafanaDatabase.secretName }}", key: port}
+    GF_DATABASE_NAME:
+      secretKeyRef: {name: "{{ .Values.global.grafanaDatabase.secretName }}", key: dbname}
+    GF_DATABASE_USER:
+      secretKeyRef: {name: "{{ .Values.global.grafanaDatabase.secretName }}", key: user}
+    GF_DATABASE_PASSWORD:
+      secretKeyRef: {name: "{{ .Values.global.grafanaDatabase.secretName }}", key: password}
+  # Sign-in: every GF_AUTH_* setting for auth.provider, and the database's
+  # ssl_mode (templates/grafana-auth.yaml)
   envFromConfigMaps:
     - name: grafana-auth
 
@@ -872,11 +1022,8 @@ grafana:
       level: warn
     database:
       type: postgres
-      host: ""                                     # ← SET (environment file): terraform output postgres_fqdn:5432
-      name: grafana
-      user: grafana
-      ssl_mode: require
-      # password: GF_DATABASE_PASSWORD
+      host: $__env{PG_HOST}:$__env{PG_PORT}       # name, user, password: GF_DATABASE_* (envValueFrom)
+      # ssl_mode: postgres.sslMode (GF_DATABASE_SSL_MODE, ConfigMap grafana-auth)
     # Sign-in (login form, basic auth, azuread, generic_oauth) is set by the
     # top-level `auth:` values, as GF_AUTH_* variables (templates/grafana-auth.yaml).
     auth.anonymous:

@@ -2,6 +2,11 @@
 
 ![Architecture overview](../diagrams/01-architecture-overview.png)
 
+Two installations of this same design: **generic** (everything in the cluster, no Azure
+service needed) and **Azure** (Blob, Key Vault, Entra ID, PostgreSQL flexible, managed
+Prometheus around it). See [10 · Installations](10-installations.md). This page describes the
+backend they share, with the Azure services as the reference.
+
 ## Scope and assumptions
 
 - **One shared AKS cluster**, owned by the platform team. Tenants (application
@@ -11,7 +16,8 @@
   Collector, and the wire protocol is **OTLP from the node to Loki**.
 - Workloads either **log to stdout/stderr** (nothing to change), or **export
   logs with an OpenTelemetry SDK** to the collector on their node.
-- People read logs in **Grafana**, signing in with the bank's **Entra ID**.
+- People read logs in **Grafana**, signing in with the bank's identity provider: **Entra ID** by
+  default, or Keycloak / any OIDC provider (`auth.provider`). Test clusters can use mock users.
 - AKS runs in a region with **3 availability zones**, with Azure CNI (Cilium or
   Calico), the OIDC issuer and Workload Identity enabled, a private API server,
   and egress through the hub firewall.
@@ -22,8 +28,9 @@
 
 | Component | Runs as | Replicas (M profile) | State | Why it exists |
 |---|---|---|---|---|
-| **OTel agent** | DaemonSet, ns `otel-agent` | 1 per node | read checkpoints + export queue on the node (`/var/lib/otelcol`) | Reads container logs; accepts OTLP from pods on its node; decides the tenant; masks secrets |
-| **OTel gateway** | StatefulSet, ns `otel` | 3 (one per zone) | **one persistent queue per tenant** on a zonal SSD | Routes by tenant; isolates tenants from each other; buffers Loki outages; OTLP → Loki |
+| **OTel agent** | DaemonSet, ns `otel-agent` | 1 per node | read checkpoints + export queue on the node (`/var/lib/otelcol`) | Reads container logs; accepts OTLP from pods on its node; decides the tenant; masks secrets; writes to Kafka |
+| **Kafka** (Strimzi) | Kafka cluster `logs`, ns `kafka` | 3 brokers (one per zone) + 3 KRaft controllers | topic `otel-logs` on zonal SSDs, 3 replicas, 24 h | The replicated buffer between the tiers: holds an outage's backlog off the nodes, replays it in order ([ADR 0010](adr/0010-kafka-in-cluster.md)) |
+| **OTel gateway** | StatefulSet, ns `otel` | 3 (one per zone) | **one persistent queue per tenant** on a zonal SSD | Consumes Kafka; routes by tenant; isolates tenants from each other; OTLP → Loki |
 | **Distributor** | Deployment, ns `loki` | 3 → 9 (HPA) | none | Native OTLP endpoint; per-tenant limits; replicates ×3 |
 | **Ingester** | 3 StatefulSets, one per zone | 2 per zone | WAL on a zonal Premium SSD (CMK) | Holds the last ~2 h, builds chunks, flushes to Blob |
 | **Query frontend** | Deployment | 2 | none | Splits and shards queries; **results cache**; per-tenant queue |
@@ -35,7 +42,8 @@
 | **Overrides exporter**, **rollout-operator** | Deployments | 1 each | none | Limits as metrics; ingester upgrades one zone at a time |
 | **obs-gateway** (read gateway) | kgateway (Envoy) | 3 → 9 | none | The only way into the read path; sets the tenant header |
 | **Grafana** | Deployment, ns `grafana` | 2 | PostgreSQL | UI, one org per tenant, alerting |
-| **External Secrets** | Deployment | 1+ | none | Key Vault → Kubernetes Secrets |
+| **External Secrets** | Deployment | 1+ | none | Key Vault → Kubernetes Secrets (Azure; generic: the chart generates them) |
+| **Keycloak** (generic) | Keycloak operator, ns `keycloak` | 2 | PostgreSQL (Percona) | Sign-in when there is no Entra ID: realm `obs`, a group per tenant role |
 | **grafana-sync** | CronJob, ns `grafana` | every 10 min | none | Orgs + one Loki data source per tenant, with the view's current key |
 
 Azure side (Terraform, [`infra/terraform`](../infra/terraform)):
@@ -70,12 +78,17 @@ Azure side (Terraform, [`infra/terraform`](../infra/terraform)):
    - sets the tenant from the namespace (**generated** from `tenants.yaml`);
    - **masks** card numbers, IBANs and bearer tokens in bodies *and* attributes;
    - queues the result in a **persistent queue on the node's disk** (2 GiB).
-4. The agent sends OTLP/gRPC, zstd-compressed, round-robin over the **gateway** pods. Each
-   gateway pod:
+4. The agent produces to the **Kafka** topic `otel-logs` (TLS, SCRAM user `otel-agent`,
+   zstd, `acks=all`), one message per resource, keyed so each stream stays on one partition.
+   Kafka keeps 3 replicas in 3 zones for 24 h.
+5. The **gateways** consume the topic as one consumer group. Each gateway pod:
    - routes every record by tenant into **that tenant's own exporter and persistent queue**
-     on its zonal SSD;
+     on its zonal SSD, and commits the offset only then;
    - pushes to Loki's OTLP endpoint (`/otlp/v1/logs`) with `X-Scope-OrgID: <tenant>`.
-5. The **distributor** checks the tenant's limits and turns OTLP into Loki streams. Only
+
+   Without Kafka (`overlays/no-kafka.yaml`), the agents send OTLP/gRPC to the gateways
+   directly instead.
+6. The **distributor** checks the tenant's limits and turns OTLP into Loki streams. Only
    four bounded resource attributes become stream labels:
 
    | OTel attribute | Loki label |
@@ -88,17 +101,18 @@ Azure side (Terraform, [`infra/terraform`](../infra/terraform)):
    Everything else (pod, node, trace ID, log attributes) becomes structured metadata.
    The distributor then writes each stream to **3 ingesters, one per zone**, and
    acknowledges once 2 have it.
-6. The ingesters flush compressed chunks to Blob. The compactor applies each tenant's retention.
+7. The ingesters flush compressed chunks to Blob. The compactor applies each tenant's retention.
 
-Why two collector tiers, and what each buffer protects against:
-[08 · Design questions](08-design-questions.md#why-an-agent-and-a-gateway) and
-[ADR 0007](adr/0007-opentelemetry-collection.md).
+Why two collector tiers, why Kafka between them, and what each buffer protects against:
+[08 · Design questions](08-design-questions.md#kafka),
+[ADR 0007](adr/0007-opentelemetry-collection.md) and [ADR 0010](adr/0010-kafka-in-cluster.md).
 
 ## Read path
 
 ![Read path](../diagrams/03-read-path-and-tenancy.png)
 
-1. The user signs in to Grafana with Entra ID. Their security groups decide their org and role.
+1. The user signs in to Grafana with the identity provider (`auth.provider`). Their groups decide
+   their org and role. A local `admin` exists in every mode (initial password `change-me-now`).
 2. Each org has one Loki data source: `http://obs-gateway.loki.svc:8080/<view>/`, plus the
    view's key.
 3. The **read gateway** checks the key, **sets** `X-Scope-OrgID`, and forwards to the query frontend.
@@ -117,10 +131,11 @@ Why two collector tiers, and what each buffer protects against:
 | Read gateway with one view per org | OAuth passthrough; nginx | The header comes only from the platform | [0003](adr/0003-read-gateway-views.md) |
 | Few labels; the rest as structured metadata | Pod as a label | Bounded stream count | [0004](adr/0004-labels-and-structured-metadata.md) |
 | Blob GZRS + Workload Identity + CMK | Account keys; LRS | No secrets; survives a zone and (with delay) a region | [0005](adr/0005-azure-blob-workload-identity.md) |
-| **No Kafka / Event Hubs** | A bus in front of Loki | Every hop already has a durable buffer | [0006](adr/0006-no-kafka-buffer.md) |
+| **Kafka in the cluster, between the collector tiers** | No bus ([0006](adr/0006-no-kafka-buffer.md)); Event Hubs; Loki's Kafka ingest | Outage backlog off the nodes, replicated; 24 h replay; same in both installations | [0010](adr/0010-kafka-in-cluster.md) |
 | **OpenTelemetry Collector, agent + gateway** | Grafana Alloy; agent only | Bank standard; per-tenant queues; vendor-neutral OTLP | [0007](adr/0007-opentelemetry-collection.md) |
 | **Memcached caches on the read path only** | Redis; no cache; write cache | Loki's tested design; loss costs speed, never data | [0008](adr/0008-caching.md) |
-| **Entra ID directly for Grafana SSO** | Keycloak brokering Entra ID | Existing MFA/CA/PIM; no extra critical system; tenants aren't token claims | [0009](adr/0009-entra-id-not-keycloak.md) |
+| **Entra ID directly for Grafana SSO** (Azure); Keycloak installed (generic) | Keycloak brokering Entra ID | Existing MFA/CA/PIM; no extra critical system; tenants aren't token claims | [0009](adr/0009-entra-id-not-keycloak.md) |
+| **Two installation profiles, one backend** | Azure only; two designs | Validate the backend once; run with or without Azure services | [0011](adr/0011-two-installation-profiles.md) |
 
 ## Versions (pinned in [`scripts/lib.sh`](../scripts/lib.sh))
 
@@ -131,6 +146,8 @@ Why two collector tiers, and what each buffer protects against:
 | Grafana | chart `grafana-community/grafana` 13.2.5 → Grafana 13.2 |
 | kgateway | v2.4.5 (Gateway API v1.6.1) |
 | External Secrets | chart 2.11.0 |
+| Strimzi / Kafka | operator 1.2.0 → Kafka 4.3.1 (KRaft) |
+| Keycloak | operator + server 26.8.0 |
 | Terraform azurerm | ~> 4.40 (tested with 4.81) |
 
 Loki, Grafana and kgateway match the RKE2 lab ([`../soft-tenancy`](../../soft-tenancy)).

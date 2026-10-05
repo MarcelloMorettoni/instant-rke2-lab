@@ -32,12 +32,39 @@ before go-live.
 - **Gateway queue per pod** = the sum of every tenant's `gatewayQueueMiB`. The example
   registry gives 15 GiB. Keep the PVC above ~2× that sum, for compaction headroom.
 - **How long it lasts**: (queue per pod × pods) ÷ ingest rate.
-  M: 45 GiB ÷ ~12 MB/s ≈ 1 h of every tenant's logs while Loki is down. Size it for the
-  outage you want to ride out.
+  M: 45 GiB ÷ ~12 MB/s ≈ 1 h of every tenant's logs while Loki is down. With Kafka, a long
+  Loki outage waits in Kafka instead (below), and the gateway queues mainly keep a throttled
+  tenant away from the others. Without Kafka, size them for the outage you want to ride out.
 - Scale the gateway in steps of 3 (one per zone), never with an HPA: a removed pod's queue
   waits on its PVC until the pod returns.
 - Config size grows with tenants (one exporter + pipeline each). Past a few hundred
   tenants, run several gateway groups, each serving a shard of tenants.
+
+## Kafka
+
+| | S | M (chart defaults) | L |
+|---|---|---|---|
+| Brokers | 3 (or 3 dual-role, `test-cluster.yaml`) | **3 × 2 CPU / 8 Gi** (heap 3 GiB) | 6 × 4 CPU / 16 Gi |
+| KRaft controllers | in the brokers (`dualRole`) | 3 × 0.25 CPU / 1 Gi, 20 Gi disk | 3 × 0.5 CPU / 2 Gi |
+| Broker disk | 100 Gi | **500 Gi** | 2 Ti, Premium SSD v2 |
+| Partitions of `otel-logs` | 6-12 | **24** | 48-96 |
+| Retention | 24 h | **24 h** | 12-24 h |
+
+- **What goes into Kafka**: the agents' OTLP batches, zstd-compressed. OTLP adds the
+  resource and log attributes (≈ 1.5× the raw line), and zstd takes ~6-8× off.
+  M: 1 TB/day raw → **≈ 200-250 GB/day** in Kafka, per copy.
+- **Disk** = per-copy volume × retention × 3 replicas ÷ brokers × 2 (headroom for bursts and
+  rebalancing). M: 250 GB × 1 day × 3 ÷ 3 × 2 ≈ **500 Gi per broker**. Retention can be
+  raised as long as the disk follows.
+- **Throughput** is small for Kafka. M peak: ~50 MB/s of OTLP → ~8 MB/s compressed in,
+  ×3 for replication, and the same ~8 MB/s out to the gateways.
+- **Partitions** ≥ gateway pods × 4, so the gateways stay balanced and a slow partition
+  holds back few streams. Only ever increase them: existing streams then move to a new
+  partition once, which can reorder a few records at that moment.
+- Brokers run on the Loki node pools (`placement`), one per zone. At M they add about one
+  D16ds_v5 node's worth of CPU and memory across the 3 zones.
+- **Lag** (`KafkaConsumerLagHigh`): the gateways normally keep the lag near zero. Lag that
+  grows while Loki is healthy means too few gateway pods or partitions.
 
 ## Rules of thumb behind the numbers
 
@@ -96,6 +123,8 @@ spread over all ingesters. Read-side isolation also comes from `max_queriers_per
 | Scheduler queue length high, queries slow | raise querier `maxReplicas`; check `max_queriers_per_tenant` |
 | Chunks-cache hit rate < 80 % | more memcached replicas or memory |
 | Node pool at `max_count` | raise `loki_nodes_per_zone.max` (Terraform) |
+| Kafka broker disk > 70 % | more disk (`kafka.brokers.storage`, expandable), or shorter `kafka.topic.retentionHours` |
+| Kafka consumer lag growing while Loki is healthy | more gateway pods (steps of 3) and partitions |
 
 ## Load test before go-live
 

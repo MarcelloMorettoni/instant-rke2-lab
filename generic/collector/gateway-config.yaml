@@ -4,9 +4,11 @@
 # one pipeline per tenant, and writes it, as otelGateway.alternateConfig, into
 # rendered/values-tenants.yaml.
 #
-# The agents are the only clients (NetworkPolicy): obs.tenant is trusted here
-# because only the agents set it. Each tenant gets its own exporter with its
-# own PERSISTENT queue on the pod's disk, so:
+# Input: the Kafka topic otel-logs (consumer group otel-gateway), or, without
+# Kafka (environments/overlays/no-kafka.yaml), OTLP from the agents.
+# Only the agents can write there (Kafka ACLs, NetworkPolicy): obs.tenant is
+# trusted here because only the agents set it. Each tenant gets its own
+# exporter with its own PERSISTENT queue on the pod's disk, so:
 #   - one tenant over its Loki limit (429) only backs up its own queue;
 #   - the other tenants keep flowing;
 #   - a Loki outage is absorbed on disk (per tenant, up to queue_size).
@@ -22,6 +24,37 @@ extensions:
       directory: /var/lib/otelcol/queue
 
 receivers:
+  # The gateways share the topic's partitions (consumer group). An offset is
+  # committed only after the record is in its tenant's queue (message_marking):
+  # if that queue is full, the partition pauses and retries (error_backoff);
+  # the records stay in Kafka. Malformed records (permanent errors) are skipped.
+  kafka:
+    brokers: [logs-kafka-bootstrap.kafka.svc.cluster.local:9093]
+    client_id: otel-gateway
+    group_id: otel-gateway
+    initial_offset: earliest
+    logs:
+      topics: [otel-logs]
+      encoding: otlp_proto
+    max_partition_fetch_size: 8388608
+    auth:
+      sasl:
+        mechanism: SCRAM-SHA-512
+        username: otel-gateway
+        password: ${env:KAFKA_PASSWORD}
+    tls:
+      ca_file: /etc/kafka-client/ca.crt
+    message_marking:
+      after: true
+      on_error: false
+      on_permanent_error: true
+    error_backoff:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 5m
+    partition_processing:
+      independent: true                # one worker per partition: a slow one doesn't hold the others
   otlp:
     protocols:
       grpc:
@@ -62,7 +95,7 @@ service:
                 port: 8888
   pipelines:
     logs/in:
-      receivers: [otlp]
+      receivers: [kafka]
       processors: [memory_limiter]
       exporters: [routing]
     # @@PIPELINES@@ logs/<tenant>: routing → resource/internal → otlp_http/<tenant>

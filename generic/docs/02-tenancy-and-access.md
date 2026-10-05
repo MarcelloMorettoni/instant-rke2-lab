@@ -3,8 +3,8 @@
 **One rule behind every decision: a tenant never controls anything that sets
 its own identity.** Tenants choose their pod labels, the headers they send and
 the data sources they might create, so none of those are trusted. Tenants can't
-change namespace names (cluster-scoped, platform RBAC), Entra ID group
-membership (IAM process) or the gateway's config. Those are what the design trusts.
+change namespace names (cluster-scoped, platform RBAC), group membership
+in the identity provider (IAM process) or the gateway's config. Those are what the design trusts.
 
 | Layer | Trusted identity | Enforced by |
 |---|---|---|
@@ -28,7 +28,7 @@ tenants.yaml ──► rendered/values-tenants.yaml   values for charts/log-plat
                    loki.loki.runtimeConfig        tier limits + retention per tenant
                    readViews                      → HTTPRoute + key policy + ExternalSecret per view
                    grafanaOrgs                    → orgs + data sources (grafana-sync CronJob)
-                   grafanaOrgMapping              → Entra group → org + role, allowed groups
+                   grafanaOrgMapping              → group → org + role, allowed groups (per provider)
 ```
 
 A tenant entry:
@@ -76,13 +76,30 @@ One chart setting selects the identity provider:
 | `auth.provider` | Sign-in | Users land in their org by | For |
 |---|---|---|---|
 | `entra` (default) | Microsoft Entra ID | Entra security groups: `groups.entra` (object IDs) | production |
-| `keycloak` | Keycloak realm (OIDC) | the token's groups claim: `groups.oidc` (names) | banks with Keycloak as IAM, or brokering several IdPs |
+| `keycloak` | Keycloak realm (OIDC); with `keycloak.install`, the one the charts install | the token's groups claim: `groups.oidc` (names) | the generic installation; banks with Keycloak as IAM, or brokering several IdPs |
 | `oidc` | any other OIDC provider, with explicit endpoints | the groups claim: `groups.oidc` | other IdPs |
 | `disabled` | **mock**: no identity provider, local users | fixed users (`auth.mock`) | **test clusters only** |
 
 The chart turns `auth:` into ConfigMap `grafana/grafana-auth` (Grafana's `GF_AUTH_*`
-settings) and adds the client secret to `grafana-env` from Key Vault. `install.sh` restarts
-Grafana when those settings change.
+settings). The client secret goes into Secret `grafana-oauth`:
+- from Key Vault (`keyVault.enabled`);
+- generated and shared with the realm's `grafana` client (`keycloak.install`);
+- or created by you.
+
+`install.sh` restarts Grafana when those settings change.
+
+**`keycloak.install: true`** (the generic installation, [10](10-installations.md)) installs
+Keycloak and imports realm `obs` once:
+- the `grafana` client: confidential, PKCE, redirect `<root_url>/login/generic_oauth`;
+- a `groups` mapper (group names, not paths);
+- one group per `groups.oidc` name in `tenants.yaml`;
+- optional lab users (`keycloak.realm.users`, temporary password `change-me-now`);
+- optionally Entra ID as identity provider, with Entra's group object IDs mapped to the
+  realm groups.
+
+Grafana's URLs fill themselves in:
+- the browser goes to `https://<keycloak.hostname>`;
+- Grafana's server-side token and userinfo calls go to the in-cluster Service.
 
 Whatever the provider, the rules stay the same:
 - **Only members of a mapped group can log in** (`allowed_groups`).
@@ -130,6 +147,19 @@ auth:
 
 ### Keycloak (`auth.provider: keycloak`)
 
+**Installed by the charts** (`keycloak.install: true`): nothing to do by hand. Steps 1-4 below
+are what the realm import does. Set only:
+
+```yaml
+keycloak:
+  install: true
+  hostname: sso.obs.bank.internal
+auth:
+  provider: keycloak            # url, internalUrl and realm come from keycloak.install
+```
+
+**An existing Keycloak** (the bank's):
+
 ```yaml
 auth:
   provider: keycloak
@@ -154,7 +184,8 @@ network:
 4. Store the client secret in Key Vault as `grafana-oidc-client-secret`.
 
 If Keycloak brokers Entra ID, users still come from Entra, but Grafana sees Keycloak's groups.
-Map Entra groups to Keycloak groups in the identity provider's mappers.
+Map Entra groups to Keycloak groups in the identity provider's mappers. The installed
+Keycloak does this from `tenants.yaml` (`keycloak.realm.entraBroker`).
 
 The chart derives the auth, token, userinfo and logout endpoints from `url` + `realm`. If
 Keycloak's certificate comes from the bank's internal CA, mount the CA into Grafana
@@ -206,7 +237,8 @@ data owner's approval in the pull request.
 ## Platform access
 
 The `platform` view reads `platform|unassigned|<every live tenant>`. It is
-regenerated whenever a tenant is added. Access is the `sg-obs-platform-*` groups:
+regenerated whenever a tenant is added. Access is the platform's groups in `tenants.yaml`
+(`groups.entra` / `groups.oidc`, e.g. `sg-obs-platform-*` in Entra ID), and the local `admin`:
 - **viewers**: e.g. service desk, read only;
 - **editors**: SRE.
 

@@ -1,0 +1,48 @@
+# Overlay: Loki on S3-compatible object storage instead of Azure Blob: the
+# platform with NO Azure dependency (picture 08). Any S3 API: an in-cluster
+# store (Rook/Ceph RGW, SeaweedFS, ...) or the bank's on-prem object storage.
+# List it in environments/<env>/overlays.txt, and create, in namespace loki:
+#   kubectl -n loki create secret generic loki-s3 \
+#     --from-literal=S3_ACCESS_KEY_ID=... --from-literal=S3_SECRET_ACCESS_KEY=...
+# The buckets (loki-chunks, loki-ruler, loki-admin) must exist.
+
+global:
+  # Loki reads the credentials from the environment (${S3_...} below).
+  extraArgs: [-config.expand-env=true]
+  extraEnvFrom:
+    - secretRef: {name: loki-s3}
+
+loki:
+  loki:
+    podLabels:
+      azure.workload.identity/use: null
+    schemaConfig:
+      configs:
+        - from: "2026-01-01"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index: {prefix: loki_index_, period: 24h}
+    storage:
+      type: s3
+      azure: null
+      s3:
+        endpoint: s3.object-store.svc.cluster.local:443   # ← SET: host:port of the S3 API
+        region: us-east-1
+        accessKeyId: ${S3_ACCESS_KEY_ID}
+        secretAccessKey: ${S3_SECRET_ACCESS_KEY}
+        s3ForcePathStyle: true
+        insecure: false                                     # TLS
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: null
+
+network:
+  blobPrivateEndpointCidrs: []
+  # Loki → the S3 endpoint. In-cluster here; an external store: ipBlock CIDRs.
+  objectStoreEgress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: object-store}
+      ports:
+        - {port: 443, protocol: TCP}

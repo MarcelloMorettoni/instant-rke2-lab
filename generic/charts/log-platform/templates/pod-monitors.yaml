@@ -1,22 +1,49 @@
-{{- if .Values.monitoring.azurePodMonitors }}
-# Scrape targets for AKS managed Prometheus (azmonitoring.coreos.com).
-{{- range $m := list (list "loki" "loki" "app.kubernetes.io/name" "loki" "http-metrics" "") (list "loki-read-gateway" "loki" "gateway.networking.k8s.io/gateway-name" "obs-gateway" "" "/stats/prometheus") (list "otel-agent" "otel-agent" "obs.platform/role" "otel-agent" "metrics" "") (list "otel-gateway" "otel" "obs.platform/role" "otel-gateway" "metrics" "") }}
+{{- /*
+Scrape targets: azmonitoring.coreos.com (AKS managed Prometheus) and/or
+monitoring.coreos.com (any Prometheus Operator). Same targets, same job labels
+(the alerts use them). Each: name, namespace, label key, label value, port
+name ("" = portNumber), path ("" = /metrics), port number.
+*/ -}}
+{{- $targets := list
+  (list "loki" "loki" "app.kubernetes.io/name" "loki" "http-metrics" "" 0)
+  (list "loki-read-gateway" "loki" "gateway.networking.k8s.io/gateway-name" "obs-gateway" "" "/stats/prometheus" 9091)
+  (list "otel-agent" "otel-agent" "obs.platform/role" "otel-agent" "metrics" "" 0)
+  (list "otel-gateway" "otel" "obs.platform/role" "otel-gateway" "metrics" "" 0) }}
+{{- if and .Values.kafka.enabled .Values.kafka.exporter }}
+{{- $targets = append $targets (list "kafka-exporter" "kafka" "strimzi.io/name" "logs-kafka-exporter" "tcp-prometheus" "" 0) }}
+{{- end }}
+{{- if .Values.keycloak.install }}
+{{- $targets = append $targets (list "keycloak" "keycloak" "app" "keycloak" "" "/metrics" 9000) }}
+{{- end }}
+{{- $apis := list }}
+{{- if .Values.monitoring.azurePodMonitors }}{{- $apis = append $apis "azmonitoring.coreos.com/v1" }}{{- end }}
+{{- if .Values.monitoring.prometheusOperator.enabled }}{{- $apis = append $apis "monitoring.coreos.com/v1" }}{{- end }}
+{{- range $api := $apis }}
+{{- range $m := $targets }}
+{{- $name := index $m 0 }}
 ---
-apiVersion: azmonitoring.coreos.com/v1
+apiVersion: {{ $api }}
 kind: PodMonitor
 metadata:
-  name: {{ index $m 0 }}
+  name: {{ $name }}
   namespace: {{ index $m 1 }}
+  {{- if eq $api "monitoring.coreos.com/v1" }}
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+    {{- with $.Values.monitoring.prometheusOperator.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
 spec:
   selector:
     matchLabels:
       {{ index $m 2 }}: {{ index $m 3 }}
   podMetricsEndpoints:
-    - {{ if index $m 4 }}port: {{ index $m 4 }}{{ else }}portNumber: 9091{{ end }}
+    - {{ if index $m 4 }}port: {{ index $m 4 }}{{ else }}portNumber: {{ index $m 6 }}{{ end }}
       path: {{ default "/metrics" (index $m 5) }}
       interval: 30s
       relabelings:
-        {{- if eq (index $m 0) "loki" }}
+        {{- if eq $name "loki" }}
         - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
           targetLabel: component
         - sourceLabels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app_kubernetes_io_component]
@@ -24,7 +51,23 @@ spec:
           targetLabel: job
         {{- else }}
         - targetLabel: job
-          replacement: {{ index $m 0 | replace "-" "/" | replace "loki/read/gateway" "loki/read-gateway" }}
+          replacement: {{ $name | replace "-" "/" | replace "loki/read/gateway" "loki/read-gateway" }}
         {{- end }}
 {{- end }}
+{{- end }}
+{{- if .Values.monitoring.prometheusOperator.enabled }}
+---
+# The platform's alerts (files/loki-alerts.yaml = alerts/loki-alerts.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: log-platform
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusOperator.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- .Files.Get "files/loki-alerts.yaml" | nindent 2 }}
 {{- end }}

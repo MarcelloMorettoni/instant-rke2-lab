@@ -21,19 +21,35 @@ if step 00 "render tenants and images"; then
   python3 scripts/render-images.py "${ENV_NAME}"
 fi
 
-if step 10 "operators: Gateway API + kgateway CRDs, kgateway, External Secrets, namespace loki"; then
+if step 10 "operators: CRDs, kgateway, Strimzi, Keycloak operator, External Secrets; namespaces loki, kafka, keycloak"; then
   helm upgrade --install log-platform-operators charts/log-platform-operators \
-    -n kgateway-system --create-namespace "${ENV_VALUES[@]}" --wait --timeout 10m
+    -n platform-operators --create-namespace "${ENV_VALUES[@]}" --wait --timeout 10m
 fi
 
 if step 20 "read-gateway keys in Key Vault (one per view; created only if missing)"; then
-  scripts/tenant-keys.sh "${ENV_NAME}"
+  if [[ "$(value_of keyVault.enabled)" == "false" ]]; then
+    log "keyVault.enabled is false: the chart generates the view keys (step 30)"
+  else
+    scripts/tenant-keys.sh "${ENV_NAME}"
+  fi
 fi
 
-if step 30 "log platform (Loki, OTel agent + gateway, Grafana, policies, views)"; then
+if step 25 "PostgreSQL users for Grafana (and Keycloak), when it is Percona in the cluster"; then
+  if [[ "$(value_of postgres.provider)" == "percona" ]]; then
+    ns="$(value_of postgres.percona.namespace)"; ns="${ns:-postgres}"
+    cl="$(value_of postgres.percona.cluster)"; cl="${cl:-obs-pg}"
+    for u in grafana $( [[ "$(value_of keycloak.install)" == "true" ]] && echo keycloak ); do
+      kubectl -n "${ns}" get secret "${cl}-pguser-${u}" >/dev/null 2>&1 \
+        || die "no Secret ${ns}/${cl}-pguser-${u}: create the PerconaPGCluster first (examples/percona-postgresql.yaml)"
+    done
+    ok "Percona user Secrets found in ${ns}; step 30 copies them"
+  fi
+fi
+
+if step 30 "log platform (Kafka, Loki, OTel agent + gateway, Grafana, Keycloak, policies, views)"; then
   before="$(kubectl -n grafana get configmap grafana-auth -o jsonpath='{.data}' 2>/dev/null || true)"
   helm upgrade --install log-platform charts/log-platform -n loki \
-    "${ENV_VALUES[@]}" -f rendered/values-tenants.yaml --wait --timeout 20m
+    "${PLATFORM_VALUES[@]}" --wait --timeout 20m
   after="$(kubectl -n grafana get configmap grafana-auth -o jsonpath='{.data}')"
   if [[ -n "${before}" && "${before}" != "${after}" ]]; then
     log "sign-in settings (provider or group → org mapping) changed: restarting Grafana"

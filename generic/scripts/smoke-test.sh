@@ -28,6 +28,21 @@ check "OTel agent ready on every node" ok \
   bash -c "kubectl -n otel-agent get ds otel-agent-agent -o json | jq -e '.status.numberReady == .status.desiredNumberScheduled'"
 check "OTel gateway fully ready" ok \
   bash -c "kubectl -n otel get sts otel-gateway -o json | jq -e '.status.readyReplicas == .spec.replicas'"
+ready() {  # ready <namespace> <kind> <name> [condition]: a CR's condition is True
+  kubectl -n "$1" get "$2" "$3" -o json | jq -e --arg c "${4:-Ready}" '.status.conditions[]? | select(.type==$c and .status=="True")'
+}
+if kubectl -n kafka get kafka logs >/dev/null 2>&1; then
+  log "Kafka (Strimzi)"
+  check "Kafka cluster logs ready" ok ready kafka kafka logs
+  check "topic otel-logs ready" ok ready kafka kafkatopic otel-logs
+  check "user otel-agent ready" ok ready kafka kafkauser otel-agent
+  check "user otel-gateway ready" ok ready kafka kafkauser otel-gateway
+fi
+if kubectl -n keycloak get keycloak keycloak >/dev/null 2>&1; then
+  log "Keycloak"
+  check "Keycloak ready" ok ready keycloak keycloak keycloak
+  check "realm import done" ok bash -c "kubectl -n keycloak get keycloakrealmimport -o json | jq -e '[.items[].status.conditions[]? | select(.type==\"Done\" and .status==\"True\")] | length > 0'"
+fi
 
 log "Read gateway (through a port-forward)"
 kubectl -n loki port-forward svc/obs-gateway 18080:8080 >/dev/null 2>&1 &
@@ -71,10 +86,19 @@ probe() {  # probe <url>: run curl from a short-lived pod in `default`
     --image="${SMOKE_IMAGE:-${REG:+${REG%/}/}curlimages/curl:8.16.0}" --command -- \
     curl -s -m 5 -o /dev/null -w '%{http_code}' "$1" | grep -qE '^[1-5][0-9][0-9]$'
 }
+probe_tcp() {  # probe_tcp <host> <port>: can a pod in `default` open a TCP connection?
+  kubectl -n default run "np-probe-$RANDOM" --rm -i --restart=Never --quiet \
+    --image="${SMOKE_IMAGE:-${REG:+${REG%/}/}curlimages/curl:8.16.0}" --command -- \
+    curl -s -m 4 --connect-timeout 3 -o /dev/null -w '%{time_connect}' "telnet://$1:$2" </dev/null \
+    | grep -qvE '^0(\.0+)?$'
+}
 check "default ns → distributor push: blocked" fail probe http://loki-distributor.loki.svc.cluster.local:3100/ready
 check "default ns → query-frontend: blocked"   fail probe http://loki-query-frontend.loki.svc.cluster.local:3100/ready
 check "default ns → read gateway: blocked"     fail probe http://obs-gateway.loki.svc.cluster.local:8080/
 check "default ns → OTel gateway: blocked"     fail probe http://otel-gateway.otel.svc.cluster.local:4317/
 check "default ns → OTel agent OTLP: allowed"  ok   probe http://otel-agent.otel-agent.svc.cluster.local:4318/v1/logs
+if kubectl -n kafka get kafka logs >/dev/null 2>&1; then
+  check "default ns → Kafka brokers: blocked"  fail probe_tcp logs-kafka-bootstrap.kafka.svc.cluster.local 9093
+fi
 
 echo; if (( FAIL == 0 )); then ok "All ${PASS} checks passed"; else die "${FAIL} of $((PASS+FAIL)) checks failed"; fi

@@ -1,6 +1,6 @@
 # ADR 0009 · Grafana signs in with Entra ID directly; Keycloak is a supported option
 
-**Status:** accepted (revised 2026-09-29: the provider is now a chart setting) · **Date:** 2026-09-29
+**Status:** accepted (revised 2026-09-29: the provider is a chart setting; 2026-10-05: the chart can install Keycloak, used by the generic profile, ADR 0011) · **Date:** 2026-09-29
 
 ## Context
 Users need single sign-on to Grafana, and each user must land in the right tenant's org with
@@ -38,3 +38,20 @@ The provider is a chart setting: `auth.provider: keycloak`, plus `auth.keycloak.
 and `clientId`, and the tenants' `groups.oidc` names in `tenants.yaml` (docs/02). `oidc`
 covers other providers, and `disabled` gives mock users for test clusters. The read gateway,
 views, collectors and Loki don't change.
+
+## Since 2026-10-05: Keycloak installed by the charts
+The **generic** profile (ADR 0011) has no Entra ID to rely on, so the charts can install
+Keycloak (`keycloak.install: true`):
+- the Keycloak operator comes with the operators chart;
+- Keycloak itself (2 instances, PostgreSQL from Percona) is served on Grafana's internal
+  load balancer;
+- realm `obs` is imported once, with:
+  - the `grafana` client, whose secret the chart generates and shares with Grafana;
+  - one group per `tenants.yaml` `groups.oidc` name;
+  - optional lab users;
+  - optionally **Entra ID as identity provider** (`keycloak.realm.entraBroker`). Entra's
+    group object IDs are then mapped to the realm groups, so MFA and Conditional Access
+    stay in Entra.
+
+The Azure profile keeps Entra ID directly, for the reasons above. The trade-off is now
+visible in one switch.

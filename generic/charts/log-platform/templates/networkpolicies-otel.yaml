@@ -1,8 +1,10 @@
 {{- if .Values.network.policies }}
 # The OpenTelemetry write path.
 #   tenant pods ──OTLP 4317/4318──► otel-agent (same node; tenants need an egress rule for it)
-#   otel-agent  ──OTLP/gRPC 4317──► otel-gateway   (agents only: they set obs.tenant)
+#   otel-agent  ──Kafka TLS 9093──► kafka brokers ◄── otel-gateway   (kafka.enabled)
+#   otel-agent  ──OTLP/gRPC 4317──► otel-gateway   (without Kafka; agents only: they set obs.tenant)
 #   otel-gateway ──OTLP/HTTP 3100─► loki-distributor
+# The brokers' side is Strimzi's NetworkPolicy (Kafka listener networkPolicyPeers).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: default-deny, namespace: otel-agent}
@@ -24,11 +26,21 @@ spec:
         - {port: 4317, protocol: TCP}
         - {port: 4318, protocol: TCP}
     - from:
-        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+        {{- include "lp.metricsPeers" . | nindent 8 }}
       ports:
         - {port: 8888, protocol: TCP}
   egress:
     {{- include "lp.dnsEgress" . | nindent 4 }}
+    {{- if .Values.kafka.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kafka}
+          podSelector:
+            matchLabels: {strimzi.io/cluster: logs, strimzi.io/broker-role: "true"}
+      ports:
+        - {port: 9093, protocol: TCP}
+    {{- end }}
+    {{- if not .Values.kafka.enabled }}
     - to:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: otel}
@@ -36,6 +48,7 @@ spec:
             matchLabels: {obs.platform/role: otel-gateway}
       ports:
         - {port: 4317, protocol: TCP}
+    {{- end }}
     - to:                                   # k8s_attributes: pods, namespaces, ReplicaSets
         {{- include "lp.cidrs" .Values.network.apiServerCidrs | nindent 8 }}
       ports:
@@ -56,6 +69,7 @@ spec:
     matchLabels: {obs.platform/role: otel-gateway}
   policyTypes: [Ingress, Egress]
   ingress:
+    {{- if not .Values.kafka.enabled }}
     - from:                                 # ONLY the agents
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: otel-agent}
@@ -63,8 +77,9 @@ spec:
             matchLabels: {obs.platform/role: otel-agent}
       ports:
         - {port: 4317, protocol: TCP}
+    {{- end }}
     - from:
-        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+        {{- include "lp.metricsPeers" . | nindent 8 }}
       ports:
         - {port: 8888, protocol: TCP}
   egress:
@@ -76,4 +91,13 @@ spec:
             matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: distributor}
       ports:
         - {port: 3100, protocol: TCP}
+    {{- if .Values.kafka.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kafka}
+          podSelector:
+            matchLabels: {strimzi.io/cluster: logs, strimzi.io/broker-role: "true"}
+      ports:
+        - {port: 9093, protocol: TCP}
+    {{- end }}
 {{- end }}

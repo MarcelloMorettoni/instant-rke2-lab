@@ -156,20 +156,5 @@ spec:
     keySources:
       - header: X-Api-Key
     forwardCredential: false
----
-# The view's key lives only in Key Vault (scripts/tenant-keys.sh creates it).
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: obs-key-{{ $v.view }}
-  namespace: loki
-  labels:
-    obs.platform/view: {{ $v.view }}
-spec:
-  refreshInterval: 15m
-  secretStoreRef: {kind: ClusterSecretStore, name: {{ $.Values.keyVault.storeName }}}
-  target: {name: obs-key-{{ $v.view }}, creationPolicy: Owner}
-  data:
-    - secretKey: {{ $v.view }}
-      remoteRef: {key: obs-key-{{ $v.view }}}
 {{- end }}
+{{- /* The keys: Key Vault (external-secrets.yaml) or generated (secrets-generated.yaml). */ -}}

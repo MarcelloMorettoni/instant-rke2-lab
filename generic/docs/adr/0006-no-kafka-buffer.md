@@ -1,6 +1,6 @@
 # ADR 0006 · No Kafka (or Event Hubs) in the log pipeline, for now
 
-**Status:** accepted (revised 2026-09-29) · **Date:** 2026-09-28
+**Status:** superseded by [ADR 0010](0010-kafka-in-cluster.md) (2026-10-05): Kafka now runs in the cluster, between the collector tiers. Kept for the reasoning; `environments/overlays/no-kafka.yaml` still installs this design. · **Date:** 2026-09-28
 
 ## Context
 A message bus in front of Loki can absorb bursts, survive long Loki outages, allow replay,

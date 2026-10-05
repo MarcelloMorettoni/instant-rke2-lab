@@ -1,25 +1,45 @@
 # log-platform-operators: cluster-level prerequisites.
 #
 #   helm upgrade --install log-platform-operators charts/log-platform-operators \
-#     -n kgateway-system --create-namespace \
-#     -f environments/<env>/operators.yaml \
+#     -n platform-operators --create-namespace \
+#     -f environments/<env>/values.yaml \
 #     -f environments/<env>/generated-images.yaml
 #
-# CRDs (Gateway API v1.6.1, kgateway v2.4.5) are in crds/: Helm installs them
-# on the first install but NEVER upgrades them. To upgrade CRDs:
+# CRDs (Gateway API v1.6.1, kgateway v2.4.5, Keycloak 26.8.0, and Strimzi's
+# from its chart) are installed by Helm on the first install but NEVER
+# upgraded. To upgrade CRDs:
 #   kubectl apply --server-side -f charts/log-platform-operators/crds/
 #
-# Image registry: set global.imageRegistry in environments/<env>/values.yaml
-# and run scripts/render-images.py <env>; it writes the kgateway and ESO image
-# fields below into environments/<env>/generated-images.yaml.
+# The same environment file is used for both charts; the switches below are
+# shared with the log-platform chart.
 
-# kgateway: the Gateway API controller behind the read gateway and the Grafana
-# ingress. Installed in the release namespace (kgateway-system).
+global:
+  imageRegistry: ""          # e.g. myproxy:5000 (quay.io/... upstream for the Keycloak operator)
+
+# Shared switches (set them in environments/<env>/values.yaml).
+keyVault:
+  enabled: true              # false: no External Secrets Operator; the chart generates secrets
+keycloak:
+  install: false             # true: the Keycloak operator here, Keycloak in the log-platform chart
+  version: 26.8.0
+
+# kgateway: the Gateway API controller behind the read gateway and the
+# Grafana/Keycloak ingresses. Installed in the release namespace.
 kgateway:
   image:
     registry: cr.kgateway.dev/kgateway-dev      # generated-images.yaml overrides it
 
-# External Secrets Operator: Key Vault → Kubernetes Secrets, with Workload Identity.
+# Strimzi: runs the Kafka cluster of the log-platform chart (namespace kafka).
+# Installed in the release namespace; watches only `kafka`.
+strimzi-kafka-operator:
+  watchNamespaces: [kafka]
+  watchAnyNamespace: false
+  resources:
+    requests: {cpu: 200m, memory: 384Mi}
+    limits: {memory: 768Mi}
+
+# External Secrets Operator: Key Vault → Kubernetes Secrets, with Workload
+# Identity. Only with keyVault.enabled.
 external-secrets:
   namespaceOverride: external-secrets
   installCRDs: true

@@ -1,0 +1,5 @@
+# Overlays (environments/overlays/*.yaml) applied after values.yaml, one per line.
+# A test cluster without dedicated Loki node pools (small Kafka, 1 Keycloak):
+# test-cluster.yaml
+# No Azure at all: Loki on S3-compatible storage instead of Blob.
+# s3-storage.yaml

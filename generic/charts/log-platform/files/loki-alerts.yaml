@@ -1,0 +1,183 @@
+# Alerts for the log platform, in Prometheus rule-file format.
+# (alerts/loki-alerts.yaml is a link to this file, in the chart so Helm can read it.)
+#   - Azure Monitor managed Prometheus: loaded by Terraform
+#     (infra/terraform/alerts.tf → azurerm_monitor_alert_prometheus_rule_group).
+#   - Prometheus Operator: the chart wraps it in a PrometheusRule
+#     (monitoring.prometheusOperator.enabled).
+# Checked with:  promtool check rules alerts/loki-alerts.yaml
+# Every alert links to a section of docs/06-operations-runbook.md.
+groups:
+  - name: loki-write-path
+    rules:
+      - alert: LokiPushErrors
+        expr: |
+          sum by (cluster) (rate(loki_request_duration_seconds_count{route=~"otlp_v1_logs|loki_api_v1_push", status_code=~"5.."}[5m]))
+            /
+          sum by (cluster) (rate(loki_request_duration_seconds_count{route=~"otlp_v1_logs|loki_api_v1_push"}[5m]))
+            > 0.01
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: More than 1% of log pushes fail with 5xx.
+          runbook: docs/06-operations-runbook.md#pushes-failing
+
+      - alert: LokiPushLatencyHigh
+        expr: |
+          histogram_quantile(0.99, sum by (cluster, le) (rate(loki_request_duration_seconds_bucket{route=~"otlp_v1_logs|loki_api_v1_push"}[5m]))) > 2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: p99 push latency above 2s.
+          runbook: docs/06-operations-runbook.md#pushes-failing
+
+      - alert: LokiIngesterUnhealthyInRing
+        expr: max by (cluster) (loki_ring_members{name="ingester", state="Unhealthy"}) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: '{{ $value }} ingester(s) unhealthy in the ring. Two zones down = writes fail.'
+          runbook: docs/06-operations-runbook.md#ingester-unhealthy
+
+      - alert: LokiIngesterFlushFailures
+        expr: sum by (cluster, pod) (rate(loki_ingester_chunks_flush_failures_total[5m])) > 0
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Ingester {{ $labels.pod }} cannot flush chunks to Blob storage.'
+          runbook: docs/06-operations-runbook.md#flush-failures
+
+      - alert: LokiWALDiskFull
+        expr: sum by (cluster, pod) (increase(loki_ingester_wal_disk_full_failures_total[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: 'Ingester {{ $labels.pod }} WAL volume is full.'
+          runbook: docs/06-operations-runbook.md#flush-failures
+
+      - alert: LokiPanics
+        expr: sum by (cluster, pod) (increase(loki_panic_total[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: 'Loki pod {{ $labels.pod }} panicked.'
+          runbook: docs/06-operations-runbook.md#general-triage
+
+  - name: loki-tenants
+    rules:
+      - alert: LokiTenantLogsDropped
+        expr: sum by (cluster, tenant, reason) (rate(loki_discarded_bytes_total[5m])) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Tenant {{ $labels.tenant }} is losing logs: {{ $labels.reason }}.'
+          description: rate_limited / stream_limit = tenant over its tier; tell the tenant, or change tenants.yaml.
+          runbook: docs/06-operations-runbook.md#tenant-over-limits
+
+      - alert: LokiUnassignedNamespaceLogging
+        expr: sum by (cluster) (rate(loki_distributor_lines_received_total{tenant="unassigned"}[10m])) > 0
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: A namespace that belongs to no tenant is sending logs.
+          description: 'Find it: {cluster="..."} in the platform org, tenant "unassigned". Add it to tenants.yaml.'
+          runbook: docs/07-tenant-onboarding.md#unassigned-namespaces
+
+  - name: loki-read-path
+    rules:
+      - alert: LokiQueryErrors
+        expr: |
+          sum by (cluster) (rate(loki_request_duration_seconds_count{route=~"loki_api_v1_query_range|loki_api_v1_query|loki_api_v1_series|loki_api_v1_labels", status_code=~"5.."}[5m]))
+            /
+          sum by (cluster) (rate(loki_request_duration_seconds_count{route=~"loki_api_v1_query_range|loki_api_v1_query|loki_api_v1_series|loki_api_v1_labels"}[5m]))
+            > 0.05
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: More than 5% of queries fail with 5xx.
+          runbook: docs/06-operations-runbook.md#queries-slow-or-failing
+
+  - name: loki-backend
+    rules:
+      - alert: LokiRetentionNotRunning
+        expr: time() - max by (cluster) (loki_compactor_apply_retention_last_successful_run_timestamp_seconds) > 3 * 3600
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: Retention has not completed for 3 hours; data older than its retention is not being deleted.
+          runbook: docs/06-operations-runbook.md#compactor
+
+  - name: otel-collectors
+    rules:
+      - alert: OtelAgentMissingOnNodes
+        expr: |
+          max by (cluster) (kube_daemonset_status_desired_number_scheduled{namespace="otel-agent", daemonset="otel-agent-agent"})
+            -
+          max by (cluster) (kube_daemonset_status_number_ready{namespace="otel-agent", daemonset="otel-agent-agent"})
+            > 0
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: '{{ $value }} node(s) run no ready OTel agent: their logs are not collected.'
+          runbook: docs/06-operations-runbook.md#collector
+
+      - alert: OtelAgentQueueFilling
+        expr: |
+          max by (cluster, pod) (otelcol_exporter_queue_size{job="otel/agent"} / otelcol_exporter_queue_capacity{job="otel/agent"}) > 0.5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Agent {{ $labels.pod }} is buffering on its node: the gateways are slow or unreachable.'
+          runbook: docs/06-operations-runbook.md#pushes-failing
+
+      - alert: OtelGatewayTenantQueueFilling
+        expr: |
+          max by (cluster, exporter) (otelcol_exporter_queue_size{job="otel/gateway"} / otelcol_exporter_queue_capacity{job="otel/gateway"}) > 0.5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Gateway queue of {{ $labels.exporter }} is over half full: Loki is down or throttling this tenant.'
+          description: 'One tenant: see "tenant over limits". All tenants: Loki write path.'
+          runbook: docs/06-operations-runbook.md#tenant-over-limits
+
+      - alert: OtelDroppingLogs
+        expr: sum by (cluster, job, exporter) (rate(otelcol_exporter_send_failed_log_records{job=~"otel/.*"}[5m])) > 0
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: '{{ $labels.job }} {{ $labels.exporter }} gave up on log records after retries: that data is lost.'
+          runbook: docs/06-operations-runbook.md#pushes-failing
+
+      - alert: OtelQueueFull
+        expr: sum by (cluster, job, exporter) (rate(otelcol_exporter_enqueue_failed_log_records{job=~"otel/.*"}[5m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: '{{ $labels.job }} {{ $labels.exporter }}: queue full, back-pressure reaches the senders.'
+          runbook: docs/06-operations-runbook.md#pushes-failing
+
+  # Kafka between the agents and the gateways (kafka.enabled). Metrics from
+  # Strimzi's Kafka Exporter (job kafka/exporter).
+  - name: kafka
+    rules:
+      - alert: KafkaBrokersMissing
+        expr: max by (cluster) (kafka_brokers{job="kafka/exporter"}) < 3
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Only {{ $value }} Kafka broker(s) up. With fewer than 2, the agents can no longer write.'
+          runbook: docs/06-operations-runbook.md#kafka
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: sum by (cluster, topic) (kafka_topic_partition_under_replicated_partition{job="kafka/exporter"}) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: '{{ $value }} partition(s) of {{ $labels.topic }} have fewer than 3 in-sync replicas.'
+          runbook: docs/06-operations-runbook.md#kafka
+
+      - alert: KafkaConsumerLagHigh
+        expr: |
+          sum by (cluster, consumergroup) (kafka_consumergroup_lag{job="kafka/exporter", consumergroup="otel-gateway"}) > 20000
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 'The gateways are {{ $value }} batches behind: logs reach Loki late. Kafka holds them for kafka.topic.retentionHours.'
+          runbook: docs/06-operations-runbook.md#kafka

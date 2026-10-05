@@ -8,7 +8,8 @@
 # Two ways in, one way out:
 #   file_log  container stdout/stderr from /var/log/pods  (the default: apps change nothing)
 #   otlp      apps that export logs with an OpenTelemetry SDK, to the agent on their own node
-#   → otlp_grpc to the gateway tier, through a persistent queue on the node's disk
+#   → Kafka (topic otel-logs), or without Kafka otlp_grpc to the gateway tier,
+#     through a persistent queue on the node's disk
 #
 # Tenancy rule: nothing a workload sends decides its tenant. For files, the
 # namespace comes from the file path (written by the kubelet). For OTLP, any
@@ -145,9 +146,51 @@ processors:
           - replace_all_patterns(log.attributes, "value", "(?i)((?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]+", "$${1}<redacted>")
 
 exporters:
-  # To the gateway tier. Client-side round robin over the gateway pods
-  # (headless Service), zstd, and a PERSISTENT queue on the node's disk:
-  # if the gateways or Loki are down, logs wait here (up to queue_size).
+  # To Kafka (kafka.enabled, the default): topic otel-logs, OTLP protobuf.
+  # One message per resource (pod + container), keyed by its attributes, so a
+  # stream stays on one partition, in order. acks=all: written to 2 of 3
+  # brokers (min.insync.replicas) before the agent forgets it. The same
+  # PERSISTENT queue on the node's disk covers a Kafka outage.
+  kafka:
+    brokers: [logs-kafka-bootstrap.kafka.svc.cluster.local:9093]
+    client_id: otel-agent
+    logs:
+      topic: otel-logs
+      encoding: otlp_proto
+    partition_logs_by_resource_attributes: true
+    producer:
+      compression: zstd
+      required_acks: -1                # all in-sync replicas
+      max_message_bytes: 8388608       # = topic max.message.bytes
+      allow_auto_topic_creation: false
+    auth:
+      sasl:
+        mechanism: SCRAM-SHA-512
+        username: otel-agent
+        password: ${env:KAFKA_PASSWORD}
+    tls:
+      ca_file: /etc/kafka-client/ca.crt   # the listener's CA (templates/kafka.yaml)
+    timeout: 30s
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      sizer: bytes
+      queue_size: 2147483648           # 2 GiB per node before back-pressure
+      num_consumers: 8
+      batch:
+        flush_timeout: 1s
+        sizer: bytes
+        min_size: 524288
+        max_size: 4194304
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 60s
+      max_elapsed_time: 0s             # never give up while the queue has room
+
+  # Without Kafka (environments/overlays/no-kafka.yaml): straight to the gateway
+  # tier. Client-side round robin over the gateway pods (headless Service),
+  # zstd, and the same PERSISTENT queue on the node's disk.
   otlp_grpc/gateway:
     endpoint: dns:///otel-gateway.otel.svc.cluster.local:4317   # headless Service: one address per gateway pod
     balancer_name: round_robin
@@ -188,8 +231,8 @@ service:
     logs/files:
       receivers: [file_log]
       processors: [memory_limiter, k8s_attributes/files, resource/cluster, transform/service_name, transform/tenant, transform/mask]
-      exporters: [otlp_grpc/gateway]
+      exporters: [kafka]
     logs/otlp:
       receivers: [otlp]
       processors: [memory_limiter, resource/untrusted, k8s_attributes/otlp, resource/cluster, transform/service_name, transform/tenant, transform/mask]
-      exporters: [otlp_grpc/gateway]
+      exporters: [kafka]

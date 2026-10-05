@@ -126,7 +126,7 @@ otelAgent:
         - context: resource
           statements:
           - set(resource.attributes["obs.tenant"], "unassigned")
-          - set(resource.attributes["obs.tenant"], "platform") where resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease|gatekeeper-system|calico-system|tigera-operator|app-routing-system|aks-.+|loki|otel|otel-agent|grafana|kgateway-system|external-secrets|cert-manager)$")
+          - set(resource.attributes["obs.tenant"], "platform") where resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease|gatekeeper-system|calico-system|tigera-operator|app-routing-system|aks-.+|loki|otel|otel-agent|grafana|kafka|keycloak|postgres|platform-operators|external-secrets|cert-manager|monitoring)$")
           - set(resource.attributes["obs.tenant"], "payments") where resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(payments(-.+)?)$")
           - set(resource.attributes["obs.tenant"], "cards") where resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(cards(-.+)?)$")
           - set(resource.attributes["obs.tenant"], "lending") where resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(lending(-.+)?)$")
@@ -143,6 +143,43 @@ otelAgent:
           - replace_pattern(log.body, "(?i)(authorization[\"']?\\s*[:=]\\s*[\"']?(?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]+", "$${1}<redacted>") where IsString(log.body)
           - replace_all_patterns(log.attributes, "value", "(?i)((?:bearer|basic)\\s+)[A-Za-z0-9._~+/=-]+", "$${1}<redacted>")
     exporters:
+      kafka:
+        brokers:
+        - logs-kafka-bootstrap.kafka.svc.cluster.local:9093
+        client_id: otel-agent
+        logs:
+          topic: otel-logs
+          encoding: otlp_proto
+        partition_logs_by_resource_attributes: true
+        producer:
+          compression: zstd
+          required_acks: -1
+          max_message_bytes: 8388608
+          allow_auto_topic_creation: false
+        auth:
+          sasl:
+            mechanism: SCRAM-SHA-512
+            username: otel-agent
+            password: ${env:KAFKA_PASSWORD}
+        tls:
+          ca_file: /etc/kafka-client/ca.crt
+        timeout: 30s
+        sending_queue:
+          enabled: true
+          storage: file_storage
+          sizer: bytes
+          queue_size: 2147483648
+          num_consumers: 8
+          batch:
+            flush_timeout: 1s
+            sizer: bytes
+            min_size: 524288
+            max_size: 4194304
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 60s
+          max_elapsed_time: 0s
       otlp_grpc/gateway:
         endpoint: dns:///otel-gateway.otel.svc.cluster.local:4317
         balancer_name: round_robin
@@ -192,7 +229,7 @@ otelAgent:
           - transform/tenant
           - transform/mask
           exporters:
-          - otlp_grpc/gateway
+          - kafka
         logs/otlp:
           receivers:
           - otlp
@@ -205,7 +242,7 @@ otelAgent:
           - transform/tenant
           - transform/mask
           exporters:
-          - otlp_grpc/gateway
+          - kafka
 otelGateway:
   alternateConfig:
     extensions:
@@ -219,6 +256,35 @@ otelGateway:
           on_rebound: true
           directory: /var/lib/otelcol/queue
     receivers:
+      kafka:
+        brokers:
+        - logs-kafka-bootstrap.kafka.svc.cluster.local:9093
+        client_id: otel-gateway
+        group_id: otel-gateway
+        initial_offset: earliest
+        logs:
+          topics:
+          - otel-logs
+          encoding: otlp_proto
+        max_partition_fetch_size: 8388608
+        auth:
+          sasl:
+            mechanism: SCRAM-SHA-512
+            username: otel-gateway
+            password: ${env:KAFKA_PASSWORD}
+        tls:
+          ca_file: /etc/kafka-client/ca.crt
+        message_marking:
+          after: true
+          on_error: false
+          on_permanent_error: true
+        error_backoff:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+          max_elapsed_time: 5m
+        partition_processing:
+          independent: true
       otlp:
         protocols:
           grpc:
@@ -403,7 +469,7 @@ otelGateway:
       pipelines:
         logs/in:
           receivers:
-          - otlp
+          - kafka
           processors:
           - memory_limiter
           exporters:
@@ -574,3 +640,24 @@ grafanaOrgMapping:
       obs-lending-viewers:lending:Viewer obs-lending-editors:lending:Editor obs-shared-services-viewers:shared-services:Viewer obs-shared-services-editors:shared-services:Editor
     allowedGroups: obs-platform-viewers obs-platform-sre obs-payments-viewers obs-payments-editors obs-cards-viewers obs-cards-editors obs-lending-viewers obs-lending-editors obs-shared-services-viewers
       obs-shared-services-editors
+keycloakGroups:
+- name: obs-platform-viewers
+  entra: 11111111-1111-1111-1111-111111111111
+- name: obs-platform-sre
+  entra: 22222222-2222-2222-2222-222222222222
+- name: obs-payments-viewers
+  entra: 33333333-3333-3333-3333-333333333333
+- name: obs-payments-editors
+  entra: 44444444-4444-4444-4444-444444444444
+- name: obs-cards-viewers
+  entra: 55555555-5555-5555-5555-555555555555
+- name: obs-cards-editors
+  entra: 66666666-6666-6666-6666-666666666666
+- name: obs-lending-viewers
+  entra: 77777777-7777-7777-7777-777777777777
+- name: obs-lending-editors
+  entra: 88888888-8888-8888-8888-888888888888
+- name: obs-shared-services-viewers
+  entra: 99999999-9999-9999-9999-999999999999
+- name: obs-shared-services-editors
+  entra: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa

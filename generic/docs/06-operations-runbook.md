@@ -7,6 +7,11 @@ the **platform** org, backed by the managed Prometheus data source.
 
 ## First install
 
+This is the **Azure** installation. The **generic** one (no Azure services) has its own
+prerequisites in [10 · Installations](10-installations.md#generic-everything-in-the-cluster):
+Percona PostgreSQL, a Prometheus Operator, DNS and certificates. After those, run
+`scripts/install.sh generic`.
+
 Once per environment, in this order:
 
 1. **Prerequisites on the AKS cluster**:
@@ -17,11 +22,14 @@ Once per environment, in this order:
 2. **Mirror images** into the bank's ACR, then set `global.imageRegistry` in the three
    values files:
    - `grafana/loki`, `otel/opentelemetry-collector-contrib`, `grafana/grafana`, `memcached`, `prom/memcached-exporter`;
-   - `grafana/rollout-operator`, the kgateway and envoy images, the ESO images.
+   - `grafana/rollout-operator`, the kgateway and envoy images, the ESO images;
+   - `strimzi/operator`, `strimzi/kafka` (and, for generic, `keycloak/keycloak`, `keycloak/keycloak-operator`).
+
+   `scripts/images.sh <env>` prints the exact list.
 3. **Terraform** (`infra/terraform`) from a runner with network access to the private Key
    Vault. Then:
    ```bash
-   cp -r environments/example environments/<env>
+   cp -r environments/azure environments/<env>
    terraform -chdir=infra/terraform output -raw environment_values > environments/<env>/terraform.yaml
    ```
 4. **PostgreSQL role for Grafana**, as the DBA, with the password from Key Vault secret
@@ -36,7 +44,7 @@ Once per environment, in this order:
    its secret goes into Key Vault as `grafana-entra-client-secret` or `grafana-oidc-client-secret`
    (not needed with `auth.provider: disabled`, the mock for test clusters).
 6. **Fill in `environments/<env>/`** ([09 · Helm charts](09-helm-charts.md)):
-   - `values.yaml`: registry, cluster name, CIDRs, zone names, hostnames, Entra IDs;
+   - `values.yaml`: registry, cluster name, CIDRs, zone names, hostnames, sign-in (`auth.provider` and its settings);
    - `cluster.env`: the kubectl context;
    - `overlays.txt`: optional, e.g. `test-cluster.yaml`.
 7. Run `scripts/install.sh <env>`. It finishes with `scripts/smoke-test.sh <env>`.
@@ -55,8 +63,9 @@ Once per environment, in this order:
 3. Ingester ring (below). If two zones are unhealthy, writes fail by design (no quorum).
 4. Collectors: `otelcol_exporter_queue_size / otelcol_exporter_queue_capacity` by job
    (`otel/agent`, `otel/gateway`) and exporter.
-   - Agents filling: the gateways are slow or unreachable. Check
-     `kubectl -n otel get pods` and the NetworkPolicy.
+   - Agents filling: Kafka is down or refusing writes (see [Kafka](#kafka)). Without Kafka:
+     the gateways are slow or unreachable; check `kubectl -n otel get pods` and the
+     NetworkPolicy.
    - One gateway exporter filling: that tenant, see [tenant over limits](#tenant-over-limits).
    - All gateway exporters filling: Loki's write path.
 5. `OtelDroppingLogs` means records were given up after retries (6 h at the gateway): that
@@ -65,6 +74,60 @@ Once per environment, in this order:
 6. `OtelQueueFull` means back-pressure: a full gateway queue rejects its tenant's data, and
    the agents retry, which delays other tenants on the same nodes. Raise the tenant's Loki
    limit or its `gatewayQueueMiB`, or temporarily lower its log volume.
+
+## Kafka
+
+`KafkaBrokersMissing`, `KafkaUnderReplicatedPartitions`, `KafkaConsumerLagHigh`.
+
+```bash
+kubectl -n kafka get kafka,kafkanodepool,kafkatopic,kafkauser   # READY, and Strimzi's conditions
+kubectl -n kafka get pods -o wide                               # logs-broker-N / logs-controller-N, one per zone
+```
+
+The Kafka Exporter's metrics (job `kafka/exporter`) show the state:
+- `kafka_consumergroup_lag{consumergroup="otel-gateway"}`: the backlog per partition;
+- `kafka_topic_partition_under_replicated_partition`: partitions without 3 in-sync replicas;
+- `kafka_brokers`: brokers up.
+
+- **Brokers missing**:
+  - one broker down: writes and reads go on (2 in-sync replicas left);
+  - two down: the agents can't write (`min.insync.replicas` 2), and the logs wait in the
+    agents' node queues.
+
+  Check the pods, their PVCs and zone. `kubectl -n kafka describe kafka logs` shows
+  Strimzi's view.
+- **Under-replicated** for more than a few minutes: a broker is slow or its disk is full.
+  Check `kubectl -n kafka exec logs-broker-N -- df -h /var/lib/kafka`.
+- **Lag growing**:
+  - Loki is unhealthy or throttling: see [pushes failing](#pushes-failing);
+  - one tenant's gateway queue is full: `OtelGatewayTenantQueueFilling`, and see
+    [tenant over limits](#tenant-over-limits). The partitions carrying that tenant pause
+    until its queue drains;
+  - the gateways can't keep up: add gateway pods (steps of 3), then partitions
+    ([05](05-sizing-and-capacity.md#kafka)).
+
+  The lag is data waiting, not lost. It is lost only if it exceeds the topic's retention
+  (24 h).
+- **Agents can't connect** (agent logs: `SASL`, `x509`):
+  - check the `kafka-client` Secret in `otel-agent`/`otel`, and that it matches
+    `kafka/otel-agent-kafka`;
+  - the CA must match `kafka/logs-listener-tls`.
+
+  Re-run step 30 to re-copy them.
+
+**Rotate Kafka credentials or the listener certificate.** The chart generates them once and
+keeps them across upgrades. To rotate:
+
+```bash
+kubectl -n kafka delete secret otel-agent-kafka otel-gateway-kafka   # passwords
+kubectl -n kafka delete secret logs-listener-tls                     # CA + server certificate
+scripts/install.sh <env> 30          # new values, copied next to the collectors
+kubectl -n otel-agent rollout restart ds/otel-agent-agent
+kubectl -n otel rollout restart sts/otel-gateway
+```
+
+While the collectors restart, the logs wait in the agents' node queues. Strimzi rolls the
+brokers itself when the listener certificate changes.
 
 ## Ingester unhealthy
 
@@ -171,6 +234,32 @@ scripts/tenant-keys.sh --rotate payments
 
 This writes the new key to Key Vault, forces the External Secrets refresh, and updates the
 org's data source. Expect a few seconds of 401 for that org.
+
+Without Key Vault (generic), the chart owns the keys:
+
+```bash
+kubectl -n loki delete secret obs-key-payments
+scripts/install.sh <env> 30        # a new key, also into grafana/obs-gateway-keys; then step 40 updates the data source
+```
+
+### Keycloak (generic installation)
+
+- **Admin**: the operator's temporary admin is in Secret `keycloak/keycloak-initial-admin`.
+  Sign in at `https://<keycloak.hostname>/admin/`, create a permanent admin (MFA), then delete
+  `temp-admin`.
+- **Realm `obs` is imported once.** The operator never updates an existing realm. Later
+  changes are made in Keycloak (admin console, `kcadm.sh`, or your realm-as-code tool):
+  - groups for new tenants ([07](07-tenant-onboarding.md));
+  - users;
+  - MFA and password policy.
+- **Grafana's client secret** is in `keycloak/keycloak-grafana-client` and
+  `grafana/grafana-oauth`. To rotate it:
+  1. regenerate it in Keycloak (client `grafana` → Credentials);
+  2. put the same value in both Secrets;
+  3. restart Grafana.
+- **Sign-in fails with "invalid redirect"**: `grafana.ini.server.root_url` must match the
+  client's redirect URI (`<root_url>/login/generic_oauth`).
+- **Database**: Keycloak uses `keycloak/keycloak-db`, copied from the Percona Secret at step 30.
 
 ### The local admin's password
 

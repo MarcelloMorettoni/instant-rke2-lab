@@ -1,0 +1,24 @@
+# Overlay: NO Kafka. The agents send OTLP straight to the gateways, whose
+# per-tenant disk queues (and the agents' node queues) are then the only
+# buffers (docs/adr/0010). List it in environments/<env>/overlays.txt.
+# Helm applies it after rendered/values-tenants.yaml, so it replaces the
+# pipelines' lists; `null` removes the Kafka components.
+kafka:
+  enabled: false
+
+otelAgent:
+  alternateConfig:
+    exporters:
+      kafka: null
+    service:
+      pipelines:
+        logs/files: {exporters: [otlp_grpc/gateway]}
+        logs/otlp: {exporters: [otlp_grpc/gateway]}
+
+otelGateway:
+  alternateConfig:
+    receivers:
+      kafka: null
+    service:
+      pipelines:
+        logs/in: {receivers: [otlp]}

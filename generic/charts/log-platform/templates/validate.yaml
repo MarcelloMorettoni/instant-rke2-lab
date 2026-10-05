@@ -11,13 +11,45 @@
 {{- if not .Values.global.clusterName }}
 {{- fail "global.clusterName is required (environments/<env>/values.yaml)" }}
 {{- end }}
-{{- if not .Values.keyVault.url }}
-{{- fail "keyVault.url is required (environments/<env>/values.yaml)" }}
+{{- $kv := .Values.keyVault.enabled }}
+{{- if and $kv (not .Values.keyVault.url) }}
+{{- fail "keyVault.url is required with keyVault.enabled (environments/<env>/values.yaml)" }}
+{{- end }}
+{{- if and (not $kv) (or .Values.grafanaAccess.tls.fromKeyVault .Values.keycloak.tls.fromKeyVault .Values.auth.admin.fromKeyVault) }}
+{{- fail "a *.fromKeyVault setting is true but keyVault.enabled is false (grafanaAccess.tls, keycloak.tls, auth.admin)" }}
+{{- end }}
+{{- if not (has .Values.postgres.provider (list "azure" "percona")) }}
+{{- fail (printf "postgres.provider %q: use azure or percona" .Values.postgres.provider) }}
+{{- end }}
+{{- if and (eq .Values.postgres.provider "azure") (or (not $kv) (not .Values.postgres.azure.host)) }}
+{{- fail "postgres.provider azure needs keyVault.enabled (the password) and postgres.azure.host (terraform output postgres_fqdn)" }}
+{{- end }}
+{{- if .Values.kafka.enabled }}
+{{- $k := .Values.kafka }}
+{{- if lt (int $k.brokers.replicas) 3 }}
+{{- fail "kafka.brokers.replicas must be at least 3 (replication factor 3, min.insync.replicas 2)" }}
+{{- end }}
+{{- if and (not $k.dualRole) (ne (mod (int $k.controllers.replicas) 2) 1) }}
+{{- fail "kafka.controllers.replicas must be odd (KRaft quorum): 3 or 5" }}
+{{- end }}
+{{- if not (index .Values.otelAgent.alternateConfig.exporters "kafka") }}
+{{- fail "kafka.enabled but the agent config has no kafka exporter: re-run scripts/render-tenants.py, and don't list no-kafka.yaml in overlays.txt" }}
+{{- end }}
+{{- else if index (.Values.otelAgent.alternateConfig.exporters | default dict) "kafka" }}
+{{- fail "kafka.enabled is false but the agents still export to Kafka: add environments/overlays/no-kafka.yaml" }}
+{{- end }}
+{{- if .Values.keycloak.install }}
+{{- if or (not .Values.keycloak.hostname) (not .Values.grafanaAccess.enabled) }}
+{{- fail "keycloak.install needs keycloak.hostname and grafanaAccess.enabled (Keycloak is served on Grafana's load balancer)" }}
+{{- end }}
+{{- if and .Values.keycloak.realm.entraBroker.enabled (or (not .Values.keycloak.realm.entraBroker.tenantId) (not .Values.keycloak.realm.entraBroker.clientId)) }}
+{{- fail "keycloak.realm.entraBroker needs tenantId and clientId" }}
+{{- end }}
 {{- end }}
 {{- if and .Values.network.policies (not .Values.network.apiServerCidrs) }}
 {{- fail "network.apiServerCidrs is required when network.policies is true: the OTel agents and the rollout-operator must reach the API server" }}
 {{- end }}
-{{- if and .Values.loki.enabled (not .Values.loki.loki.storage.azure.accountName) }}
+{{- if and .Values.loki.enabled (eq .Values.loki.loki.storage.type "azure") (not .Values.loki.loki.storage.azure.accountName) }}
 {{- fail "loki.loki.storage.azure.accountName is required (terraform output storage_account_name)" }}
 {{- end }}
 {{- if and .Values.grafanaAccess.enabled (not .Values.grafanaAccess.hostname) }}
@@ -30,8 +62,12 @@
 {{- if and (eq $p "entra") (or (not .Values.auth.entra.tenantId) (not .Values.auth.entra.clientId)) }}
 {{- fail "auth.provider entra needs auth.entra.tenantId and auth.entra.clientId" }}
 {{- end }}
-{{- if and (eq $p "keycloak") (or (not .Values.auth.keycloak.url) (not .Values.auth.keycloak.realm) (not .Values.auth.keycloak.clientId)) }}
-{{- fail "auth.provider keycloak needs auth.keycloak.url, .realm and .clientId" }}
+{{- $kc := include "lp.keycloak" . | fromYaml }}
+{{- if and (eq $p "keycloak") (or (not $kc.url) (not $kc.realm) (not .Values.auth.keycloak.clientId)) }}
+{{- fail "auth.provider keycloak needs auth.keycloak.url, .realm and .clientId (or keycloak.install)" }}
+{{- end }}
+{{- if and .Values.keycloak.install (ne $p "keycloak") }}
+{{- fail "keycloak.install: set auth.provider keycloak, so Grafana signs in through it" }}
 {{- end }}
 {{- if and (eq $p "oidc") (or (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.authUrl) (not .Values.auth.oidc.tokenUrl) (not .Values.auth.oidc.apiUrl)) }}
 {{- fail "auth.provider oidc needs auth.oidc.clientId, .authUrl, .tokenUrl and .apiUrl" }}

@@ -2,8 +2,11 @@ dependencies:
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
   version: v2.4.5
+- name: strimzi-kafka-operator
+  repository: https://strimzi.io/charts/
+  version: 1.2.0
 - name: external-secrets
   repository: https://charts.external-secrets.io
   version: 2.11.0
-digest: sha256:0220a594569bfdf92355bf889cbd7f50b9a1c723526c2bd99940ec1f41a23dd2
-generated: "2026-09-29T13:23:13.6860588+02:00"
+digest: sha256:c5587f612ff9f9a9af5c5aefdcfa00e2e1976d1f2a7ab4e943ce005913040e85
+generated: "2026-10-05T12:12:43.822922066+02:00"

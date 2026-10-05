@@ -1,4 +1,8 @@
-# Environment values for BOTH charts (log-platform-operators and log-platform).
+# Environment "azure": the platform on AKS with Azure services around it
+# (docs/01, picture 09): Blob storage, Key Vault + External Secrets, Azure
+# Database for PostgreSQL, Entra ID, managed Prometheus. Kafka and the rest of
+# the Loki backend run in the cluster, exactly as in environments/generic.
+# Values for BOTH charts (log-platform-operators and log-platform).
 # Copy this folder to environments/<env>/ and fill in every field.
 # Most values come from `terraform -chdir=infra/terraform output`.
 #
@@ -25,7 +29,16 @@ network:
   grafanaClientCidrs: [10.0.0.0/8]               # users' networks (via the hub)
 
 keyVault:
+  enabled: true                                  # External Secrets from Key Vault (both charts)
   url: https://kv-obs-test-weu.vault.azure.net/  # terraform output key_vault_uri
+
+postgres:
+  provider: azure
+  azure:
+    host: psql-grafana-test-weu.postgres.database.azure.com     # terraform output postgres_fqdn
+
+# Kafka (Strimzi, in the cluster) between the agents and the gateways: on by
+# default. Without it: list no-kafka.yaml in overlays.txt.
 
 grafanaAccess:
   hostname: grafana.obs-test.bank.internal
@@ -65,8 +78,6 @@ grafana:
   grafana.ini:
     server:
       root_url: https://grafana.obs-test.bank.internal
-    database:
-      host: psql-grafana-test-weu.postgres.database.azure.com:5432   # terraform output postgres_fqdn
 
 # Used by the log-platform-operators chart.
 external-secrets:

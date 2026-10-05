@@ -1,0 +1,237 @@
+{{- if .Values.kafka.enabled }}
+{{- /*
+Kafka (Strimzi, namespace kafka) between the OTel agents and gateways.
+  otel-agent   ── SCRAM-SHA-512 over TLS :9093 ──► topic otel-logs  (Write)
+  otel-gateway ◄── consumer group otel-gateway ──── topic otel-logs  (Read)
+Strimzi's own NetworkPolicy opens :9093 to exactly those two (networkPolicyPeers).
+*/ -}}
+{{- $k := .Values.kafka }}
+{{- $n := "logs" }}
+{{- $tlsName := printf "%s-listener-tls" $n }}
+{{- /* The listener certificate: generated once, then kept (lookup). */ -}}
+{{- $old := include "lp.existing" (list . "kafka" $tlsName) | fromYaml }}
+{{- $caCrt := "" }}{{- $crt := "" }}{{- $key := "" }}
+{{- if and (index $old "ca.crt") (index $old "tls.crt") (index $old "tls.key") }}
+{{- $caCrt = index $old "ca.crt" | b64dec }}{{- $crt = index $old "tls.crt" | b64dec }}{{- $key = index $old "tls.key" | b64dec }}
+{{- else }}
+{{- $ca := genCA "obs-kafka-listener-ca" (int $k.tlsValidityDays) }}
+{{- $sans := list }}
+{{- range $suffix := list "" ".kafka" ".kafka.svc" ".kafka.svc.cluster.local" }}
+{{- $sans = append $sans (printf "%s-kafka-bootstrap%s" $n $suffix) }}
+{{- end }}
+{{- $sans = concat $sans (list (printf "*.%s-kafka-brokers.kafka.svc" $n) (printf "*.%s-kafka-brokers.kafka.svc.cluster.local" $n)) }}
+{{- $cert := genSignedCert (printf "%s-kafka-bootstrap.kafka.svc" $n) nil $sans (int $k.tlsValidityDays) $ca }}
+{{- $caCrt = $ca.Cert }}{{- $crt = $cert.Cert }}{{- $key = $cert.Key }}
+{{- end }}
+{{- $placement := include "lp.podPlacement" (dict "ctx" . "selector" (dict "strimzi.io/cluster" $n)) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $tlsName }}
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+type: Opaque
+data:
+  ca.crt: {{ $caCrt | b64enc | quote }}
+  tls.crt: {{ $crt | b64enc | quote }}
+  tls.key: {{ $key | b64enc | quote }}
+{{- /* One SCRAM user per collector tier; the password is generated once and copied next to the collector. */ -}}
+{{- range $u := list (dict "user" "otel-agent" "ns" "otel-agent") (dict "user" "otel-gateway" "ns" "otel") }}
+{{- $src := printf "%s-kafka" $u.user }}
+{{- $pw := index (include "lp.existing" (list $ "kafka" $src) | fromYaml) "password" | default (randAlphaNum 32 | b64enc) }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $src }}
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+type: Opaque
+data:
+  password: {{ $pw | quote }}
+---
+# The collector's side: the same password, and the CA that signed the listener.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-client
+  namespace: {{ $u.ns }}
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+type: Opaque
+data:
+  username: {{ $u.user | b64enc | quote }}
+  password: {{ $pw | quote }}
+  ca.crt: {{ $caCrt | b64enc | quote }}
+{{- end }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ $n }}
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  kafka:
+    version: {{ $k.version | quote }}
+    listeners:
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: scram-sha-512
+        configuration:
+          brokerCertChainAndKey:
+            secretName: {{ $tlsName }}
+            certificate: tls.crt
+            key: tls.key
+        networkPolicyPeers:
+          - namespaceSelector:
+              matchLabels: {kubernetes.io/metadata.name: otel-agent}
+            podSelector:
+              matchLabels: {obs.platform/role: otel-agent}
+          - namespaceSelector:
+              matchLabels: {kubernetes.io/metadata.name: otel}
+            podSelector:
+              matchLabels: {obs.platform/role: otel-gateway}
+    authorization:
+      type: simple
+    {{- if $k.rackAware }}
+    rack:
+      topologyKey: topology.kubernetes.io/zone
+    {{- end }}
+    config:
+      # Every record on 3 brokers (one per zone with rackAware); a write is
+      # acknowledged once 2 have it (the agents use acks=all).
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      auto.create.topics.enable: false
+      unclean.leader.election.enable: false
+      message.max.bytes: {{ int $k.topic.maxMessageBytes }}
+      replica.fetch.max.bytes: {{ int $k.topic.maxMessageBytes }}
+      {{- if $k.rackAware }}
+      replica.selector.class: org.apache.kafka.common.replica.RackAwareReplicaSelector
+      {{- end }}
+  entityOperator:
+    topicOperator:
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 512Mi}}
+    userOperator:
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 512Mi}}
+    template:
+      pod:
+        {{- $placement | nindent 8 }}
+  {{- if $k.exporter }}
+  # Consumer lag and partition health as Prometheus metrics (:9404).
+  kafkaExporter:
+    topicRegex: {{ $k.topic.name | quote }}
+    groupRegex: "otel-gateway"
+    resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+    template:
+      pod:
+        {{- $placement | nindent 8 }}
+  {{- end }}
+{{- $pools := list (dict "name" "broker" "roles" (list "broker") "spec" $k.brokers) (dict "name" "controller" "roles" (list "controller") "spec" $k.controllers) }}
+{{- if $k.dualRole }}
+{{- $pools = list (dict "name" "dual" "roles" (list "controller" "broker") "spec" $k.brokers) }}
+{{- end }}
+{{- range $p := $pools }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: {{ $p.name }}
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" $ | nindent 4 }}
+    strimzi.io/cluster: {{ $n }}
+spec:
+  replicas: {{ $p.spec.replicas }}
+  roles: {{ toJson $p.roles }}
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ $p.spec.storage }}
+        {{- with $.Values.storageClass.name }}
+        class: {{ . }}
+        {{- end }}
+        deleteClaim: false
+        kraftMetadata: shared
+  resources:
+    {{- toYaml $p.spec.resources | nindent 4 }}
+  jvmOptions:
+    {{- toYaml $p.spec.jvmOptions | nindent 4 }}
+  template:
+    pod:
+      priorityClassName: observability-critical
+      {{- include "lp.podPlacement" (dict "ctx" $ "selector" (dict "strimzi.io/pool-name" $p.name) "hard" $k.rackAware) | nindent 6 }}
+{{- end }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ $k.topic.name }}
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    strimzi.io/cluster: {{ $n }}
+spec:
+  partitions: {{ $k.topic.partitions }}
+  replicas: 3
+  config:
+    retention.ms: {{ mul (int $k.topic.retentionHours) 3600000 }}
+    min.insync.replicas: 2
+    max.message.bytes: {{ int $k.topic.maxMessageBytes }}
+    compression.type: producer          # the agents' zstd batches are stored as sent
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: otel-agent
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    strimzi.io/cluster: {{ $n }}
+spec:
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef: {name: otel-agent-kafka, key: password}
+  authorization:
+    type: simple
+    acls:
+      - resource: {type: topic, name: {{ $k.topic.name }}, patternType: literal}
+        operations: [Write, Describe]
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: otel-gateway
+  namespace: kafka
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    strimzi.io/cluster: {{ $n }}
+spec:
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom:
+        secretKeyRef: {name: otel-gateway-kafka, key: password}
+  authorization:
+    type: simple
+    acls:
+      - resource: {type: topic, name: {{ $k.topic.name }}, patternType: literal}
+        operations: [Read, Describe]
+      - resource: {type: group, name: otel-gateway, patternType: literal}
+        operations: [Read]
+{{- end }}

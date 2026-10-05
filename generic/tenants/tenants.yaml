@@ -69,7 +69,8 @@ platform:
   namespaces: >-
     kube-system|kube-public|kube-node-lease|gatekeeper-system|
     calico-system|tigera-operator|app-routing-system|aks-.+|
-    loki|otel|otel-agent|grafana|kgateway-system|external-secrets|cert-manager
+    loki|otel|otel-agent|grafana|kafka|keycloak|postgres|platform-operators|
+    external-secrets|cert-manager|monitoring
   groups:
     # Who may sign in, into which org, as Viewer or Editor (dashboards + Explore).
     # One set per identity provider; auth.provider in the chart picks which one.

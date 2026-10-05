@@ -11,6 +11,8 @@ covers the ones whose charts don't read it:
     loki rollout-operator      docker.io/grafana/rollout-operator
     kgateway (+ its proxies)   cr.kgateway.dev/kgateway-dev/...
     External Secrets (×3)      ghcr.io/external-secrets/external-secrets
+    Strimzi (operator, Kafka)  quay.io/strimzi/...
+(The Keycloak operator and server use global.imageRegistry directly.)
 
 With a registry set, every image is <registry>/<upstream path>, keeping the
 upstream path (grafana/grafana, kgateway-dev/envoy-wrapper,
@@ -37,6 +39,7 @@ def main() -> None:
         out = {
             "loki": {"rollout_operator": {"image": {"registry": reg}}},
             "kgateway": {"image": {"registry": f"{reg}/kgateway-dev"}},
+            "strimzi-kafka-operator": {"defaultImageRegistry": reg},
             "external-secrets": {
                 "image": {"repository": eso},
                 "webhook": {"image": {"repository": eso}},

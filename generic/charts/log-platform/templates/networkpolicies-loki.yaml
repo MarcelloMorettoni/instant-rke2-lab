@@ -99,14 +99,15 @@ spec:
         - {port: 3100, protocol: TCP}
     - to:                                   # config (xDS) from the kgateway controller
         - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: kgateway-system}
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.operatorsNamespace }}}
       ports:
         - {port: 9977, protocol: TCP}
 ---
-# Object storage + identity (Workload Identity token exchange with Entra ID).
+# Object storage (Blob private endpoint, or network.objectStoreEgress) + identity
+# (Workload Identity token exchange with Entra ID).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: {name: loki-to-azure, namespace: loki}
+metadata: {name: loki-object-storage, namespace: loki}
 spec:
   podSelector:
     matchLabels: {app.kubernetes.io/name: loki}
@@ -117,6 +118,9 @@ spec:
         {{- include "lp.cidrs" . | nindent 8 }}
       ports:
         - {port: 443, protocol: TCP}
+    {{- end }}
+    {{- with .Values.network.objectStoreEgress }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- if .Values.network.internetEgress443 }}
     {{- include "lp.internet443" . | nindent 4 }}
@@ -147,13 +151,13 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: {name: metrics-from-ama, namespace: loki}
+metadata: {name: metrics-scrape, namespace: loki}
 spec:
   podSelector: {}
   policyTypes: [Ingress]
   ingress:
     - from:
-        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+        {{- include "lp.metricsPeers" . | nindent 8 }}
       ports:
         - {port: 3100, protocol: TCP}      # Loki /metrics
         - {port: 9150, protocol: TCP}      # memcached exporter

@@ -1,14 +1,23 @@
-# The log-platform release is installed INTO `loki` (Loki's rollout-operator
-# only works in its release namespace), so that release can't create it. It
-# is created here, first, with the platform's Pod Security labels.
+# Namespaces the operators (or the log-platform release) live in, created here
+# with the platform's Pod Security labels:
+#   loki      the log-platform release is installed INTO it (Loki's
+#             rollout-operator only works in its release namespace)
+#   kafka     the Kafka cluster; Strimzi must find it when it is installed
+#   keycloak  the Keycloak operator and Keycloak (keycloak.install)
+# helm.sh/resource-policy: keep: uninstalling the operators never deletes them.
+{{- $nss := list "loki" "kafka" }}
+{{- if .Values.keycloak.install }}{{- $nss = append $nss "keycloak" }}{{- end }}
+{{- range $ns := $nss }}
+---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: loki
+  name: {{ $ns }}
   labels:
     app.kubernetes.io/part-of: log-platform
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
   annotations:
-    helm.sh/resource-policy: keep                  # uninstalling the operators never deletes the logs' namespace
+    helm.sh/resource-policy: keep
+{{- end }}

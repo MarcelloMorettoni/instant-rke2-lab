@@ -75,7 +75,11 @@ def main() -> int:
         for v in doc["spec"]["versions"]:
             s = (v.get("schema") or {}).get("openAPIV3Schema")
             if s:
-                schemas[(f"{group}/{v['name']}", kind)] = strip_k8s_extensions(s)
+                s = strip_k8s_extensions(s)
+                # Some CRDs (Keycloak) list only spec/status at the root.
+                for k in ("apiVersion", "kind", "metadata"):
+                    s.setdefault("properties", {}).setdefault(k, {"type": "string" if k != "metadata" else "object"})
+                schemas[(f"{group}/{v['name']}", kind)] = s
                 for a in args.alias:
                     src, dst = a.split("=", 1)
                     if group == src:

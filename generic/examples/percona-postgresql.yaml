@@ -1,0 +1,70 @@
+# EXAMPLE: the PostgreSQL behind Grafana and Keycloak in environments/generic
+# (postgres.provider: percona), run by the Percona Operator for PostgreSQL 2.9.
+# You own it: operator, backups, upgrades. The log platform only uses the two
+# users' Secrets, which the Percona operator writes into this namespace:
+#   obs-pg-pguser-grafana   → copied by the chart to grafana/grafana-db
+#   obs-pg-pguser-keycloak  → copied by the chart to keycloak/keycloak-db
+# (keys host, port, dbname, user, password; scripts/install.sh step 25 checks them).
+#
+#   helm repo add percona https://percona.github.io/percona-helm-charts/
+#   helm install pg-operator percona/pg-operator -n postgres --create-namespace
+#   kubectl apply -f examples/percona-postgresql.yaml
+#
+# Grafana and Keycloak reach it on 5432 (their NetworkPolicies allow namespace
+# postgres). If this namespace has a default-deny policy, allow ingress on 5432
+# from namespaces grafana and keycloak.
+apiVersion: pgv2.percona.com/v2
+kind: PerconaPGCluster
+metadata:
+  name: obs-pg
+  namespace: postgres
+spec:
+  crVersion: 2.9.0
+  image: docker.io/percona/percona-distribution-postgresql:18.3-1
+  postgresVersion: 18
+
+  users:
+    - name: grafana
+      databases: [grafana]
+      grantPublicSchemaAccess: true      # PostgreSQL 15+: the user may create tables in public
+    - name: keycloak
+      databases: [keycloak]
+      grantPublicSchemaAccess: true
+
+  instances:
+    - name: instance1
+      replicas: 3                        # 1 primary + 2 replicas (Patroni), one per zone
+      resources:
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {memory: 2Gi}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              postgres-operator.crunchydata.com/cluster: obs-pg
+              postgres-operator.crunchydata.com/instance-set: instance1
+      dataVolumeClaimSpec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 20Gi
+
+  backups:
+    pgbackrest:
+      image: docker.io/percona/percona-pgbackrest:2.58.0-1
+      repos:
+        - name: repo1
+          schedules:
+            full: "0 1 * * 0"            # weekly full
+            differential: "0 1 * * 1-6"  # daily differential
+          volume:
+            volumeClaimSpec:
+              accessModes: [ReadWriteOnce]
+              resources:
+                requests:
+                  storage: 50Gi
+      global:
+        repo1-retention-full: "4"        # keep 4 weekly fulls
+        repo1-retention-full-type: count

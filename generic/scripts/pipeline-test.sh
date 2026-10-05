@@ -2,12 +2,17 @@
 # End-to-end test of the OpenTelemetry pipeline, in Docker, no cluster needed:
 #
 #   container log files ─┐
-#                        ├─► OTel agent ──OTLP/gRPC──► OTel gateway ──OTLP/HTTP──► Loki
-#   an app's OTLP push ──┘   (tenant, mask)            (route, queue per tenant)
+#                        ├─► OTel agent ──► Kafka topic otel-logs ──► OTel gateway ──OTLP/HTTP──► Loki
+#   an app's OTLP push ──┘   (tenant, mask)                           (route, queue per tenant)
+#
+#   scripts/pipeline-test.sh              with Kafka (the default pipeline)
+#   scripts/pipeline-test.sh --no-kafka   agent ──OTLP/gRPC──► gateway (overlays/no-kafka.yaml)
 #
 # Uses the RENDERED collector configs and Loki overrides (rendered/values-tenants.yaml)
-# and the chart's Loki limits (charts/log-platform/values.yaml). Only differences from production: k8s_attributes is removed
-# (no Kubernetes API here) and endpoints/paths point at the test containers.
+# and the chart's Loki limits (charts/log-platform/values.yaml). Only differences from
+# production: k8s_attributes is removed (no Kubernetes API here), Kafka is one broker
+# without TLS/SCRAM (those settings are checked by validate.sh), and endpoints/paths
+# point at the test containers.
 # That means an OTLP push can't be matched to a pod here, which is exactly
 # the "unknown sender" case: it must land in `unassigned`, whatever it claims.
 #
@@ -21,22 +26,24 @@
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 need docker python3 curl
+KAFKA=1; [[ "${1:-}" == "--no-kafka" ]] && KAFKA=0
 python3 "${GEN_DIR}/scripts/render-tenants.py" >/dev/null
 [[ "$(python3 "${GEN_DIR}/scripts/render-tenants.py" --which payments-prod cards | cut -f2 | tr '\n' ' ')" == "payments cards " ]] \
   || die "the registry no longer maps payments-prod→payments and cards→cards; update this test"
 
 W="$(mktemp -d)"; NET="otel-pipeline-test-$$"
 cleanup() {
-  docker rm -f "${NET}-loki" "${NET}-gateway" "${NET}-agent" >/dev/null 2>&1 || true
+  docker rm -f "${NET}-loki" "${NET}-gateway" "${NET}-agent" "${NET}-kafka" >/dev/null 2>&1 || true
   docker network rm "${NET}" >/dev/null 2>&1 || true
   rm -rf "${W}"
 }
 trap cleanup EXIT
 
 # ---- Loki: production limits (per-tenant overrides + otlp_config), local storage
-python3 - "${GEN_DIR}" "${W}" <<'PY'
+python3 - "${GEN_DIR}" "${W}" "${KAFKA}" <<'PY'
 import sys, yaml, pathlib
 gen, w = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+kafka = sys.argv[3] == "1"
 chart = yaml.safe_load((gen / "charts/log-platform/values.yaml").read_text())
 tenants = yaml.safe_load((gen / "rendered/values-tenants.yaml").read_text())
 limits = chart["loki"]["loki"]["limits_config"]
@@ -69,6 +76,14 @@ for k in [k for k in agent["processors"] if k.startswith("k8s_attributes")]:
 agent["extensions"]["file_storage"]["directory"] = "/tmp/otel"
 agent["extensions"]["file_storage"]["compaction"]["directory"] = "/tmp/otel"
 agent["exporters"]["otlp_grpc/gateway"]["endpoint"] = "dns:///gateway:4317"
+if kafka:   # one test broker: plaintext, no SCRAM
+    k = agent["exporters"]["kafka"]
+    k["brokers"] = ["kafka:9092"]
+    k.pop("auth"); k.pop("tls")
+else:       # environments/overlays/no-kafka.yaml
+    del agent["exporters"]["kafka"]
+    for p in agent["service"]["pipelines"].values():
+        p["exporters"] = ["otlp_grpc/gateway"]
 (w / "agent.yaml").write_text(yaml.safe_dump(agent))
 
 gw = load("gateway")
@@ -77,6 +92,13 @@ gw["extensions"]["file_storage"]["compaction"]["directory"] = "/tmp/otel"
 for e in gw["exporters"].values():
     e["endpoint"] = "http://loki:3100/otlp"
     e["sending_queue"]["batch"]["flush_timeout"] = "200ms"
+if kafka:
+    r = gw["receivers"]["kafka"]
+    r["brokers"] = ["kafka:9092"]
+    r.pop("auth"); r.pop("tls")
+else:
+    del gw["receivers"]["kafka"]
+    gw["service"]["pipelines"]["logs/in"]["receivers"] = ["otlp"]
 (w / "gateway.yaml").write_text(yaml.safe_dump(gw))
 PY
 
@@ -98,6 +120,22 @@ docker run -d --name "${NET}-loki" --network "${NET}" --network-alias loki -p 12
   "${LOKI_IMAGE}" -config.file=/etc/loki/loki.yaml >/dev/null
 LOKI="localhost:$(docker port "${NET}-loki" 3100/tcp | head -1 | cut -d: -f2)"
 for _ in $(seq 1 40); do curl -sf "${LOKI}/ready" >/dev/null && break; sleep 1; done
+if (( KAFKA )); then
+  # One KRaft node, the topic as the chart creates it (fewer partitions).
+  docker run -d --name "${NET}-kafka" --network "${NET}" --network-alias kafka \
+    -e KAFKA_NODE_ID=1 -e KAFKA_PROCESS_ROLES=broker,controller \
+    -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
+    -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093 \
+    -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+    -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+    -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=false \
+    -e KAFKA_MESSAGE_MAX_BYTES=8388608 -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+    "${KAFKA_IMAGE}" >/dev/null
+  KT=(docker exec "${NET}-kafka" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092)
+  for _ in $(seq 1 60); do "${KT[@]}" --list >/dev/null 2>&1 && break; sleep 1; done
+  "${KT[@]}" --create --topic otel-logs --partitions 6 --replication-factor 1 \
+    --config max.message.bytes=8388608 >/dev/null || die "could not create topic otel-logs"
+fi
 docker run -d --name "${NET}-gateway" --network "${NET}" --network-alias gateway -e MY_POD_IP=0.0.0.0 \
   --mount type=tmpfs,destination=/tmp/otel,tmpfs-mode=1777 -p 127.0.0.1::8888 \
   -v "${W}/gateway.yaml:/etc/otel/config.yaml:ro" "${OTELCOL_IMAGE}" --config=/etc/otel/config.yaml >/dev/null
@@ -130,9 +168,10 @@ for s in json.load(sys.stdin)["data"]["result"]:
         m = v[2] if len(v) > 2 else {}
         print(json.dumps({"labels": s["stream"], "line": v[1], "meta": m.get("structuredMetadata", {})}))'
 }
-for _ in $(seq 1 45); do
+for _ in $(seq 1 90); do
   [[ "$(query payments | wc -l)" -ge 2 && "$(query unassigned | wc -l)" -ge 2 ]] && break; sleep 1
 done
+sleep 3   # let the gateway commit its last offsets
 PAY="$(query payments)"; CARDS="$(query cards)"; UNASSIGNED="$(query unassigned)"; OTHER="$(query lending)"
 LABELS="$(curl -sf -H 'X-Scope-OrgID: payments' "${LOKI}/loki/api/v1/labels")"
 GW_METRICS="$(curl -sf "localhost:$(docker port "${NET}-gateway" 8888/tcp | head -1 | cut -d: -f2)/metrics")"
@@ -160,8 +199,30 @@ t "service.name falls back to the container name"               'grep -q "\"serv
 t "gateway metrics: records sent to Loki per tenant"           'grep -qE "^otelcol_exporter_sent_log_records\{.*exporter=\"otlp_http/payments\".* [1-9]" <<<"${GW_METRICS}"'
 t "agent metrics: nothing failed to send"                       '! grep -qE "^otelcol_exporter_send_failed_log_records\{.* [1-9]" <<<"${AGENT_METRICS}"'
 t "obs.tenant never reaches Loki"                               '! grep -q obs_tenant <<<"${PAY}${CARDS}${UNASSIGNED}"'
+if (( KAFKA )); then
+  GROUP="$(docker exec "${NET}-kafka" /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+    --describe --group otel-gateway 2>/dev/null || true)"
+  t "agent wrote to Kafka (kafka exporter)"                     'grep -qE "^otelcol_exporter_sent_log_records\{.*exporter=\"kafka\".* [1-9]" <<<"${AGENT_METRICS}"'
+  t "gateway read from Kafka (kafka receiver)"                  'grep -qE "^otelcol_receiver_accepted_log_records\{.*receiver=\"kafka\".* [1-9]" <<<"${GW_METRICS}"'
+  t "consumer group otel-gateway has no lag"                    'awk "\$1==\"otel-gateway\" && \$6 ~ /^[0-9]+$/ {n++; if (\$6 != 0) bad=1} END {exit (n>0 && !bad) ? 0 : 1}" <<<"${GROUP}"'
+
+  # The point of Kafka: while the gateways are down, logs wait in Kafka, not on the node.
+  docker stop -t 30 "${NET}-gateway" >/dev/null
+  printf '%s stdout F written while the gateway was down\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000000000Z)" >> "$P/0.log"
+  lag() {
+    docker exec "${NET}-kafka" /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+      --describe --group otel-gateway 2>/dev/null | awk '$1=="otel-gateway" && $6 ~ /^[0-9]+$/ {s+=$6} END {print s+0}'
+  }
+  for _ in $(seq 1 30); do [[ "$(lag)" -gt 0 ]] && break; sleep 1; done
+  BACKLOG="$(lag)"
+  t "gateway down: the new logs wait in Kafka (lag ${BACKLOG})"  '[[ "${BACKLOG}" -gt 0 ]]'
+  docker start "${NET}-gateway" >/dev/null
+  for _ in $(seq 1 90); do query payments | grep -q "while the gateway was down" && break; sleep 1; done
+  t "gateway back: the backlog reaches Loki, in the right tenant" 'query payments | grep -q "while the gateway was down"'
+fi
 echo
-if (( FAIL == 0 )); then ok "All ${PASS} pipeline checks passed"; else
+if (( FAIL == 0 )); then ok "All ${PASS} pipeline checks passed ($( (( KAFKA )) && echo "agent → Kafka → gateway" || echo "agent → gateway, no Kafka"))"; else
   docker logs "${NET}-agent" 2>&1 | tail -20; docker logs "${NET}-gateway" 2>&1 | tail -20
+  (( KAFKA )) && { echo "${GROUP:-}"; docker logs "${NET}-kafka" 2>&1 | tail -10; }
   die "${FAIL} of $((PASS+FAIL)) pipeline checks failed"
 fi

@@ -15,6 +15,7 @@ metadata:
     {{- include "lp.labels" . | nindent 4 }}
     obs.platform/auth-provider: {{ $p }}
 data:
+  GF_DATABASE_SSL_MODE: {{ .Values.postgres.sslMode | quote }}
   GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: {{ $a.sessionMaxLifetime | quote }}
   GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: {{ $a.sessionMaxInactive | quote }}
   # Basic auth: grafana-sync's automation account, and the local users.
@@ -48,8 +49,11 @@ data:
 {{- $auth := $c.authUrl }}{{- $token := $c.tokenUrl }}{{- $api := $c.apiUrl }}{{- $logout := $c.signoutRedirectUrl }}
 {{- if eq $p "keycloak" }}
 {{- $c = $a.keycloak }}
-{{- $base := printf "%s/realms/%s/protocol/openid-connect" (trimSuffix "/" $a.keycloak.url) $a.keycloak.realm }}
-{{- $auth = printf "%s/auth" $base }}{{- $token = printf "%s/token" $base }}{{- $api = printf "%s/userinfo" $base }}
+{{- $kc := include "lp.keycloak" . | fromYaml }}
+{{- $base := printf "%s/realms/%s/protocol/openid-connect" $kc.url $kc.realm }}
+{{- /* Browser → public URL; Grafana's server-side calls → internal URL (same tokens: backchannelDynamic). */ -}}
+{{- $back := printf "%s/realms/%s/protocol/openid-connect" $kc.internalUrl $kc.realm }}
+{{- $auth = printf "%s/auth" $base }}{{- $token = printf "%s/token" $back }}{{- $api = printf "%s/userinfo" $back }}
 {{- $logout = printf "%s/logout?client_id=%s&post_logout_redirect_uri=%s" $base $a.keycloak.clientId (urlquery (printf "%s/login" $rootUrl)) }}
 {{- end }}
   GF_AUTH_GENERIC_OAUTH_NAME: {{ $a.displayName | quote }}

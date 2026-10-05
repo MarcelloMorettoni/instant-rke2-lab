@@ -26,6 +26,7 @@ PAL = {  # fill, stroke, title
     "sky": ("#F0F9FF", "#7DD3FC", "#075985"),      # gateway
     "rose": ("#FFF1F2", "#FDA4AF", "#9F1239"),     # blocked / attacks
     "green": ("#F0FDF4", "#86EFAC", "#166534"),    # identity / security services
+    "orange": ("#FFF7ED", "#FDBA74", "#9A3412"),   # Kafka (the buffer between the tiers)
 }
 WRITE, READ, BLOCK, NEUTRAL = "#16A34A", "#4338CA", "#DC2626", "#94A3B8"
 
@@ -120,24 +121,27 @@ def overview() -> Svg:
     s = Svg(1400, 780, "Multi-tenant Loki on AKS with OpenTelemetry: the whole picture",
             "Tenants never pick their tenant: OpenTelemetry collectors decide it, the read gateway decides who sees it")
     s.frame(24, 88, 1106, 506, "AKS cluster (private, 3 availability zones)")
-    s.lane(44, 130, "Write path: OpenTelemetry (OTLP end to end)")
-    s.box(44, 142, 176, 170, "Tenant namespaces", ["stdout / stderr", "or an OTel SDK", "(OTLP to the node's", "agent)"],
-          "slate", "namespace → tenant")
-    s.box(250, 142, 196, 170, "OTel agent", ["DaemonSet, 1 per node", "files + OTLP in", "tenant from namespace", "masks PAN/IBAN/tokens"],
-          "teal", "queue on node disk")
-    s.box(476, 142, 196, 170, "OTel gateway", ["StatefulSet, 3 pods", "routes by tenant", "1 exporter per tenant", "own queue per tenant"],
-          "teal", "queues on zonal SSD")
-    s.box(702, 142, 150, 170, "Distributors", ["per-tenant", "limits", "HPA 3 → 9"], "indigo", "OTLP /otlp")
-    s.box(882, 142, 228, 170, "Ingesters: 3 zones", ["RF 3, WAL on zonal disk"], "indigo")
+    s.lane(44, 130, "Write path: OpenTelemetry, with Kafka between the collector tiers")
+    s.box(44, 142, 150, 170, "Tenant namespaces", ["stdout / stderr", "or an OTel SDK", "(OTLP to the", "node's agent)"],
+          "slate", "ns → tenant")
+    s.box(214, 142, 166, 170, "OTel agent", ["DaemonSet, 1/node", "files + OTLP in", "tenant from ns", "masks PAN/IBAN"],
+          "teal", "queue on node")
+    s.box(400, 142, 150, 170, "Kafka", ["Strimzi, 3 zones", "topic otel-logs", "RF 3, acks=all", "24 h retention"],
+          "orange", "ns kafka")
+    s.box(570, 142, 166, 170, "OTel gateway", ["StatefulSet, 3 pods", "consumer group", "routes by tenant", "queue per tenant"],
+          "teal", "zonal SSD")
+    s.box(756, 142, 120, 170, "Distributors", ["per-tenant", "limits", "HPA 3 → 9"], "indigo", "/otlp")
+    s.box(896, 142, 214, 170, "Ingesters: 3 zones", ["RF 3, WAL on zonal disk"], "indigo")
     for i, z in enumerate("abc"):
-        s.mini(894 + i * 72, 218, 66, 56, f"zone {z}", "indigo", "2 pods")
-    s.arrow([(220, 227), (250, 227)], WRITE)
-    s.arrow([(446, 227), (476, 227)], WRITE, "gRPC", ly=218)
-    s.arrow([(672, 227), (702, 227)], WRITE)
-    s.arrow([(852, 227), (882, 227)], WRITE, "×3", ly=218)
+        s.mini(906 + i * 67, 218, 61, 56, f"zone {z}", "indigo", "2 pods")
+    s.arrow([(194, 227), (214, 227)], WRITE)
+    s.arrow([(380, 227), (400, 227)], WRITE)
+    s.arrow([(550, 227), (570, 227)], WRITE)
+    s.arrow([(736, 227), (756, 227)], WRITE)
+    s.arrow([(876, 227), (896, 227)], WRITE)
 
     s.lane(44, 360, "Read path")
-    s.box(44, 372, 176, 160, "Bank users", ["Entra ID sign-in", "security group", "per tenant"], "slate", "no local users")
+    s.box(44, 372, 176, 160, "Bank users", ["SSO: Entra ID (default),", "Keycloak or OIDC;", "groups per tenant;", "local admin (change-me-now)"], "slate", "auth.provider")
     s.box(250, 372, 196, 160, "Grafana (2 replicas)", ["one org per tenant", "group → org + role", "Viewer / Editor only"],
           "violet", "/payments/ + key")
     s.box(476, 372, 196, 160, "obs-gateway", ["kgateway (Envoy)", "one view per org", "SETS X-Scope-OrgID"], "sky",
@@ -162,7 +166,7 @@ def overview() -> Svg:
 
     s.frame(24, 614, 1352, 144, "Azure platform services (Terraform: infra/terraform)")
     for i, (t, ls, pal) in enumerate([
-        ("Entra ID", ["Grafana SSO (groups → orgs)", "Workload Identity (Loki, ESO)"], "green"),
+        ("Entra ID", ["Grafana SSO (default; or Keycloak/OIDC)", "Workload Identity (Loki, ESO)"], "green"),
         ("Key Vault (premium, HSM)", ["CMKs: Blob + disks", "read-gateway keys → ESO"], "green"),
         ("PostgreSQL flexible", ["Grafana state", "zone-redundant HA"], "amber"),
         ("Azure Monitor", ["managed Prometheus: Loki,", "collectors, gateway; alerts"], "slate"),
@@ -175,7 +179,7 @@ def overview() -> Svg:
 # --------------------------------------------------------------------------- 2
 def write_path() -> Svg:
     s = Svg(1400, 720, "Write path: from a container (or an OTel SDK) to Blob storage",
-            "OpenTelemetry end to end. The platform decides the tenant once; every hop has a durable buffer.")
+            "OpenTelemetry end to end, Kafka between the collector tiers. The platform decides the tenant once; every hop has a durable buffer.")
     s.frame(24, 92, 330, 604, "AKS node (any pool)")
     s.box(44, 124, 290, 104, "Tenant pods", ["stdout → kubelet → log file", "OTel SDK → OTLP → otel-agent", "(same node: internalTrafficPolicy)"],
           "slate")
@@ -190,7 +194,7 @@ def write_path() -> Svg:
         ("", "or from the connection's source IP"),
         ("5", "namespace → tenant (generated)"),
         ("6", "mask PAN / IBAN / bearer tokens"),
-        ("7", "persistent queue on node disk (2 GiB)"),
+        ("7", "queue on node disk (2 GiB) → Kafka"),
     ]
     y = 368
     for n, t in steps:
@@ -201,17 +205,20 @@ def write_path() -> Svg:
         y += 36 if n else 30
     s.arrow([(189, 314), (189, 330)], WRITE)
 
-    s.box(390, 124, 230, 330, "OTel gateway", ["StatefulSet, 3 pods (zones)", "only agents may connect", "",
-          "routing by tenant:", "one OTLP exporter + one", "persistent queue PER TENANT", "on the pod's zonal SSD", "",
-          "tenant throttled (429)?", "only ITS queue grows", "Loki down? all queue,", "retried up to 6 h"], "teal", "X-Scope-OrgID: <tenant>")
-    s.arrow([(334, 600), (362, 600), (362, 290), (390, 290)], WRITE)
-    s.text(372, 470, "OTLP/gRPC", 11, WRITE, 700)
-    s.text(372, 486, "zstd, round-robin", 10.5, MUTED)
+    s.box(390, 124, 230, 176, "Kafka (Strimzi)", ["topic otel-logs, 24 partitions", "3 brokers, one per zone",
+          "RF 3, acks=all (2 of 3)", "24 h retention: replay", "TLS + SCRAM, ACLs:", "agents write, gateways read"], "orange")
+    s.box(390, 326, 230, 196, "OTel gateway", ["StatefulSet, 3 pods (zones)", "consumer group otel-gateway",
+          "one Loki exporter + one", "persistent queue PER TENANT", "offset committed once queued",
+          "queue full: the partition waits"], "teal", "X-Scope-OrgID: <tenant>")
+    s.arrow([(334, 600), (362, 600), (362, 212), (390, 212)], WRITE)
+    s.text(372, 552, "Kafka TLS :9093", 11, WRITE, 700)
+    s.text(372, 568, "zstd, acks=all", 10.5, MUTED)
+    s.arrow([(505, 300), (505, 326)], WRITE)
 
-    s.box(656, 124, 200, 250, "Distributor", ["OTLP → Loki streams", "", "`otlp_config:`", "4 attrs → labels,", "rest → structured", "metadata", "",
+    s.box(656, 124, 200, 330, "Distributor", ["OTLP → Loki streams", "", "`otlp_config:`", "4 attrs → labels,", "rest → structured", "metadata", "",
           "per-tenant limits"], "indigo", "over limit → 429")
-    s.arrow([(620, 250), (656, 250)], WRITE)
-    s.text(638, 238, "HTTP", 10.5, WRITE, 600, "middle")
+    s.arrow([(620, 410), (656, 410)], WRITE)
+    s.text(638, 398, "HTTP", 10.5, WRITE, 600, "middle")
 
     s.frame(890, 92, 486, 330, "Ingesters: zone-aware, replication factor 3")
     for i, z in enumerate(["1", "2", "3"]):
@@ -238,19 +245,19 @@ def write_path() -> Svg:
 # --------------------------------------------------------------------------- 3
 def read_path() -> Svg:
     s = Svg(1240, 720, "Read path: who can see which tenant",
-            "Identity comes from Entra ID groups; the tenant comes from the gateway view. Nothing a user sends can change it.")
-    s.lane(32, 110, "Entra ID")
+            "Identity comes from the provider's groups (auth.provider); the tenant from the gateway view. Nothing a user sends changes it.")
+    s.lane(32, 110, "Identity provider groups")
     s.lane(292, 110, "Grafana org")
     s.lane(552, 110, "obs-gateway view")
     s.lane(862, 110, "Loki")
     rows = [
-        ("sg-obs-payments-*", "payments", "/payments/", "payments"),
-        ("sg-obs-cards-*", "cards", "/cards/", "cards|shared-services"),
-        ("sg-obs-platform-*", "platform", "/platform/", "platform|unassigned|all tenants"),
+        ("payments groups", "payments", "/payments/", "payments", "sg-obs-payments-*", "obs-payments-*", "mock: alice"),
+        ("cards groups", "cards", "/cards/", "cards|shared-services", "sg-obs-cards-*", "obs-cards-*", "mock: bob"),
+        ("platform groups", "platform", "/platform/", "platform|unassigned|all tenants", "sg-obs-platform-*", "obs-platform-*", "+ local admin"),
     ]
-    for i, (g, org, view, hdr) in enumerate(rows):
+    for i, (g, org, view, hdr, entra, oidc, local) in enumerate(rows):
         y = 126 + i * 118
-        s.box(32, y, 220, 104, g, ["viewers → Viewer", "editors → Editor"], "green", title_size=12.5)
+        s.box(32, y, 220, 104, g, [f"Entra: {entra}", f"Keycloak/OIDC: {oidc}", f"viewer · editor · {local}"], "green", title_size=12.5)
         s.box(292, y, 220, 104, f'org "{org}"', ["1 Loki data source:", f"`gateway{view}`", "+ its own key (encrypted)"], "violet")
         s.box(552, y, 270, 104, f"view-{org}", ["key must be obs-key-" + org, "push / delete → 403"], "sky")
         s.pill(566, y + 72, 242, f"X-Scope-OrgID: {hdr}"[:38], PAL["sky"][1])
@@ -353,45 +360,43 @@ def dr() -> Svg:
 
 # --------------------------------------------------------------------------- 6
 def durability() -> Svg:
-    s = Svg(1400, 640, "Durability without Kafka: a durable buffer at every hop",
-            "Where logs wait when the next hop is down, how long, and where Kafka / Event Hubs would go if ever needed")
+    s = Svg(1400, 660, "Durability: a buffer at every hop, Kafka the replicated one",
+            "Where logs wait when the next hop is down, for how long, and what each buffer survives")
     hops = [
         ("Container", "slate", ["writes stdout", "", "kubelet log files", "on the node", "", "buffer: rotation", "(50 MiB × 5 / ctr)"]),
         ("OTel agent", "teal", ["file checkpoints", "on node disk", "", "persistent queue", "2 GiB per node", "", "retries forever"]),
-        ("OTel gateway", "teal", ["persistent queue", "PER TENANT", "1-4 GiB × 3 pods", "zonal SSD (CMK)", "", "~1 h of all logs (M)", "retried up to 6 h"]),
+        ("Kafka", "orange", ["topic otel-logs", "3 brokers, 3 zones", "RF 3, acks=all", "", "24 h retention", "(kafka.topic", ".retentionHours)"]),
+        ("OTel gateway", "teal", ["persistent queue", "PER TENANT", "zonal SSD (CMK)", "", "offset committed", "once queued", "retried up to 6 h"]),
         ("Loki ingesters", "indigo", ["WAL on zonal SSD", "", "RF 3 across", "3 zones", "", "acks after 2 of 3", "(quorum)"]),
-        ("Blob Storage", "amber", ["GZRS: 3 zones", "sync + paired", "region async", "", "14-day soft", "delete", ""]),
+        ("Object storage", "amber", ["Blob GZRS: 3 zones", "+ paired region", "", "or any S3 API", "(generic)", "", ""]),
     ]
     for i, (t, pal, ls) in enumerate(hops):
-        x = 32 + i * 272
-        s.box(x, 100, 236, 210, t, ls, pal)
+        x = 32 + i * 226
+        s.box(x, 100, 200, 210, t, ls, pal)
         if i:
-            s.arrow([(x - 36, 205), (x, 205)], WRITE)
-    s.text(32 + 1 * 272 + 118, 338, "survives: agent restart,", 11, BODY, 400, "middle")
-    s.text(32 + 1 * 272 + 118, 354, "gateway / Loki outage", 11, BODY, 400, "middle")
-    s.text(32 + 2 * 272 + 118, 338, "survives: gateway pod restart,", 11, BODY, 400, "middle")
-    s.text(32 + 2 * 272 + 118, 354, "Loki outage, one tenant at 429", 11, BODY, 400, "middle")
-    s.text(32 + 3 * 272 + 118, 338, "survives: pod crash,", 11, BODY, 400, "middle")
-    s.text(32 + 3 * 272 + 118, 354, "a whole zone", 11, BODY, 400, "middle")
-    s.text(32 + 4 * 272 + 118, 338, "survives: zone loss;", 11, BODY, 400, "middle")
-    s.text(32 + 4 * 272 + 118, 354, "region loss (async)", 11, BODY, 400, "middle")
+            s.arrow([(x - 26, 205), (x, 205)], WRITE)
+    survives = [None, ("agent restart,", "Kafka outage"), ("node, broker or zone", "loss; 24 h of gateway", "or Loki outage"),
+                ("pod restart, one", "tenant at 429"), ("pod crash,", "a whole zone"), ("zone loss;", "region (Blob, async)")]
+    for i, lines in enumerate(survives):
+        if not lines:
+            continue
+        for j, ln in enumerate(lines):
+            s.text(32 + i * 226 + 100, 338 + j * 16, ("survives: " if j == 0 else "") + ln, 11, BODY, 400, "middle")
 
-    s.add(f'<rect x="270" y="390" width="530" height="60" rx="10" fill="#FFFFFF" stroke="{NEUTRAL}" stroke-width="1.5" stroke-dasharray="6 5"/>')
-    s.text(535, 416, "IF EVER NEEDED: Azure Event Hubs (Kafka protocol) here", 12.5, INK, 700, "middle")
-    s.text(535, 436, "agent: kafka exporter  →  topic  →  gateway: kafka receiver (both in OTel contrib)", 11, BODY, 400, "middle")
-    s.arrow([(535, 390), (535, 318)], NEUTRAL, dashed=True)
-
-    s.lane(32, 488, "Add a bus only if one of these becomes true")
-    reasons = [
-        ("Loki downtime regularly longer", "than the gateway queues hold (~1 h, M)"),
-        ("Other consumers (SIEM, data", "lake) need the same stream + replay"),
-        ("Loki's Kafka ingest mode is GA", "and scale needs it (multi-TB/day)"),
-    ]
-    for i, (a, b) in enumerate(reasons):
-        x = 32 + i * 452
-        s.box(x, 500, 430, 72, a, [b], "slate", title_size=12.5)
-    s.text(32, 606, "Kafka would add: a 3rd stateful system (brokers, partitions, ACLs, upgrades, capacity), a second copy of", 11.5, MUTED)
-    s.text(32, 624, "every log line, and its own failure modes, to buy durability the pipeline already has.", 11.5, MUTED)
+    s.lane(32, 418, "What Kafka adds, and what it costs")
+    rows = [("", "With Kafka (kafka.enabled, default)", "Without (overlays/no-kafka.yaml)"),
+            ("Node lost during an outage", "the backlog is in Kafka (replicated): only seconds lost", "the backlog in that node's agent queue is lost"),
+            ("Loki down for hours", "24 h in Kafka for ALL tenants, replayed in order", "~1 h in the gateway queues, then node queues"),
+            ("Other consumers (SIEM, lake)", "can read the same topic (new consumer group + ACL)", "need a second export"),
+            ("Operations", "a 3rd stateful system: brokers, KRaft, upgrades, capacity", "two collector tiers only"),
+            ("Tenant isolation", "per-tenant gateway queues; a full one pauses its partition", "per-tenant gateway queues")]
+    for r, (a, b, c) in enumerate(rows):
+        y = 432 + r * 30
+        s.add(f'<rect x="32" y="{y}" width="1336" height="30" fill="{"#F1F5F9" if r == 0 else "#FFFFFF"}" stroke="{LINE}"/>')
+        s.text(44, y + 19, a, 11.5, INK, 700)
+        s.text(300, y + 19, b, 11.5, BODY, 700 if r == 0 else 400)
+        s.text(860, y + 19, c, 11.5, BODY, 700 if r == 0 else 400)
+    s.text(32, 640, "Decision and alternatives: docs/adr/0010-kafka-in-cluster.md (supersedes 0006).", 11.5, MUTED)
     return s
 
 
@@ -430,11 +435,125 @@ def caching() -> Svg:
     return s
 
 
+# --------------------------------------------------------------------------- 8
+def _core(s: Svg, top: int, users: str) -> None:
+    """The Loki backend, drawn the same way in pictures 08 and 09."""
+    s.lane(44, top, "Write path")
+    y = top + 12
+    s.box(44, y, 140, 132, "Tenant pods", ["stdout / stderr", "or an OTel SDK"], "slate", "ns → tenant")
+    s.box(204, y, 160, 132, "OTel agent", ["DaemonSet", "tenant from ns", "masks secrets"], "teal", "node queue")
+    s.box(384, y, 170, 132, "Kafka (Strimzi)", ["KRaft, 3 zones", "topic otel-logs", "RF 3, 24 h"], "orange", "ns kafka")
+    s.box(574, y, 160, 132, "OTel gateway", ["consumer group", "queue per tenant", "sets the tenant"], "teal", "ns otel")
+    s.box(754, y, 356, 132, "Loki write", ["distributors: per-tenant limits", "ingesters: 3 zones, RF 3, WAL on PVC"], "indigo",
+          "Loki 3.6, distributed")
+    for x in (184, 364, 554, 734):
+        s.arrow([(x, y + 66), (x + 20, y + 66)], WRITE)
+    s.lane(44, top + 176, "Read path")
+    y = top + 188
+    s.box(44, y, 140, 132, "Bank users", [users[0], users[1]], "slate", "HTTPS")
+    s.box(204, y, 160, 132, "Load balancer", ["internal only", "kgateway (Envoy)", "TLS ends here"], "sky", "Grafana + SSO")
+    s.box(384, y, 170, 132, "Grafana", ["org per tenant", "group → org, role", "local admin"], "violet", "ns grafana")
+    s.box(574, y, 160, 132, "Read gateway", ["view per org", "key per view", "SETS X-Scope-OrgID"], "sky", "read-only")
+    s.box(754, y, 356, 132, "Loki read", ["query-frontend → scheduler → queriers", "index gateways; memcached results",
+          "and chunks caches"], "indigo", "per-tenant query limits")
+    for x in (184, 364, 554, 734):
+        s.arrow([(x, y + 66), (x + 20, y + 66)], READ)
+
+
+def generic() -> Svg:
+    s = Svg(1400, 860, "Generic installation: everything runs in the cluster",
+            "No Azure service needed. Kafka, Keycloak, PostgreSQL, secrets and monitoring are in-cluster; "
+            "log storage is any S3 API (Azure Blob for now).")
+    s.frame(24, 88, 1106, 650, "Kubernetes cluster (3 zones recommended)  ·  environments/generic")
+    _core(s, 128, ("browser, bank", "network"))
+    s.box(1160, 140, 216, 320, "Object storage", ["chunks + TSDB index", "<tenant>/ prefix", "",
+          "any S3 API:", "Rook/Ceph RGW,", "on-prem S3", "(overlays/s3-storage.yaml)", "", "today: Azure Blob,", "Workload Identity"],
+          "amber", "the source of truth")
+    s.arrow([(1110, 206), (1160, 206)], WRITE, "flush", ly=197)
+    s.arrow([(1160, 382), (1110, 382)], READ, "read", ly=373)
+
+    s.lane(44, 472, "Platform services, in the cluster")
+    y = 512
+    s.box(44, y, 200, 160, "Keycloak", ["Keycloak operator", "realm obs: tenant", "groups, grafana client", "Entra broker: optional"],
+          "green", "ns keycloak")
+    s.box(264, y, 200, 160, "PostgreSQL", ["Percona operator", "(you bring it)", "Grafana + Keycloak", "HA, pgBackRest"],
+          "amber", "ns postgres")
+    s.box(484, y, 200, 160, "Secrets", ["made by the chart,", "kept on upgrade:", "view keys, Kafka users,", "client secret, TLS"],
+          "slate", "no Key Vault")
+    s.box(704, y, 200, 160, "Monitoring", ["Prometheus Operator", "PodMonitors", "PrometheusRule", "(the same alerts)"],
+          "slate", "ns monitoring")
+    s.box(924, y, 186, 160, "Operators", ["kgateway", "Strimzi", "Keycloak operator"], "slate", "platform-operators")
+    s.arrow([(444, 448), (444, 486), (144, 486), (144, 512)], READ, dashed=True)
+    s.text(380, 481, "sign-in (OIDC)", 10.5, READ, 600, "middle")
+    s.arrow([(494, 448), (494, 496), (364, 496), (364, 512)], NEUTRAL, dashed=True)
+    s.text(502, 478, "state", 10.5, MUTED, 600, "start")
+    s.arrow([(244, 614), (264, 614)], NEUTRAL, dashed=True)
+
+    s.add(f'<rect x="44" y="686" width="1066" height="36" rx="8" fill="{PAL["slate"][0]}" stroke="{PAL["slate"][1]}"/>')
+    s.text(577, 709, "keyVault.enabled: false · postgres.provider: percona · keycloak.install: true · "
+           "auth.provider: keycloak · monitoring.prometheusOperator.enabled: true", 10.5, BODY, anchor="middle", mono=True)
+    s.text(24, 768, "The Loki backend (rows 1-2) is identical to the Azure installation (picture 09): only the services around it change.",
+           12.5, INK, 600)
+    s.text(24, 790, "Manifests per component: manifests/generic/ (scripts/render-manifests.sh).  Install: scripts/install.sh generic.",
+           11.5, MUTED)
+    s.text(24, 808, "Not in the cluster: the users' browsers, DNS names for Grafana and Keycloak, and (until s3-storage.yaml) the Blob account.",
+           11.5, MUTED)
+    return s
+
+
+# --------------------------------------------------------------------------- 9
+def azure() -> Svg:
+    s = Svg(1400, 950, "Azure installation: the same backend, with Azure services around it",
+            "AKS with Blob, Key Vault, Entra ID, PostgreSQL flexible server and managed Prometheus. "
+            "Kafka and Loki stay in the cluster.")
+    s.frame(24, 88, 1106, 470, "AKS cluster (private API, 3 availability zones, zonal node pools)  ·  environments/azure")
+    _core(s, 128, ("SSO through", "Entra ID"))
+    s.box(754, 468, 356, 76, "External Secrets Operator", ["Key Vault → Secrets (Workload Identity)"], "green")
+    s.box(1160, 140, 216, 320, "Azure Blob (GZRS)", ["chunks + TSDB index", "<tenant>/ prefix", "",
+          "3 zones + paired region", "private endpoint only", "no shared keys:", "Workload Identity", "CMK in Key Vault (HSM)", "",
+          "Cool 30 d, Cold 180 d"], "amber", "the source of truth")
+    s.arrow([(1110, 206), (1160, 206)], WRITE, "flush", ly=197)
+    s.arrow([(1160, 382), (1110, 382)], READ, "read", ly=373)
+
+    s.frame(24, 582, 1352, 152, "Azure services (Terraform: infra/terraform)")
+    svc = [("Disks + node pools", ["disk encryption set (CMK)", "zonal pools loki1/2/3"], "slate"),
+           ("Entra ID", ["Grafana SSO: group → org", "Workload Identity: Loki, ESO"], "green"),
+           ("PostgreSQL flexible", ["Grafana state", "zone-redundant HA"], "amber"),
+           ("Key Vault (HSM)", ["CMKs: Blob + disks", "secrets for ESO"], "green"),
+           ("Managed Prometheus", ["azmonitoring PodMonitors", "rule groups: same alerts"], "slate"),
+           ("Log Analytics / SIEM", ["audit: storage,", "Key Vault, database"], "slate")]
+    for i, (t, ls, pal) in enumerate(svc):
+        s.box(44 + i * 222, 622, 206, 92, t, ls, pal)
+    s.arrow([(444, 448), (444, 566), (369, 566), (369, 622)], READ, dashed=True)
+    s.text(436, 520, "SSO", 10.5, READ, 600, "end")
+    s.arrow([(494, 448), (494, 580), (591, 580), (591, 622)], NEUTRAL, dashed=True)
+    s.text(543, 574, "state", 10.5, MUTED, 600, "middle")
+    s.arrow([(813, 544), (813, 622)], NEUTRAL, dashed=True)
+    s.text(822, 600, "secrets", 10.5, MUTED, 600)
+
+    s.lane(32, 768, "What changes between the two installations")
+    rows = [("", "Generic (picture 08)", "Azure (this picture)"),
+            ("Log storage", "any S3 API (Azure Blob for now)", "Blob GZRS, private endpoint, Workload Identity, CMK"),
+            ("Secrets", "generated by the chart, kept on upgrade", "Key Vault + External Secrets"),
+            ("Grafana's database", "PostgreSQL by the Percona operator", "Azure Database for PostgreSQL (flexible)"),
+            ("Sign-in", "Keycloak in the cluster (optionally brokering Entra ID)", "Entra ID (or Keycloak / OIDC)"),
+            ("Monitoring", "Prometheus Operator: PodMonitors + PrometheusRule", "managed Prometheus + rule groups"),
+            ("Kafka, collectors, Loki, read gateway", "the same", "the same")]
+    for r, (a, b, c) in enumerate(rows):
+        y = 780 + r * 21
+        s.add(f'<rect x="32" y="{y}" width="1336" height="21" fill="{"#F1F5F9" if r == 0 else "#FFFFFF"}" stroke="{LINE}"/>')
+        s.text(44, y + 15, a, 11, INK, 700)
+        s.text(330, y + 15, b, 11, BODY, 700 if r == 0 else 400)
+        s.text(830, y + 15, c, 11, BODY, 700 if r == 0 else 400)
+    return s
+
+
 def main() -> None:
     for name, fn in [("01-architecture-overview", overview), ("02-write-path", write_path),
                      ("03-read-path-and-tenancy", read_path), ("04-zones-and-failure", zones),
-                     ("05-disaster-recovery", dr), ("06-durability-without-kafka", durability),
-                     ("07-caching", caching)]:
+                     ("05-disaster-recovery", dr), ("06-durability-and-buffers", durability),
+                     ("07-caching", caching), ("08-generic-in-cluster", generic),
+                     ("09-azure-components", azure)]:
         (OUT / f"{name}.svg").write_text(fn().render())
         print(f"diagrams/{name}.svg")
 

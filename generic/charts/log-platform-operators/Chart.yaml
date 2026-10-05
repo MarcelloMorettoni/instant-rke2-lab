@@ -1,16 +1,22 @@
 apiVersion: v2
 name: log-platform-operators
 description: >-
-  Cluster-level prerequisites of the multi-tenant log platform: Gateway API and
-  kgateway CRDs (crds/), the kgateway controller, and the External Secrets
-  Operator. Install BEFORE the log-platform chart, which uses their CRDs.
+  Cluster-level prerequisites of the multi-tenant log platform: Gateway API,
+  kgateway and Keycloak CRDs (crds/), the kgateway controller, the Strimzi
+  Kafka operator, the Keycloak operator (keycloak.install), the External
+  Secrets Operator (keyVault.enabled), and the namespaces loki, kafka,
+  keycloak. Install BEFORE the log-platform chart, which uses their CRDs.
 type: application
-version: 0.1.0
-appVersion: "1.0"
+version: 0.2.0
+appVersion: "1.1"
 dependencies:
   - name: kgateway
     version: v2.4.5
     repository: oci://cr.kgateway.dev/kgateway-dev/charts
+  - name: strimzi-kafka-operator
+    version: 1.2.0
+    repository: https://strimzi.io/charts/
   - name: external-secrets
     version: 2.11.0
     repository: https://charts.external-secrets.io
+    condition: keyVault.enabled

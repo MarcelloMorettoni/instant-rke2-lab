@@ -31,8 +31,8 @@ t() { if eval "$2"; then ok "PASS  $1"; PASS=$((PASS+1)); else err "FAIL  $1"; F
 render() {  # render <provider> [--set ...]: env file, sync config and account secrets into ${W}
   local p=$1; shift
   rm -rf "${W:?}"/*
-  helm template log-platform charts/log-platform -n loki -f environments/example/values.yaml \
-    -f environments/example/generated-images.yaml -f rendered/values-tenants.yaml \
+  helm template log-platform charts/log-platform -n loki -f environments/azure/values.yaml \
+    -f environments/azure/generated-images.yaml -f rendered/values-tenants.yaml \
     --set auth.provider="${p}" "$@" > "${W}/chart.yaml"
   python3 - "${W}" <<'PY'
 import sys, yaml, base64, pathlib

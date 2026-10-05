@@ -1,0 +1,209 @@
+{{- if .Values.keycloak.install }}
+{{- /*
+Keycloak in namespace keycloak, run by the Keycloak operator (operators chart).
+  browser ──https──► grafana-ingress (listener https-sso, host keycloak.hostname) ──► keycloak-service:8080
+  Grafana ──http───► keycloak-service:8080 (token, userinfo: backchannelDynamic)
+  Keycloak ──────► PostgreSQL (Secret keycloak-db: host, port, dbname, user, password)
+*/ -}}
+{{- $k := .Values.keycloak }}
+{{- $root := trimSuffix "/" (index .Values.grafana "grafana.ini" "server" "root_url") }}
+{{- $kc := include "lp.keycloak" . | fromYaml }}
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  instances: {{ $k.instances }}
+  db:
+    vendor: postgres
+    usernameSecret: {name: keycloak-db, key: user}
+    passwordSecret: {name: keycloak-db, key: password}
+  additionalOptions:
+    - {name: db-url-host, secret: {name: keycloak-db, key: host}}
+    - {name: db-url-port, secret: {name: keycloak-db, key: port}}
+    - {name: db-url-database, secret: {name: keycloak-db, key: dbname}}
+    - {name: db-url-properties, value: {{ printf "?sslmode=%s" .Values.postgres.sslMode | quote }}}
+    - {name: metrics-enabled, value: "true"}
+  # TLS ends at the load balancer's Envoy; Keycloak serves HTTP inside the
+  # cluster and trusts X-Forwarded-* from it.
+  http:
+    httpEnabled: true
+  proxy:
+    headers: xforwarded
+  hostname:
+    hostname: {{ $kc.url | quote }}
+    backchannelDynamic: true             # Grafana calls the internal Service; tokens still say the public URL
+  ingress:
+    enabled: false                       # the route below, on Grafana's load balancer
+  # The operator writes this NetworkPolicy: HTTP only from the load balancer's
+  # proxies and from Grafana; management (:9000 metrics) only from the scrapers.
+  networkPolicy:
+    enabled: true
+    http:
+      - namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: grafana}
+        podSelector:
+          matchLabels: {gateway.networking.k8s.io/gateway-name: grafana-ingress}
+      - namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: grafana}
+        podSelector:
+          matchLabels: {app.kubernetes.io/name: grafana}
+    management:
+      {{- include "lp.metricsPeers" . | nindent 6 }}
+  serviceMonitor:
+    enabled: false                       # templates/pod-monitors.yaml scrapes it
+  resources:
+    {{- toYaml $k.resources | nindent 4 }}
+  scheduling:
+    priorityClassName: observability-high
+    {{- include "lp.podPlacement" (dict "ctx" . "selector" (dict "app" "keycloak")) | nindent 4 }}
+---
+# Realm `obs`, imported ONCE: the operator creates realms, it never updates
+# them. Groups added to tenants.yaml later are created in Keycloak (Admin
+# console → Groups, or kcadm.sh), with the same names (docs/07).
+apiVersion: k8s.keycloak.org/v2beta1
+kind: KeycloakRealmImport
+metadata:
+  name: {{ $kc.realm }}
+  namespace: keycloak
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  keycloakCRName: keycloak
+  placeholders:
+    GRAFANA_CLIENT_SECRET:
+      secret: {name: keycloak-grafana-client, key: secret}
+    {{- if $k.realm.users }}
+    USER_INITIAL_PASSWORD:
+      secret: {name: keycloak-realm-users, key: password}
+    {{- end }}
+    {{- if $k.realm.entraBroker.enabled }}
+    ENTRA_CLIENT_SECRET:
+      secret: {name: keycloak-entra, key: client-secret}
+    {{- end }}
+  realm:
+    realm: {{ $kc.realm }}
+    displayName: Observability
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    resetPasswordAllowed: false
+    bruteForceProtected: true
+    ssoSessionIdleTimeout: 7200          # 2 h, as Grafana's auth.sessionMaxInactive
+    ssoSessionMaxLifespan: 43200         # 12 h, as auth.sessionMaxLifetime
+    groups:
+      {{- range .Values.keycloakGroups }}
+      - name: {{ .name }}
+      {{- end }}
+    clients:
+      - clientId: {{ .Values.auth.keycloak.clientId }}
+        name: Grafana
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        clientAuthenticatorType: client-secret
+        secret: "${GRAFANA_CLIENT_SECRET}"
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: false
+        serviceAccountsEnabled: false
+        rootUrl: {{ $root | quote }}
+        redirectUris: [{{ printf "%s/login/generic_oauth" $root | quote }}]
+        webOrigins: [{{ $root | quote }}]
+        attributes:
+          pkce.code.challenge.method: S256
+          post.logout.redirect.uris: {{ printf "%s/login" $root | quote }}
+        # "groups": the user's group NAMES (not paths), as Grafana's org mapping expects.
+        protocolMappers:
+          - name: groups
+            protocol: openid-connect
+            protocolMapper: oidc-group-membership-mapper
+            consentRequired: false
+            config:
+              full.path: "false"
+              claim.name: groups
+              id.token.claim: "true"
+              access.token.claim: "true"
+              userinfo.token.claim: "true"
+    {{- with $k.realm.users }}
+    # Lab users: the password is TEMPORARY (Keycloak asks for a new one at first login).
+    users:
+      {{- range . }}
+      - username: {{ .username }}
+        enabled: true
+        email: {{ .email | default (printf "%s@obs.invalid" .username) | quote }}
+        emailVerified: true
+        firstName: {{ .firstName | default .username | quote }}
+        lastName: {{ .lastName | default "Test" | quote }}
+        credentials:
+          - {type: password, value: "${USER_INITIAL_PASSWORD}", temporary: true}
+        groups: [{{ range $i, $g := .groups }}{{ if $i }}, {{ end }}{{ printf "/%s" $g | quote }}{{ end }}]
+      {{- end }}
+    {{- end }}
+    {{- if $k.realm.entraBroker.enabled }}
+    {{- $tid := $k.realm.entraBroker.tenantId }}
+    # Entra ID as the identity provider: Keycloak brokers the bank's sign-in
+    # (MFA, Conditional Access stay in Entra). Entra's groups claim (object IDs)
+    # puts the user in the matching realm group (tenants.yaml groups.entra → groups.oidc).
+    identityProviders:
+      - alias: entra
+        displayName: Bank SSO (Entra ID)
+        providerId: oidc
+        enabled: true
+        trustEmail: true
+        storeToken: false
+        config:
+          clientId: {{ $k.realm.entraBroker.clientId | quote }}
+          clientSecret: "${ENTRA_CLIENT_SECRET}"
+          clientAuthMethod: client_secret_post
+          authorizationUrl: {{ printf "https://login.microsoftonline.com/%s/oauth2/v2.0/authorize" $tid | quote }}
+          tokenUrl: {{ printf "https://login.microsoftonline.com/%s/oauth2/v2.0/token" $tid | quote }}
+          issuer: {{ printf "https://login.microsoftonline.com/%s/v2.0" $tid | quote }}
+          jwksUrl: {{ printf "https://login.microsoftonline.com/%s/discovery/v2.0/keys" $tid | quote }}
+          useJwksUrl: "true"
+          validateSignature: "true"
+          pkceEnabled: "true"
+          pkceMethod: S256
+          defaultScope: openid profile email
+          syncMode: FORCE
+    identityProviderMappers:
+      {{- range .Values.keycloakGroups }}
+      {{- if .entra }}
+      - name: {{ .name }}
+        identityProviderAlias: entra
+        identityProviderMapper: oidc-advanced-group-idp-mapper
+        config:
+          syncMode: FORCE
+          claims: {{ printf "[{\"key\":\"groups\",\"value\":\"%s\"}]" .entra | quote }}
+          are.claim.values.regex: "false"
+          group: {{ printf "/%s" .name | quote }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+{{- if .Values.grafanaAccess.enabled }}
+---
+# https://<keycloak.hostname> on Grafana's load balancer (listener https-sso).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: grafana-ingress
+      namespace: grafana
+      sectionName: https-sso
+  hostnames: [{{ $k.hostname | quote }}]
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      backendRefs:
+        - name: keycloak-service
+          port: 8080
+{{- end }}
+{{- end }}

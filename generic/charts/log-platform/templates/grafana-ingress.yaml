@@ -1,5 +1,6 @@
 {{- if .Values.grafanaAccess.enabled }}
-# HTTPS to Grafana through an INTERNAL Azure load balancer only.
+# HTTPS to Grafana (and Keycloak, with keycloak.install) through an INTERNAL
+# load balancer only (grafanaAccess.loadBalancerAnnotations).
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
@@ -13,7 +14,9 @@ spec:
       type: LoadBalancer
       externalTrafficPolicy: Local
       extraAnnotations:
-        service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+        {{- with .Values.grafanaAccess.loadBalancerAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.grafanaAccess.loadBalancerSubnet }}
         service.beta.kubernetes.io/azure-load-balancer-internal-subnet: {{ . | quote }}
         {{- end }}
@@ -53,6 +56,21 @@ spec:
       allowedRoutes:
         namespaces:
           from: Same
+    {{- if .Values.keycloak.install }}
+    - name: https-sso
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.keycloak.hostname | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: keycloak-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels: {kubernetes.io/metadata.name: keycloak}
+    {{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

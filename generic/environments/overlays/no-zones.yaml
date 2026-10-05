@@ -7,3 +7,7 @@ loki:
       enabled: false
   rollout_operator:
     enabled: false
+
+# Kafka: no zone labels to spread brokers over, or to tell Kafka their rack.
+kafka:
+  rackAware: false

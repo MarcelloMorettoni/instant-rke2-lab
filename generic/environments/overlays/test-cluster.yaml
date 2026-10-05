@@ -89,3 +89,19 @@ grafana:
   tolerations: null
   topologySpreadConstraints: null
   resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+
+# Kafka: 3 nodes that are both KRaft controller and broker, small.
+kafka:
+  dualRole: true
+  brokers:
+    replicas: 3
+    storage: 20Gi
+    resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 2Gi}}
+    jvmOptions: {"-Xms": 512m, "-Xmx": 512m}
+  topic:
+    partitions: 6
+    retentionHours: 6
+
+keycloak:
+  instances: 1
+  resources: {requests: {cpu: 250m, memory: 768Mi}, limits: {memory: 1536Mi}}

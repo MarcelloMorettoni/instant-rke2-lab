@@ -2,6 +2,7 @@
 # Azure CNI powered by Cilium + ACNS: FQDN egress for Loki, and an L7 rule so
 # the OTel gateway may only POST /otlp/v1/logs. Set network.internetEgress443
 # to false with this, so the 0.0.0.0/0:443 rules go away.
+{{- if eq .Values.loki.loki.storage.type "azure" }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata: {name: loki-egress-fqdn, namespace: loki}
@@ -25,6 +26,7 @@ spec:
       toPorts:
         - ports: [{port: "443", protocol: TCP}]
 ---
+{{- end }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata: {name: distributor-otlp-push-only, namespace: loki}

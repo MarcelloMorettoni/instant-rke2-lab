@@ -3,15 +3,16 @@
 <defs><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker></defs>
 <rect x="0.5" y="0.5" width="1239" height="719" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
 <text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Read path: who can see which tenant</text>
-<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">Identity comes from Entra ID groups; the tenant comes from the gateway view. Nothing a user sends can change it.</text>
-<text x="32" y="110" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">ENTRA ID</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">Identity comes from the provider&#x27;s groups (auth.provider); the tenant from the gateway view. Nothing a user sends changes it.</text>
+<text x="32" y="110" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">IDENTITY PROVIDER GROUPS</text>
 <text x="292" y="110" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">GRAFANA ORG</text>
 <text x="552" y="110" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">OBS-GATEWAY VIEW</text>
 <text x="862" y="110" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">LOKI</text>
 <rect x="32" y="126" width="220" height="104" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
-<text x="46" y="150" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">sg-obs-payments-*</text>
-<text x="46" y="170" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewers → Viewer</text>
-<text x="46" y="187" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">editors → Editor</text>
+<text x="46" y="150" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">payments groups</text>
+<text x="46" y="170" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Entra: sg-obs-payments-*</text>
+<text x="46" y="187" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Keycloak/OIDC: obs-payments-*</text>
+<text x="46" y="204" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewer · editor · mock: alice</text>
 <rect x="292" y="126" width="220" height="104" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
 <text x="306" y="150" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">org &quot;payments&quot;</text>
 <text x="306" y="170" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 Loki data source:</text>
@@ -27,9 +28,10 @@
 <path d="M512,174 L552,174" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <path d="M822,174 L862,174" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <rect x="32" y="244" width="220" height="104" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
-<text x="46" y="268" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">sg-obs-cards-*</text>
-<text x="46" y="288" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewers → Viewer</text>
-<text x="46" y="305" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">editors → Editor</text>
+<text x="46" y="268" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">cards groups</text>
+<text x="46" y="288" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Entra: sg-obs-cards-*</text>
+<text x="46" y="305" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Keycloak/OIDC: obs-cards-*</text>
+<text x="46" y="322" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewer · editor · mock: bob</text>
 <rect x="292" y="244" width="220" height="104" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
 <text x="306" y="268" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">org &quot;cards&quot;</text>
 <text x="306" y="288" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 Loki data source:</text>
@@ -45,9 +47,10 @@
 <path d="M512,292 L552,292" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <path d="M822,292 L862,292" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <rect x="32" y="362" width="220" height="104" rx="10" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
-<text x="46" y="386" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">sg-obs-platform-*</text>
-<text x="46" y="406" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewers → Viewer</text>
-<text x="46" y="423" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">editors → Editor</text>
+<text x="46" y="386" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#166534" text-anchor="start">platform groups</text>
+<text x="46" y="406" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Entra: sg-obs-platform-*</text>
+<text x="46" y="423" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Keycloak/OIDC: obs-platform-*</text>
+<text x="46" y="440" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">viewer · editor · + local admin</text>
 <rect x="292" y="362" width="220" height="104" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
 <text x="306" y="386" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">org &quot;platform&quot;</text>
 <text x="306" y="406" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">1 Loki data source:</text>

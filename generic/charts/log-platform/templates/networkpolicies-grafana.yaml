@@ -1,6 +1,7 @@
 {{- if .Values.network.policies }}
 # Namespace `grafana`: people in through the internal load balancer; Grafana
-# out only to the read gateway, its database and Entra ID; grafana-sync only to Grafana.
+# out only to the read gateway, its database and the identity provider;
+# grafana-sync only to Grafana.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: default-deny, namespace: grafana}
@@ -37,9 +38,18 @@ spec:
             matchLabels: {app.kubernetes.io/name: grafana}
       ports:
         - {port: 3000, protocol: TCP}
+    {{- if .Values.keycloak.install }}
     - to:
         - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: kgateway-system}
+            matchLabels: {kubernetes.io/metadata.name: keycloak}
+          podSelector:
+            matchLabels: {app: keycloak}
+      ports:
+        - {port: 8080, protocol: TCP}
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.operatorsNamespace }}}
       ports:
         - {port: 9977, protocol: TCP}
 ---
@@ -65,7 +75,7 @@ spec:
         - {port: 9094, protocol: TCP}
         - {port: 9094, protocol: UDP}
     - from:
-        {{- include "lp.amaMetricsPeer" . | nindent 8 }}
+        {{- include "lp.metricsPeers" . | nindent 8 }}
       ports:
         - {port: 3000, protocol: TCP}
   egress:
@@ -87,6 +97,22 @@ spec:
         {{- include "lp.cidrs" . | nindent 8 }}
       ports:
         - {port: 5432, protocol: TCP}
+    {{- end }}
+    {{- if eq .Values.postgres.provider "percona" }}
+    - to:                                   # in-cluster PostgreSQL (Percona): primary or pgBouncer
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.postgres.percona.namespace }}}
+      ports:
+        - {port: 5432, protocol: TCP}
+    {{- end }}
+    {{- if .Values.keycloak.install }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: keycloak}
+          podSelector:
+            matchLabels: {app: keycloak}
+      ports:
+        - {port: 8080, protocol: TCP}
     {{- end }}
     {{- if .Values.network.internetEgress443 }}
     {{- include "lp.internet443" . | nindent 4 }}

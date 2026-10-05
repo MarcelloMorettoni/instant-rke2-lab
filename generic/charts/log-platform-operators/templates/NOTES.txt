@@ -1,7 +1,12 @@
-Prerequisites installed:
-  - Gateway API + kgateway CRDs (from crds/; upgrade them with kubectl apply --server-side)
-  - kgateway controller in {{ .Release.Namespace }}
+Prerequisites installed in {{ .Release.Namespace }}:
+  - CRDs: Gateway API, kgateway, Keycloak, Strimzi (from crds/; upgrade them with kubectl apply --server-side)
+  - kgateway controller, Strimzi Kafka operator (watching namespace kafka)
+{{- if .Values.keycloak.install }}
+  - Keycloak operator {{ .Values.keycloak.version }} in namespace keycloak
+{{- end }}
+{{- if .Values.keyVault.enabled }}
   - External Secrets Operator in {{ index .Values "external-secrets" "namespaceOverride" }}
-  - namespace loki (the log-platform release goes there)
+{{- end }}
+  - namespaces loki, kafka{{ if .Values.keycloak.install }}, keycloak{{ end }}
 
-Next: the log-platform chart (docs/09-helm-charts.md).
+Next: the log-platform chart, into namespace loki (docs/09-helm-charts.md).

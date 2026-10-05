@@ -12,12 +12,18 @@ cd "${GEN_DIR}"
 python3 scripts/render-tenants.py >/dev/null
 python3 scripts/render-images.py "${ENV}" >/dev/null
 {
-  helm template log-platform-operators charts/log-platform-operators -n kgateway-system \
+  helm template log-platform-operators charts/log-platform-operators -n platform-operators \
     -f "${E}/values.yaml" -f "${E}/generated-images.yaml"
   helm template log-platform charts/log-platform -n loki \
-    -f "${E}/values.yaml" -f "${E}/generated-images.yaml" -f rendered/values-tenants.yaml
-} | grep -oE '(image|value): *"?[a-z0-9.:/_-]+/[a-z0-9._/-]+:[A-Za-z0-9._-]+' \
-  | sed -E 's/^(image|value): *"?//' | grep -v '^http' | sort -u
+    -f rendered/values-tenants.yaml -f "${E}/values.yaml" -f "${E}/generated-images.yaml"
+} > "${TMPDIR}/images.yaml"
+{
+  grep -oE '(image|value): *"?[a-z0-9.:/_-]+/[a-z0-9._/-]+:[A-Za-z0-9._-]+' "${TMPDIR}/images.yaml" \
+    | sed -E 's/^(image|value): *"?//' | grep -v '^http'
+  # Kafka brokers: Strimzi's image map, for the version the Kafka CR asks for.
+  v="$(awk '/^kind: Kafka$/{k=1} k && /^    version:/{gsub(/"/,"",$2); print $2; exit}' "${TMPDIR}/images.yaml")"
+  [[ -n "${v}" ]] && grep -oE "^ +${v}=[^ ]+" "${TMPDIR}/images.yaml" | head -1 | sed -E 's/^ +[0-9.]+=//'
+} | grep -vE 'buildah|kaniko|maven-builder|kafka-bridge|drain-cleaner' | sort -u
 # Created at runtime by kgateway (one proxy per Gateway), not by Helm:
 REG="$(python3 -c "import yaml,sys; print(((yaml.safe_load(open(sys.argv[1])) or {}).get('global') or {}).get('imageRegistry') or 'cr.kgateway.dev')" "${E}/values.yaml")"
 [[ "${REG}" == cr.kgateway.dev ]] && echo "cr.kgateway.dev/kgateway-dev/envoy-wrapper:${KGATEWAY_VERSION}" \

@@ -27,7 +27,7 @@ output "disk_encryption_set_id" {
 }
 
 output "postgres_fqdn" {
-  description = "grafana.grafana.ini.database.host (environment values)"
+  description = "postgres.azure.host (environment values)"
   value       = azurerm_postgresql_flexible_server.grafana.fqdn
 }
 
@@ -42,9 +42,7 @@ output "environment_values" {
       loki           = { storage = { azure = { accountName = azurerm_storage_account.loki.name } } }
       serviceAccount = { annotations = { "azure.workload.identity/client-id" = azurerm_user_assigned_identity.loki.client_id } }
     }
-    grafana = {
-      "grafana.ini" = { database = { host = "${azurerm_postgresql_flexible_server.grafana.fqdn}:5432" } }
-    }
+    postgres = { azure = { host = azurerm_postgresql_flexible_server.grafana.fqdn } }
     "external-secrets" = {
       serviceAccount = { annotations = { "azure.workload.identity/client-id" = azurerm_user_assigned_identity.eso.client_id } }
     }
