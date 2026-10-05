@@ -99,3 +99,10 @@ The first install is [06 · First install](06-operations-runbook.md#first-instal
 | You also run | Keycloak, PostgreSQL (Percona), Prometheus | — (Azure runs them) |
 
 Both installations pass the same checks (`scripts/validate.sh`, `scripts/pipeline-test.sh`).
+
+## Try it first: the demo
+
+[`demo/`](../demo/README.md) runs the same backend at toy size in one namespace on any test
+cluster, with three tenants and a web demonstrator. It generates workload per tenant and
+follows a log line through Kafka, the collectors, the Loki ring, the query path, object
+storage and the ruler. It is meant for learning the design, not as a third installation.

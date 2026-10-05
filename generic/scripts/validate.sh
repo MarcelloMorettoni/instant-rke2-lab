@@ -11,6 +11,7 @@
 #   4. both OTel collector configs the chart produces load in the collector
 #   5. every custom resource matches its CRD schema (unknown fields = error)
 #   then once:
+#   the demo chart (generic/demo): renders, steps/ current, configs and CRs valid
 #   6. alert rules pass promtool
 #   7. terraform validate + a mocked plan (terraform test)
 # Variants: <env>+test-cluster (test overlay added) and <env>+no-kafka.
@@ -132,6 +133,34 @@ for e in "${ENVS[@]}"; do
   expect_fail "keycloak.install: set auth.provider keycloak" --set keycloak.install=true --set keycloak.hostname=sso.example
   ok "sign-in: entra, keycloak, oidc and disabled render; missing settings are refused"
 done
+
+log "demo chart (generic/demo): renders, steps/ up to date, Loki + collector configs, CRDs, Python"
+DOUT="${OUT_ROOT}/demo"; mkdir -p "${DOUT}"
+helm template log-flow-demo demo/chart -n observability > "${DOUT}/demo.yaml" 2>/dev/null || die "the demo chart does not render"
+python3 demo/render-steps.py --check >/dev/null || die "generic/demo/steps is out of date: run generic/demo/render-steps.py"
+python3 - "${DOUT}" <<'PY'
+import sys, yaml, pathlib
+out = pathlib.Path(sys.argv[1])
+docs = [d for d in yaml.safe_load_all((out / "demo.yaml").read_text()) if d]
+cm = {d["metadata"]["name"]: d for d in docs if d["kind"] == "ConfigMap"}
+cfg = yaml.safe_load(cm["loki"]["data"]["config.yaml"]); cfg["runtime_config"] = {"file": ""}
+(out / "loki.yaml").write_text(yaml.safe_dump(cfg))
+(out / "agent.yaml").write_text(cm["otel-agent"]["data"]["relay.yaml"])
+(out / "gateway.yaml").write_text(cm["otel-gateway"]["data"]["relay.yaml"])
+PY
+docker run --rm -v "${DOUT}:/c:ro" "${LOKI_IMAGE}" -config.file=/c/loki.yaml -verify-config >/dev/null 2>"${DOUT}/err" \
+  || { cat "${DOUT}/err"; die "Loki rejects the demo's config"; }
+for c in agent gateway; do
+  docker run --rm -e MY_POD_IP=127.0.0.1 -e K8S_NODE_NAME=validate -e CLUSTER_NAME=demo -v "${DOUT}:/c:ro" \
+    "${OTELCOL_IMAGE}" validate --config="/c/${c}.yaml" >/dev/null 2>"${DOUT}/err" \
+    || { cat "${DOUT}/err"; die "the collector rejects the demo's ${c} config"; }
+done
+"${CACHE_DIR}/venv/bin/python" scripts/validate-crs.py --crds "${CACHE_DIR}/crds" --manifests "${DOUT}/demo.yaml" > "${DOUT}/crs.txt" \
+  || { cat "${DOUT}/crs.txt"; die "the demo's custom resources don't match their CRDs"; }
+for f in demo/chart/files/demonstrator/server.py demo/chart/files/emitter.py demo/render-steps.py; do
+  python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "${f}" || die "${f}: syntax error"
+done
+ok "demo: Loki and both collector configs load; $(tail -1 "${DOUT}/crs.txt"); steps/ up to date"
 
 "${CACHE_DIR}/venv/bin/python" scripts/validate-crs.py --crds "${CACHE_DIR}/crds-examples" \
   --manifests examples/ > "${OUT_ROOT}/examples.txt" || { cat "${OUT_ROOT}/examples.txt"; die "examples/ don't match their CRDs"; }

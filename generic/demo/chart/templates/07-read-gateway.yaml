@@ -1,0 +1,279 @@
+{{- /*
+Step 7. The read side's front door (the LB) and the recorded metrics.
+  Grafana ──key──► obs-gateway (kgateway / Envoy) ── view /<tenant>/ ──► query-frontend
+                       sets X-Scope-OrgID from the view, whatever the caller sent
+                   ── /<tenant>/prometheus/ ──► tenant guard ──► metrics store
+  Loki ruler ──remote write──► metrics store
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- $views := include "demo.views" . | fromYamlArray }}
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: obs-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  kube:
+    deployment:
+      replicas: 2
+    service:
+      type: ClusterIP
+    {{- with .Values.global.imageRegistry }}
+    envoyContainer:
+      image:
+        registry: {{ printf "%s/kgateway-dev" (trimSuffix "/" .) }}
+    {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: obs-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef: {group: gateway.kgateway.dev, kind: GatewayParameters, name: obs-gateway}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces: {from: Same}
+---
+# Envoy's access log (tenant, path, status): visible in the platform org.
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: ListenerPolicy
+metadata:
+  name: obs-gateway
+spec:
+  targetRefs:
+    - {group: gateway.networking.k8s.io, kind: Gateway, name: obs-gateway}
+  default:
+    httpSettings:
+      accessLog:
+        - fileSink:
+            path: /dev/stdout
+            stringFormat: >
+              tenant=%REQ(X-SCOPE-ORGID)%%REQ(X-OBS-TENANT)%
+              "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%" %RESPONSE_CODE% upstream=%UPSTREAM_HOST% %DURATION%ms
+      normalizePath: true
+      mergeSlashes: true
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: DirectResponse
+metadata:
+  name: read-only
+spec:
+  status: 403
+  body: "read-only gateway\n"
+{{- range $v := $views }}
+{{- $hdr := join "|" $v.tenants }}
+---
+# View "{{ $v.view }}": reads {{ $hdr }}. Opens only with its key.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: view-{{ $v.view }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+    obs.platform/view: {{ $v.view }}
+spec:
+  parentRefs:
+    - name: obs-gateway
+  rules:
+    {{- range $r := list (list "/loki/api/v1" "120s") (list "/loki/api/v1/tail" "0s") }}
+    - matches:
+        - path: {type: PathPrefix, value: {{ printf "/%s%s" $v.view (index $r 0) }}}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Scope-OrgID, value: {{ $hdr | quote }}}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: {{ index $r 0 }}}
+      backendRefs:
+        - {name: loki-query-frontend, port: 3100}
+      timeouts: {request: {{ index $r 1 }}}
+    {{- end }}
+    - matches:
+        - path: {type: PathPrefix, value: {{ printf "/%s/prometheus/api/v1" $v.view }}}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Obs-Tenant, value: {{ $hdr | quote }}}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api/v1}
+      backendRefs:
+        - {name: obs-metrics-proxy, port: 8080}
+      timeouts: {request: 60s}
+    - matches:
+        - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/push}
+        - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/delete}
+        - path: {type: PathPrefix, value: /{{ $v.view }}/prometheus/api/v1/write}
+      filters:
+        - type: ExtensionRef
+          extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: view-{{ $v.view }}
+  labels:
+    obs.platform/view: {{ $v.view }}
+spec:
+  targetRefs:
+    - {group: gateway.networking.k8s.io, kind: HTTPRoute, name: view-{{ $v.view }}}
+  apiKeyAuth:
+    secretRef: {name: obs-key-{{ $v.view }}}
+    keySources:
+      - header: X-Api-Key
+    forwardCredential: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: obs-key-{{ $v.view }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+    obs.platform/view: {{ $v.view }}
+type: Opaque
+stringData:
+  {{ $v.view }}: {{ include "demo.key" (list $ $v.view) | quote }}
+{{- end }}
+---
+# Every view key in one Secret: grafana-sync and the demonstrator read it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: obs-gateway-keys
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- range $v := $views }}
+  obs-key-{{ $v.view }}: {{ include "demo.key" (list $ $v.view) | quote }}
+  {{- end }}
+---
+# The metrics store: a receive-only Prometheus for the ruler's results.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obs-metrics
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics-headless
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: obs-metrics}
+  ports:
+    - {name: http, port: 9090}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics
+spec:
+  selector: {app.kubernetes.io/name: obs-metrics}
+  ports:
+    - {name: http, port: 9090}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: obs-metrics
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: obs-metrics
+spec:
+  replicas: 1
+  serviceName: obs-metrics-headless
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: obs-metrics, app.kubernetes.io/part-of: log-flow-demo}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534}
+      containers:
+        - name: prometheus
+          image: {{ include "demo.image" (dict "ctx" . "img" .Values.images.prometheus) }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.metricsStore.retention }}
+            - --web.enable-remote-write-receiver
+          ports:
+            - {name: http, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /-/ready, port: http}
+          resources:
+            requests: {cpu: 20m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: obs-metrics}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources: {requests: {storage: {{ .Values.metricsStore.storage }}}}
+---
+# The tenant guard: every query gets tenant=~"<X-Obs-Tenant>" (set by the view).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obs-metrics-proxy
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: obs-metrics-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: obs-metrics-proxy, app.kubernetes.io/part-of: log-flow-demo}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65534}
+      containers:
+        - name: prom-label-proxy
+          image: {{ include "demo.image" (dict "ctx" . "img" .Values.images.promLabelProxy) }}
+          args:
+            - -insecure-listen-address=0.0.0.0:8080
+            - -upstream=http://obs-metrics.{{ $ns }}.svc.cluster.local:9090
+            - -label=tenant
+            - -header-name=X-Obs-Tenant
+            - -regex-match
+            - -enable-label-apis
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics-proxy
+spec:
+  selector: {app.kubernetes.io/name: obs-metrics-proxy}
+  ports:
+    - {name: http, port: 8080}

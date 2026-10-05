@@ -1,0 +1,251 @@
+{{- /*
+Step 6. OpenTelemetry: the agent on every node and the gateway.
+Both configs are the PRODUCTION ones (generic/collector/*.yaml, linked into
+files/), loaded here and changed only where the demo differs:
+  agent    reads the tenants' and this namespace's pods only; tenant mapping
+           generated from .Values.tenants; plain Kafka listener
+  gateway  plain Kafka listener; one route + exporter + queue per tenant
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- $owners := include "demo.owners" . | fromJsonArray }}
+{{- /* ---------------------------------------------------------- agent config */ -}}
+{{- $agent := .Files.Get "files/agent-config.yaml" | fromYaml }}
+{{- $includes := list (printf "/var/log/pods/%s_*/*/*.log" $ns) }}
+{{- range .Values.tenants }}{{- $includes = append $includes (printf "/var/log/pods/%s_*/*/*.log" .id) }}{{- end }}
+{{- $_ := set $agent.receivers.file_log "include" $includes }}
+{{- $_ := set $agent.receivers.file_log "exclude" (list (printf "/var/log/pods/%s_otel-agent-*/*/*.log" $ns)) }}
+{{- $_ := set $agent.extensions.file_storage "directory" "/var/lib/otelcol-demo/storage" }}
+{{- $_ := set $agent.extensions.file_storage.compaction "directory" "/var/lib/otelcol-demo/storage" }}
+{{- $nsAttr := "resource.attributes[\"k8s.namespace.name\"]" }}
+{{- $stmts := list "set(resource.attributes[\"obs.tenant\"], \"unassigned\")" }}
+{{- $stmts = append $stmts (printf "set(resource.attributes[\"obs.tenant\"], \"platform\") where %s != nil and IsMatch(%s, \"^(%s)$\")" $nsAttr $nsAttr $ns) }}
+{{- range .Values.tenants }}
+{{- $stmts = append $stmts (printf "set(resource.attributes[\"obs.tenant\"], \"%s\") where %s != nil and IsMatch(%s, \"^(%s)$\")" .id $nsAttr $nsAttr .id) }}
+{{- end }}
+{{- $_ := set (index (index $agent.processors "transform/tenant").log_statements 0) "statements" $stmts }}
+{{- $_ := unset $agent.exporters "otlp_grpc/gateway" }}
+{{- $_ := set $agent.exporters.kafka "brokers" (list (printf "logs-kafka-bootstrap.%s.svc.cluster.local:9092" $ns)) }}
+{{- $_ := unset $agent.exporters.kafka "auth" }}
+{{- $_ := unset $agent.exporters.kafka "tls" }}
+{{- $_ := set $agent.exporters.kafka.sending_queue "queue_size" 268435456 }}
+{{- $_ := set $agent.service.telemetry.metrics "level" "detailed" }}
+{{- /* ---------------------------------------------------------- gateway config */ -}}
+{{- $gw := .Files.Get "files/gateway-config.yaml" | fromYaml }}
+{{- $_ := set $gw.receivers.kafka "brokers" (list (printf "logs-kafka-bootstrap.%s.svc.cluster.local:9092" $ns)) }}
+{{- $_ := unset $gw.receivers.kafka "auth" }}
+{{- $_ := unset $gw.receivers.kafka "tls" }}
+{{- $table := list }}
+{{- $exporters := dict }}
+{{- range $o := $owners }}
+{{- if ne $o "unassigned" }}
+{{- $table = append $table (dict "condition" (printf "resource.attributes[\"obs.tenant\"] == \"%s\"" $o) "pipelines" (list (printf "logs/%s" $o))) }}
+{{- end }}
+{{- $_ := set $exporters (printf "otlp_http/%s" $o) (dict
+      "endpoint" (printf "http://loki-distributor.%s.svc.cluster.local:3100/otlp" $ns)
+      "headers" (dict "X-Scope-OrgID" $o)
+      "compression" "gzip"
+      "timeout" "30s"
+      "sending_queue" (dict "enabled" true "storage" "file_storage" "sizer" "bytes" "queue_size" 67108864 "num_consumers" 2
+                            "batch" (dict "flush_timeout" "1s" "sizer" "bytes" "min_size" 1048576 "max_size" 4194304))
+      "retry_on_failure" (dict "enabled" true "initial_interval" "1s" "max_interval" "30s" "max_elapsed_time" "1h")) }}
+{{- $_ := set $gw.service.pipelines (printf "logs/%s" $o) (dict "receivers" (list "routing") "processors" (list "resource/internal") "exporters" (list (printf "otlp_http/%s" $o))) }}
+{{- end }}
+{{- $_ := set $gw.connectors.routing "table" $table }}
+{{- $_ := set $gw "exporters" $exporters }}
+{{- $_ := set $gw.service.telemetry.metrics "level" "detailed" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+data:
+  relay.yaml: |
+    {{- toYaml $agent | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+---
+# k8s_attributes: read pods, namespaces and ReplicaSets (to name the Deployment).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $ns }}-otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $ns }}-otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ $ns }}-otel-agent}
+subjects:
+  - {kind: ServiceAccount, name: otel-agent, namespace: {{ $ns }}}
+---
+# The agent: one pod per node. Reads container logs from the node's disk and
+# accepts OTLP from apps on the SAME node (Service with internalTrafficPolicy
+# Local), so it can tell which pod sent each record.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: otel-agent
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: otel-agent}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: otel-agent, app.kubernetes.io/part-of: log-flow-demo}
+      annotations:
+        checksum/config: {{ toYaml $agent | sha256sum }}
+    spec:
+      serviceAccountName: otel-agent
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: otel-agent
+          image: {{ include "demo.image" (dict "ctx" . "img" .Values.images.otelcol) }}
+          command: [/otelcol-contrib, --config=/conf/relay.yaml]
+          env:
+            - name: MY_POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+            - name: K8S_NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - {name: CLUSTER_NAME, value: {{ .Values.clusterName | quote }}}
+          ports:
+            - {name: otlp, containerPort: 4317}
+            - {name: otlp-http, containerPort: 4318}
+            - {name: metrics, containerPort: 8888}
+          readinessProbe:
+            httpGet: {path: /, port: 13133}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL], add: [DAC_READ_SEARCH]}
+          volumeMounts:
+            - {name: config, mountPath: /conf}
+            - {name: varlogpods, mountPath: /var/log/pods, readOnly: true}
+            - {name: otelcol-data, mountPath: /var/lib/otelcol-demo}
+      volumes:
+        - name: config
+          configMap: {name: otel-agent}
+        - name: varlogpods
+          hostPath: {path: /var/log/pods}
+        - name: otelcol-data
+          hostPath: {path: /var/lib/otelcol-demo, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: otel-agent}
+  internalTrafficPolicy: Local                  # always the agent on the caller's node
+  ports:
+    - {name: otlp, port: 4317, targetPort: otlp}
+    - {name: otlp-http, port: 4318, targetPort: otlp-http}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+data:
+  relay.yaml: |
+    {{- toYaml $gw | nindent 4 }}
+---
+# The gateway: a consumer group on topic otel-logs (Kafka hands each pod some
+# partitions), one exporter + persistent queue per tenant, X-Scope-OrgID set
+# per tenant on the way to Loki's distributors.
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: otel-gateway}
+  ports:
+    - {name: metrics, port: 8888}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: otel-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: otel-gateway
+spec:
+  replicas: {{ .Values.otel.gatewayReplicas }}
+  serviceName: otel-gateway
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app.kubernetes.io/name: otel-gateway}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: otel-gateway, app.kubernetes.io/part-of: log-flow-demo}
+      annotations:
+        checksum/config: {{ toYaml $gw | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+      containers:
+        - name: otel-gateway
+          image: {{ include "demo.image" (dict "ctx" . "img" .Values.images.otelcol) }}
+          command: [/otelcol-contrib, --config=/conf/relay.yaml]
+          env:
+            - name: MY_POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+          ports:
+            - {name: metrics, containerPort: 8888}
+          readinessProbe:
+            httpGet: {path: /, port: 13133}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /conf}
+            - {name: queue, mountPath: /var/lib/otelcol}
+      volumes:
+        - name: config
+          configMap: {name: otel-gateway}
+  volumeClaimTemplates:
+    - metadata: {name: queue}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources: {requests: {storage: {{ .Values.otel.queueSize }}}}

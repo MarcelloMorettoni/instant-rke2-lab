@@ -1,0 +1,11 @@
+{{- if ne .Release.Namespace .Values.namespace.name }}
+{{- fail (printf "install into namespace %s (helm -n %s): every service address points there" .Values.namespace.name .Values.namespace.name) }}
+{{- end }}
+{{- range .Values.tenants }}
+{{- if not (regexMatch "^[a-z][a-z0-9-]{1,39}$" .id) }}
+{{- fail (printf "tenant id %q: lowercase letters, digits and dashes" .id) }}
+{{- end }}
+{{- if not (hasKey $.Values.loki.ruler.directories .id) }}
+{{- fail (printf "tenant %s has no recording rules: add loki.ruler.directories.%s (copy tenant-a's, change the tenant label)" .id .id) }}
+{{- end }}
+{{- end }}

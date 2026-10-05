@@ -1,0 +1,77 @@
+{{- /*
+Step 8. Grafana (subchart) and grafana-sync, the production script
+(generic/charts/log-platform/files/grafana-sync.py, linked into files/):
+  - one org per tenant + "platform" (every tenant: what admin sees);
+  - per org a Loki and a "Log metrics (recorded)" data source, both through
+    the read gateway with that org's view key;
+  - LOCAL users: admin (server admin, platform org) and one user per tenant
+    (login = tenant id) in exactly its own org.
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- $views := include "demo.views" . | fromYamlArray }}
+{{- $orgs := list }}
+{{- range $views }}{{- $orgs = append $orgs (dict "org" .view "title" .title "view" .view "tenants" .tenants) }}{{- end }}
+{{- $users := list }}
+{{- range .Values.tenants }}{{- $users = append $users (dict "login" .id "org" .id "role" "Editor") }}{{- end }}
+# Grafana's built-in admin = the automation account grafana-sync signs in with.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  admin-user: grafana-sync
+  admin-password: {{ printf "%s:grafana-sync" .Values.demoKeySeed | sha256sum | trunc 32 | quote }}
+---
+# INITIAL passwords of the people: admin and each tenant user.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-local-users
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{ .Values.grafanaUsers.admin }}: {{ .Values.grafanaUsers.password | quote }}
+  {{- range .Values.tenants }}
+  {{ .id }}: {{ $.Values.grafanaUsers.password | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-sync
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+data:
+  grafana-sync.py: |
+    {{- .Files.Get "files/grafana-sync.py" | nindent 4 }}
+  orgs.json: {{ $orgs | toJson | quote }}
+  users.json: {{ dict "admin" .Values.grafanaUsers.admin "users" $users | toJson | quote }}
+{{- range $kind := list "Job" "CronJob" }}
+---
+apiVersion: batch/v1
+kind: {{ $kind }}
+metadata:
+  name: {{ ternary "grafana-sync-now" "grafana-sync" (eq $kind "Job") }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+spec:
+  {{- if eq $kind "CronJob" }}
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+  {{- else }}
+  backoffLimit: 20          # Grafana and the gateway may still be starting
+  template:
+  {{- end }}
+        {{- $pad := ternary 8 4 (eq $kind "CronJob") }}
+        {{- include "demo.syncPod" $ | nindent (int $pad) }}
+{{- end }}

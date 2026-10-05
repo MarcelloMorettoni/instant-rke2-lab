@@ -1,0 +1,12 @@
+{{- if .Values.namespace.create }}
+# Step 1. The demo's namespace. Privileged Pod Security: the OTel agent reads
+# /var/log/pods on every node (hostPath, read-only).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace.name }}
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+{{- end }}

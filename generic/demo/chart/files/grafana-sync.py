@@ -1,0 +1,1 @@
+../../../charts/log-platform/files/grafana-sync.py

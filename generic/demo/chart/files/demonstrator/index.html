@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log flow demonstrator</title>
+<style>
+  :root {
+    --bg: #f5f6fa; --card: #ffffff; --ink: #0f172a; --body: #475569; --muted: #64748b; --line: #e2e8f0;
+    --teal: #0f766e; --teal-bg: #f0fdfa; --orange: #c2410c; --orange-bg: #fff7ed; --indigo: #4338ca; --indigo-bg: #eef2ff;
+    --sky: #0369a1; --sky-bg: #f0f9ff; --amber: #b45309; --amber-bg: #fffbeb; --violet: #6d28d9; --violet-bg: #f5f3ff;
+    --green: #15803d; --green-bg: #f0fdf4; --red: #b91c1c; --red-bg: #fef2f2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--body); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--ink); color: #fff; padding: 18px 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header .sub { color: #cbd5e1; font-size: 14px; }
+  header .ns { margin-left: auto; font: 12px ui-monospace, Menlo, monospace; background: #1e293b; padding: 4px 10px; border-radius: 999px; }
+  main { max-width: 1500px; margin: 0 auto; padding: 22px 20px 60px; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
+  h2 { margin: 0 0 4px; font-size: 17px; color: var(--ink); }
+  h2 .n { display: inline-block; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; text-align: center; line-height: 26px; font-size: 13px; margin-right: 8px; }
+  .lead { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .lane { display: flex; align-items: stretch; gap: 0; margin: 8px 0 14px; overflow-x: auto; padding-bottom: 4px; }
+  .lane-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+  .tile { min-width: 128px; flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: #fff; cursor: pointer; position: relative; }
+  .tile h4 { margin: 0; font-size: 13px; color: var(--ink); }
+  .tile .count { font: 12px ui-monospace, Menlo, monospace; }
+  .tile .pods { display: none; margin-top: 6px; font: 11px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .tile.open .pods { display: block; }
+  .tile.hl { box-shadow: 0 0 0 3px #fde68a; }
+  .arrow { align-self: center; color: #94a3b8; padding: 0 5px; font-size: 18px; }
+  .c-teal { border-color: #99f6e4; background: var(--teal-bg); } .c-teal h4 { color: var(--teal); }
+  .c-orange { border-color: #fdba74; background: var(--orange-bg); } .c-orange h4 { color: var(--orange); }
+  .c-indigo { border-color: #c7d2fe; background: var(--indigo-bg); } .c-indigo h4 { color: var(--indigo); }
+  .c-sky { border-color: #bae6fd; background: var(--sky-bg); } .c-sky h4 { color: var(--sky); }
+  .c-amber { border-color: #fcd34d; background: var(--amber-bg); } .c-amber h4 { color: var(--amber); }
+  .c-violet { border-color: #ddd6fe; background: var(--violet-bg); } .c-violet h4 { color: var(--violet); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .ok { background: #22c55e; } .bad { background: #ef4444; }
+  .rates { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  .rate { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 9px 14px; cursor: pointer; font: inherit; border-right: 1px solid var(--line); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .seg small { display: block; font-size: 11px; opacity: .75; }
+  input[type=text] { flex: 1; min-width: 220px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; }
+  button.go { background: var(--teal); color: #fff; border: 0; border-radius: 10px; padding: 11px 20px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.go:disabled { background: #94a3b8; cursor: default; }
+  .status { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .rail { display: flex; align-items: center; margin: 6px 0 18px; overflow-x: auto; padding: 4px 2px 8px; }
+  .step { display: flex; flex-direction: column; align-items: center; min-width: 92px; text-align: center; font-size: 12px; color: var(--muted); }
+  .step .b { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-weight: 700; background: #fff; color: #94a3b8; margin-bottom: 4px; }
+  .step.running .b { border-color: #f59e0b; color: #b45309; animation: pulse 1s infinite; }
+  .step.done .b { border-color: #16a34a; background: #16a34a; color: #fff; }
+  .step.failed .b { border-color: #dc2626; background: #dc2626; color: #fff; }
+  .step.skipped .b { border-style: dashed; }
+  .link { flex: 1; min-width: 14px; height: 2px; background: #e2e8f0; margin-bottom: 22px; position: relative; overflow: hidden; }
+  .link.done { background: #16a34a; }
+  .link.running::after { content: ""; position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; animation: travel 1.1s linear infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.5); } 50% { box-shadow: 0 0 0 7px rgba(245,158,11,0); } }
+  @keyframes travel { from { left: -10px; } to { left: 100%; } }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(540px, 1fr)); gap: 14px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  .stage { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: #fff; }
+  .stage.pending { opacity: .55; }
+  .stage.running { border-color: #fcd34d; background: #fffdf5; }
+  .stage.done { border-color: #bbf7d0; }
+  .stage.failed { border-color: #fecaca; background: var(--red-bg); }
+  .stage .head { display: flex; align-items: baseline; gap: 8px; }
+  .stage h3 { margin: 0; font-size: 15px; color: var(--ink); }
+  .stage .t { margin-left: auto; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .stage .sum { margin: 6px 0 8px; color: var(--ink); font-size: 14px; }
+  .stage .why { font-size: 13px; color: var(--muted); border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 8px 0; }
+  table.kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.kv td { border-top: 1px solid #f1f5f9; padding: 5px 6px; vertical-align: top; }
+  table.kv td:first-child { color: var(--muted); width: 34%; white-space: nowrap; }
+  table.kv td:last-child { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-word; color: var(--ink); }
+  .viz { margin: 10px 0 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font: 12px ui-monospace, Menlo, monospace; background: #fafafa; }
+  .box.hit { border-color: #f59e0b; background: #fffbeb; box-shadow: 0 0 0 2px #fde68a; }
+  .box b { display: block; font-family: system-ui, sans-serif; font-size: 12px; color: var(--ink); }
+  .zone { flex: 1; min-width: 150px; border: 1px dashed #c7d2fe; border-radius: 10px; padding: 8px; }
+  .zone > b { font-size: 12px; color: var(--indigo); }
+  .bar { height: 8px; background: var(--indigo); border-radius: 4px; margin-top: 4px; }
+  .pill { display: inline-block; font: 11px ui-monospace, Menlo, monospace; background: #f1f5f9; border-radius: 999px; padding: 1px 8px; margin: 1px 2px; }
+  .pill.hit { background: #fde68a; }
+  .ok-row { color: var(--green); } .bad-row { color: var(--red); }
+  code, .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: #f1f5f9; padding: 1px 6px; border-radius: 6px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+  .board { display: flex; align-items: stretch; overflow-x: auto; margin-top: 14px; padding-bottom: 6px; }
+  .col { min-width: 136px; flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+  .col h4 { margin: 0; font-size: 13px; color: var(--ink); }
+  .col .big { font: 600 20px ui-monospace, Menlo, monospace; color: var(--ink); margin: 2px 0 6px; }
+  .col .big small { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .row { font: 11px ui-monospace, Menlo, monospace; margin: 5px 0; color: var(--body); }
+  .row .lbl { display: flex; justify-content: space-between; gap: 6px; }
+  .row .lbl span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stack { display: flex; height: 7px; border-radius: 4px; background: #f1f5f9; overflow: hidden; margin-top: 2px; }
+  .stack i { display: block; height: 100%; transition: width .6s; }
+  .zonehdr { font: 700 10px system-ui, sans-serif; letter-spacing: .06em; color: var(--indigo); margin-top: 6px; text-transform: uppercase; }
+  .pipe { min-width: 16px; align-self: center; height: 4px; margin: 0 2px; border-radius: 2px; background: #e2e8f0; position: relative; overflow: hidden; }
+  .pipe.on { background: repeating-linear-gradient(90deg, #f59e0b 0 6px, transparent 6px 12px); background-size: 24px 4px; animation: pipe var(--speed, 1s) linear infinite; }
+  @keyframes pipe { from { background-position: 0 0; } to { background-position: 24px 0; } }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  label.inline { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  select { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font: inherit; background: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Log flow demonstrator</h1>
+  <span class="sub">Follow one log line from a tenant's pod through OpenTelemetry, Kafka and Loki, and back out through Grafana.</span>
+  <span class="ns" id="ns">namespace …</span>
+</header>
+<main>
+
+<section class="card">
+  <h2><span class="n">1</span>The platform</h2>
+  <p class="lead">Every box is a set of pods in the cluster. Click one to see its pods and nodes. Colours: <b style="color:var(--teal)">collection</b>, <b style="color:var(--orange)">Kafka</b>, <b style="color:var(--indigo)">Loki</b>, <b style="color:var(--sky)">access</b>, <b style="color:var(--amber)">storage</b>, <b style="color:var(--violet)">people</b>.</p>
+  <div class="lane-title">Write path: a log line goes in</div>
+  <div class="lane" id="lane-write"></div>
+  <div class="lane-title">Read path: someone asks for it</div>
+  <div class="lane" id="lane-read"></div>
+  <div class="lane-title">Ruler: log counts, computed once a minute</div>
+  <div class="lane" id="lane-ruler"></div>
+  <div class="lane-title">Live: lines per second reaching Loki, per tenant</div>
+  <div class="rates" id="rates"><span class="rate">measuring…</span></div>
+</section>
+
+<section class="card">
+  <h2><span class="n">2</span>Generate workload and watch it flow</h2>
+  <p class="lead">The tenants' apps log all the time. Pick a tenant and give its app more to say: its pod writes the extra lines to <b>stdout</b> (the agent on its node reads them from the node's disk) or sends them over <b>OTLP</b> (like an app with an OpenTelemetry SDK). Watch them cross every hop, pod by pod. Per second, measured every 3 s from each component's own metrics.</p>
+  <div class="controls">
+    <div class="seg" id="load-tenants"></div>
+    <label class="inline">lines/s <input type="range" id="rate" min="10" max="400" step="10" value="100"><b id="rate-v" class="mono">100</b></label>
+    <label class="inline">for <select id="secs"><option>30</option><option selected>60</option><option>120</option><option>300</option></select> s</label>
+    <div class="seg" id="via"><button class="on" data-v="stdout">stdout<small>like most apps</small></button><button data-v="otlp">OTLP<small>OTel SDK</small></button></div>
+    <button class="go" id="load">Generate workload</button>
+  </div>
+  <div class="status" id="load-status"></div>
+  <div class="legend" id="legend"></div>
+  <div class="board" id="board"><div class="col"><h4>Measuring…</h4><div class="row">the first rates appear after two samples (~6 s)</div></div></div>
+  <div class="board" id="ruler-board"></div>
+</section>
+
+<section class="card">
+  <h2><span class="n">3</span>Follow one line, step by step</h2>
+  <p class="lead">The tenant's app sends one line the way an app with an OpenTelemetry SDK does. It gets its own stream (<code>service_name="trace-&lt;id&gt;"</code>), so every component's part in it can be seen.</p>
+  <div class="controls">
+    <div class="seg" id="tenants"></div>
+    <input type="text" id="msg" value="hello from the demonstrator" maxlength="200">
+    <button class="go" id="send">Send and follow</button>
+  </div>
+  <div class="status" id="status"></div>
+</section>
+
+<section class="card" id="follow" style="display:none">
+  <h2><span class="n">4</span>Follow it</h2>
+  <p class="lead" id="follow-lead"></p>
+  <div class="rail" id="rail"></div>
+  <div class="grid" id="stages"></div>
+</section>
+
+<section class="card">
+  <h2><span class="n">5</span>See it in Grafana</h2>
+  <div class="two">
+    <div>
+      <p class="lead">Each tenant signs in and sees only its own org. <b>admin</b> sees every tenant (the platform org).</p>
+      <table class="kv">
+        <tr><td>admin</td><td>all tenants (org "platform")</td></tr>
+        <tbody id="grafana-users"></tbody>
+        <tr><td>password</td><td>change-me-now (as set in the chart's values)</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="lead">Open it with a port-forward, then Explore → data source <b>Loki</b>:</p>
+      <pre id="grafana-cmd">kubectl -n observability port-forward svc/grafana 3000:80
+# http://localhost:3000</pre>
+      <p class="lead" id="logql-hint">Query: <code>{k8s_namespace_name=~".+"}</code></p>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2><span class="n">6</span>Demo vs. production</h2>
+  <p class="lead" style="margin:0">Same components and data path as the production charts (<code>generic/charts</code>), at toy size: one namespace, no NetworkPolicies, Kafka without TLS/SCRAM, derived keys, local Grafana users, SeaweedFS instead of Blob/S3, one or two replicas of most things. The production version adds per-namespace isolation, TLS, Key Vault or generated secrets, SSO, alerts and sizing (docs/01, docs/10).</p>
+</section>
+</main>
+
+<script>
+const LANES = {
+  write: [["apps", "Tenant apps", "violet"], ["agent", "OTel agents", "teal"], ["kafka", "Kafka brokers", "orange"],
+          ["gateway", "OTel gateways", "teal"], ["distributor", "Distributors", "indigo"], ["ingester", "Ingesters", "indigo"],
+          ["object-storage", "Object storage", "amber"]],
+  read: [["grafana", "Grafana", "violet"], ["read-gateway", "Read gateway", "sky"], ["query-frontend", "Query frontends", "indigo"],
+         ["query-scheduler", "Query schedulers", "indigo"], ["querier", "Queriers", "indigo"], ["index-gateway", "Index gateways", "indigo"],
+         ["compactor", "Compactor", "indigo"]],
+  ruler: [["ruler", "Ruler", "indigo"], ["metrics-store", "Metrics store", "amber"], ["guard", "Tenant guard", "sky"]],
+};
+const WHY = {
+  app: "The tenant's code doesn't know about tenants, Loki or Kafka. It writes to stdout (most apps) or, like here, sends OTLP to the OpenTelemetry agent on its own node. It even claims a namespace that isn't true: the platform ignores that.",
+  agent: "One agent per node. It reads every container's log file from the node, and accepts OTLP from pods on that node. It decides the tenant from the pod's namespace, never from anything the app says, masks secrets, and writes to Kafka. If Kafka is down, it queues on the node's disk.",
+  kafka: "Kafka is the buffer between the two collector tiers. The record is written to one partition (chosen by a hash of the pod's attributes, so a stream stays in order) and copied to 3 brokers. If the gateways or Loki stop, logs wait here, replicated, for hours.",
+  gateway: "The gateways are one consumer group: Kafka gives each pod some partitions, so there is no load balancer. The pod that owns this partition routes the record to its tenant's own queue and exporter, and pushes it to Loki with the tenant header set.",
+  distributor: "Loki's front door for writes. The gateways reach it through a Kubernetes Service, which spreads connections over the distributor pods. It checks the tenant's limits and turns OTLP into a Loki stream: 4 attributes become labels, the rest is metadata.",
+  ingesters: "The distributor hashes the stream's labels onto Loki's ring and sends it to 3 ingesters, one in each zone. Each keeps recent data in memory with a write-ahead log on disk. The push succeeds once 2 of the 3 have it, so a whole zone can fail.",
+  query: "Grafana asks the read gateway with the org's key. The gateway decides the tenant. The query frontend splits the query and queues the pieces per tenant in a scheduler; the queriers pull pieces when they have a free worker (that's the load balancing). They read recent data from the ingesters, the index from the index gateways, older chunks from object storage.",
+  isolation: "Same question, other tenants' views: they get nothing, because the gateway sets their own tenant ID. The platform view (admin) reads every tenant. Another tenant's key on this view is refused.",
+  storage: "When a stream goes quiet (1 min in the demo, 30 in production) the ingesters compress it into a chunk and write it to object storage. The tenant is the first folder of the key. The 3 replicas write the same chunk: stored once.",
+  ruler: "Once a minute, the ruler counts each tenant's log lines (and errors) per namespace and service, with its own querier, and stores the result as a small series stamped with the tenant. Dashboards and alerts read that instead of re-scanning logs. A tenant reads its series through the tenant guard.",
+};
+let selectedTenant = null, loadTenant = null, via = "stdout", current = null, poller = null, topo = null;
+const TCOLORS = ["#0d9488", "#ea580c", "#7c3aed", "#0369a1", "#b45309"];
+const tcolor = (t, tenants) => t === "platform" ? "#64748b" : t === "unassigned" ? "#cbd5e1" : TCOLORS[tenants.indexOf(t) % TCOLORS.length];
+const fmt = (v) => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  return [r.status, await r.json().catch(() => ({}))];
+}
+
+function tile(key, title, color, comp) {
+  const el = document.createElement("div");
+  el.className = `tile c-${color}`;
+  el.dataset.key = key;
+  const total = comp ? comp.total : 0, ready = comp ? comp.ready : 0;
+  const pods = comp ? comp.pods.map((p) =>
+    `<div><span class="dot ${p.ready ? "ok" : "bad"}"></span>${esc(p.name)}${p.logical_zone ? " · " + p.logical_zone : ""}<br>&nbsp;&nbsp;on ${esc(p.node || "?")}${p.zone ? " (" + esc(p.zone) + ")" : ""}</div>`).join("") : "";
+  el.innerHTML = `<h4>${esc(title)}</h4><div class="count">${comp ? `<span class="dot ${ready === total && total ? "ok" : "bad"}"></span>${ready}/${total} ready` : ""}</div><div class="pods">${pods}</div>`;
+  el.onclick = () => el.classList.toggle("open");
+  return el;
+}
+
+function renderTopology(t) {
+  topo = t;
+  $("ns").textContent = "namespace " + t.namespace;
+  const byKey = Object.fromEntries(t.components.map((c) => [c.key, c]));
+  byKey.apps = {total: t.tenants.reduce((a, x) => a + x.pods.length, 0),
+                ready: t.tenants.reduce((a, x) => a + x.pods.filter((p) => p.ready).length, 0),
+                pods: t.tenants.flatMap((x) => x.pods.map((p) => ({...p, name: `${x.id}/${p.name}`})))};
+  for (const [lane, items] of Object.entries(LANES)) {
+    const open = new Set([...document.querySelectorAll(`#lane-${lane} .tile.open`)].map((e) => e.dataset.key));
+    const box = $("lane-" + lane);
+    box.innerHTML = "";
+    items.forEach(([key, title, color], i) => {
+      if (i) box.insertAdjacentHTML("beforeend", `<div class="arrow">${lane === "ruler" && i === 2 ? "←" : "→"}</div>`);
+      const el = tile(key, title, color, byKey[key]);
+      if (open.has(key)) el.classList.add("open");
+      box.appendChild(el);
+    });
+  }
+  const r = t.rates || {};
+  $("rates").innerHTML = Object.keys(r).length ? Object.entries(r).map(([k, v]) =>
+    `<span class="rate"><b>${esc(k)}</b> ${v.toFixed(2)} lines/s</span>`).join("") : '<span class="rate">measuring…</span>';
+}
+
+async function refreshTopology() {
+  try { const [s, t] = await api("/api/topology"); if (s === 200) renderTopology(t); } catch (e) {}
+}
+
+function vizFor(st) {
+  const d = st.data || {};
+  if (st.key === "kafka" && d.partitions) {
+    return `<div class="viz">${Object.entries(d.partitions).map(([p, v]) =>
+      `<div class="box ${String(d.hit) === p ? "hit" : ""}"><b>partition ${p}</b>leader ${v.leader ?? "?"} · ${v.isr ?? "?"}/${v.replicas ?? "?"} in sync<br>end offset ${v.end_offset ?? "?"}${String(d.hit) === p ? `<br>this line: offset ${d.offset}` : ""}</div>`).join("")}</div>`;
+  }
+  if (st.key === "gateway" && d.assignment) {
+    return `<div class="viz">${Object.entries(d.assignment).sort().map(([pod, parts]) =>
+      `<div class="box ${pod === d.owner ? "hit" : ""}"><b>${esc(pod)}</b>${parts.sort((a, b) => a - b).map((p) =>
+        `<span class="pill ${p === d.partition ? "hit" : ""}">p${p}</span>`).join("")}</div>`).join("")}</div>`;
+  }
+  if (st.key === "distributor" && d.lines) {
+    const max = Math.max(...Object.values(d.lines));
+    return `<div class="viz" style="display:block">${Object.entries(d.lines).sort().map(([pod, n]) =>
+      `<div style="font:12px ui-monospace,monospace">${esc(pod)}: ${n}<div class="bar" style="width:${Math.max(4, 100 * n / max)}%"></div></div>`).join("")}</div>`;
+  }
+  if (st.key === "ingesters" && d.ring) {
+    return `<div class="viz">${Object.entries(d.ring).sort().map(([zone, list]) =>
+      `<div class="zone"><b>${esc(zone)}</b>${list.map((i) =>
+        `<div class="box ${i.has ? "hit" : ""}" style="margin-top:6px">${i.has ? "✓ " : ""}${esc(i.name.replace(/^loki-/, ""))}</div>`).join("")}</div>`).join("")}</div>`;
+  }
+  if (st.key === "query" && d.all_queriers) {
+    const col = (title, used, all) => `<div class="zone"><b>${title}</b>${(all || Object.keys(used)).map((p) =>
+      `<div class="box ${used[p] ? "hit" : ""}" style="margin-top:6px">${esc(p.replace(/^loki-/, ""))}${used[p] ? ` · ${used[p]}` : ""}</div>`).join("")}</div>`;
+    return `<div class="viz">${col("frontend", d.frontends)}${col("scheduler", d.schedulers)}${col("queriers (pulled)", d.queriers, d.all_queriers)}</div>`;
+  }
+  if (st.key === "isolation" && d.rows) {
+    return `<div class="viz" style="display:block">${d.rows.map((r) => {
+      const good = r.expected === "refused" ? [401, 403].includes(r.status) : r.lines === r.expected;
+      return `<div class="${good ? "ok-row" : "bad-row"}" style="font:13px ui-monospace,monospace">${good ? "✓" : "✗"} ${esc(r.view)}: HTTP ${r.status}${r.lines != null ? `, ${r.lines} line(s)` : ""}</div>`;
+    }).join("")}</div>`;
+  }
+  return "";
+}
+
+let lastStages = "";
+function renderTrace(tr) {
+  $("follow").style.display = "";
+  const stagesJson = JSON.stringify(tr.stages);
+  $("follow-lead").innerHTML = `Trace <code>${esc(tr.id)}</code> · tenant <b>${esc(tr.tenant)}</b> · "${esc(tr.message)}" · ${(tr.elapsed_ms / 1000).toFixed(1)} s${tr.finished ? " · finished" : ""}`;
+  $("logql-hint").innerHTML = `Find it: <code>{service_name="trace-${esc(tr.id)}"}</code> as <b>${esc(tr.tenant)}</b> (found) or another tenant (nothing).`;
+  if (stagesJson === lastStages) return;      // only redraw when a step changed (no flicker)
+  lastStages = stagesJson;
+  $("rail").innerHTML = tr.stages.map((s, i) =>
+    (i ? `<div class="link ${s.status === "pending" ? "" : tr.stages[i - 1].status === "done" && s.status === "running" ? "running" : s.status === "done" ? "done" : ""}"></div>` : "") +
+    `<div class="step ${s.status}"><div class="b">${s.status === "done" ? "✓" : s.status === "failed" ? "!" : i + 1}</div>${esc(s.title)}</div>`).join("");
+  $("stages").innerHTML = tr.stages.map((s, i) => `
+    <div class="stage ${s.status}">
+      <div class="head"><h3>${i + 1}. ${esc(s.title)}</h3><span class="t">${s.ms != null ? "+" + (s.ms / 1000).toFixed(1) + " s" : s.status}</span></div>
+      ${s.summary ? `<div class="sum">${esc(s.summary)}</div>` : ""}
+      <div class="why">${esc(WHY[s.key] || "")}</div>
+      ${vizFor(s)}
+      ${s.details && s.details.length ? `<table class="kv">${s.details.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>` : ""}
+    </div>`).join("");
+  highlight(tr);
+}
+
+function highlight(tr) {
+  const running = tr.stages.find((s) => s.status === "running");
+  const map = {app: ["apps"], agent: ["agent"], kafka: ["kafka"], gateway: ["gateway"], distributor: ["distributor"],
+               ingesters: ["ingester"], query: ["read-gateway", "query-frontend", "query-scheduler", "querier", "index-gateway"],
+               isolation: ["read-gateway"], storage: ["object-storage"], ruler: ["ruler", "metrics-store", "guard"]};
+  document.querySelectorAll(".tile").forEach((t) => t.classList.toggle("hl", !!running && (map[running.key] || []).includes(t.dataset.key)));
+}
+
+async function poll(id) {
+  const [s, tr] = await api("/api/trace/" + id);
+  if (s !== 200) return;
+  renderTrace(tr);
+  if (tr.finished) {
+    clearInterval(poller); poller = null;
+    $("send").disabled = false;
+    const failed = tr.stages.filter((x) => x.status === "failed").length;
+    $("status").textContent = failed ? `Finished with ${failed} step(s) not confirmed: see their details.` : "Finished: every step confirmed by the component itself.";
+    refreshTopology();
+  }
+}
+
+async function send() {
+  $("send").disabled = true;
+  $("status").textContent = "Sending…";
+  const [s, r] = await api("/api/trace", {method: "POST", headers: {"Content-Type": "application/json"},
+                                           body: JSON.stringify({tenant: selectedTenant, message: $("msg").value})});
+  if (s !== 200) { $("status").textContent = r.error || "could not start"; $("send").disabled = false; return; }
+  current = r.id;
+  $("status").textContent = "Following trace " + r.id + ": the first steps take seconds; the object storage and ruler steps take 1-3 minutes.";
+  $("follow").scrollIntoView({behavior: "smooth"});
+  poller = setInterval(() => poll(current), 1000);
+  poll(current);
+}
+
+function stack(byTenant, tenants, max) {
+  return `<div class="stack">${tenants.map((t) => {
+    const v = byTenant[t] || 0;
+    return v > 0 ? `<i style="width:${Math.max(1.5, 100 * v / max)}%;background:${tcolor(t, tenants)}" title="${esc(t)} ${fmt(v)}/s"></i>` : "";
+  }).join("")}</div>`;
+}
+const bar = (v, max, color) => `<div class="stack"><i style="width:${max ? Math.max(v > 0 ? 1.5 : 0, 100 * v / max) : 0}%;background:${color}"></i></div>`;
+const sum = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
+
+function renderFlow(f) {
+  if (!f.ready) return;
+  const T = f.tenants.filter((t) => t !== "unassigned" || (f.per_tenant[t] || 0) > 0);
+  $("legend").innerHTML = T.map((t) => `<span><i style="background:${tcolor(t, f.tenants)}"></i>${esc(t)}</span>`).join("");
+  const cols = [];
+  const tenantMax = Math.max(1, ...Object.values(f.per_tenant));
+  cols.push({title: "Tenants", total: sum(f.per_tenant), unit: "lines/s",
+    rows: T.map((t) => `<div class="row"><div class="lbl"><span>${esc(t)}</span><span>${fmt(f.per_tenant[t] || 0)}</span></div>${bar(f.per_tenant[t] || 0, tenantMax, tcolor(t, f.tenants))}</div>`)});
+  const aMax = Math.max(1, ...f.agents.map((a) => a.lines_in));
+  cols.push({title: "OTel agents", total: f.agents.reduce((a, x) => a + x.lines_in, 0), unit: "lines/s in",
+    rows: f.agents.map((a) => `<div class="row"><div class="lbl"><span title="${esc(a.node)}">${esc(a.node || a.pod)}</span><span>${fmt(a.lines_in)}</span></div>${bar(a.lines_in, aMax, "#0d9488")}</div>`)});
+  const kMax = Math.max(1, ...f.kafka.map((k) => k.messages));
+  cols.push({title: "Kafka partitions", total: f.kafka.reduce((a, x) => a + x.messages, 0), unit: "batches/s",
+    rows: f.kafka.map((k) => `<div class="row"><div class="lbl"><span>p${k.partition}</span><span>${fmt(k.messages)}</span></div>${bar(k.messages, kMax, "#c2410c")}<div style="color:var(--muted)">leader ${k.leader ?? "?"}${k.lag != null ? ` · lag ${k.lag}` : ""}</div></div>`)});
+  const gMax = Math.max(1, ...f.gateways.map((g) => sum(g.by_tenant)));
+  cols.push({title: "OTel gateways", total: f.gateways.reduce((a, g) => a + sum(g.by_tenant), 0), unit: "lines/s to Loki",
+    rows: f.gateways.map((g) => `<div class="row"><div class="lbl"><span>${esc(g.pod)}</span><span>${fmt(sum(g.by_tenant))}</span></div>${stack(g.by_tenant, f.tenants, gMax)}<div>${g.partitions.map((p) => `<span class="pill">p${p}</span>`).join("")}</div></div>`)});
+  const dMax = Math.max(1, ...f.distributors.map((d) => sum(d.by_tenant)));
+  cols.push({title: "Distributors", total: f.distributors.reduce((a, d) => a + sum(d.by_tenant), 0), unit: "lines/s",
+    rows: f.distributors.map((d) => `<div class="row"><div class="lbl"><span>${esc(d.pod.replace(/^loki-/, ""))}</span><span>${fmt(sum(d.by_tenant))}</span></div>${stack(d.by_tenant, f.tenants, dMax)}</div>`)});
+  const iMax = Math.max(1, ...f.ingesters.map((i) => i.pushes));
+  const zones = [...new Set(f.ingesters.map((i) => i.zone))].sort();
+  cols.push({title: "Ingesters", total: f.ingesters.reduce((a, i) => a + i.pushes, 0), unit: "pushes/s (×3 copies)",
+    rows: zones.map((z) => `<div class="zonehdr">${esc(z)}</div>` + f.ingesters.filter((i) => i.zone === z).map((i) =>
+      `<div class="row"><div class="lbl"><span>${esc(i.pod.replace(/^loki-ingester-/, ""))}</span><span>${fmt(i.pushes)}</span></div>${bar(i.pushes, iMax, "#4338ca")}</div>`).join(""))});
+  const flushes = f.ingesters.reduce((a, i) => a + i.flushes_per_min, 0);
+  cols.push({title: "Object storage", total: flushes, unit: "chunks flushed/min",
+    rows: [`<div class="row">chunks are written when a stream goes quiet (1 min) or gets old (5 min), by the 3 ingesters that hold it: same key, stored once</div>`]});
+  const html = [];
+  cols.forEach((c, i) => {
+    if (i) {
+      const flow = cols[i].total > 0 ? Math.max(0.25, Math.min(2, 4 / Math.log2(2 + cols[i].total))) : 0;
+      html.push(`<div class="pipe ${flow ? "on" : ""}" style="--speed:${flow}s"></div>`);
+    }
+    html.push(`<div class="col"><h4>${c.title}</h4><div class="big">${fmt(c.total)} <small>${c.unit}</small></div>${c.rows.join("")}</div>`);
+  });
+  $("board").innerHTML = html.join("");
+  const rMax = Math.max(1, ...Object.values(f.ruler || {}));
+  $("ruler-board").innerHTML = Object.keys(f.ruler || {}).length ? `<div class="col" style="flex:none;min-width:320px"><h4>Ruler: recorded lines/s per tenant</h4>
+    <div class="row" style="margin-bottom:6px">obs:log_lines:rate1m, computed once a minute by the ruler (30 s offset), so it follows ~1 min behind</div>
+    ${Object.entries(f.ruler).sort().map(([t, v]) => `<div class="row"><div class="lbl"><span>${esc(t)}</span><span>${fmt(v)}</span></div>${bar(v, rMax, tcolor(t, f.tenants))}</div>`).join("")}</div>` : "";
+}
+
+async function refreshFlow() {
+  try { const [s, f] = await api("/api/flow"); if (s === 200) renderFlow(f); } catch (e) {}
+}
+
+async function startLoad() {
+  $("load").disabled = true;
+  const rate = +$("rate").value, secs = +$("secs").value;
+  const [s, r] = await api("/api/load", {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify({tenant: loadTenant, lines_per_second: rate, seconds: secs, via})});
+  $("load-status").textContent = s === 200
+    ? `${loadTenant}: ${r.pod} on ${r.node} is writing ${r.lines_per_second} extra lines/s for ${r.seconds} s via ${r.via} (burst ${r.burst}). Watch its colour grow.`
+    : `could not start: ${r.error || s}`;
+  setTimeout(() => { $("load").disabled = false; }, 2000);
+}
+
+async function init() {
+  const [, info] = await api("/api/info");
+  $("ns").textContent = "namespace " + info.namespace;
+  $("grafana-cmd").textContent = `kubectl -n ${info.namespace} port-forward svc/grafana 3000:80\n# then open http://localhost:3000`;
+  $("tenants").innerHTML = info.tenants.map((t, i) => `<button data-t="${esc(t.id)}" class="${i ? "" : "on"}">${esc(t.id)}<small>${esc(t.app)}</small></button>`).join("");
+  $("grafana-users").innerHTML = info.tenants.map((t) => `<tr><td>${esc(t.id)}</td><td>only ${esc(t.id)} (org "${esc(t.id)}")</td></tr>`).join("");
+  selectedTenant = info.tenants[0] && info.tenants[0].id;
+  document.querySelectorAll("#tenants button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#tenants button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on"); selectedTenant = b.dataset.t;
+  });
+  $("send").onclick = send;
+  $("load-tenants").innerHTML = info.tenants.map((t, i) => `<button data-t="${esc(t.id)}" class="${i ? "" : "on"}">${esc(t.id)}<small>${esc(t.app)}</small></button>`).join("");
+  loadTenant = info.tenants[0] && info.tenants[0].id;
+  document.querySelectorAll("#load-tenants button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#load-tenants button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on"); loadTenant = b.dataset.t;
+  });
+  document.querySelectorAll("#via button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#via button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on"); via = b.dataset.v;
+  });
+  $("rate").oninput = () => { $("rate-v").textContent = $("rate").value; };
+  $("load").onclick = startLoad;
+  refreshFlow();
+  setInterval(refreshFlow, 3000);
+  if (info.busy) $("status").textContent = "A trace is running (another browser?): wait for it, then send yours.";
+  refreshTopology();
+  setInterval(refreshTopology, 10000);
+}
+init();
+</script>
+</body>
+</html>

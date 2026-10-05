@@ -1,0 +1,115 @@
+{{- if .Values.demonstrator.enabled }}
+{{- /*
+Step 9. The demonstrator: a web page that sends a traced line from a tenant's
+app and shows each component's part in it (files/demonstrator/).
+  kubectl -n {{ .Release.Namespace }} port-forward svc/log-flow-demonstrator 8080:8080
+It READS: the Kubernetes API (pods, nodes), the pods' /metrics, Kafka through
+the bridge, Loki and the recorded metrics through the read gateway (with the
+views' keys), the object storage listing. It WRITES nothing but the traced line.
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- $apps := dict }}
+{{- $ids := list }}
+{{- range .Values.tenants }}{{- $_ := set $apps .id .app }}{{- $ids = append $ids .id }}{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+data:
+  server.py: |
+    {{- .Files.Get "files/demonstrator/server.py" | nindent 4 }}
+  index.html: |
+    {{- .Files.Get "files/demonstrator/index.html" | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+---
+# Read-only: which pods run on which nodes (here and in the tenants' namespaces).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $ns }}-log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $ns }}-log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ $ns }}-log-flow-demonstrator}
+subjects:
+  - {kind: ServiceAccount, name: log-flow-demonstrator, namespace: {{ $ns }}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: log-flow-demonstrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: log-flow-demonstrator}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: log-flow-demonstrator, app.kubernetes.io/part-of: log-flow-demo}
+      annotations:
+        checksum/code: {{ printf "%s%s" (.Files.Get "files/demonstrator/server.py") (.Files.Get "files/demonstrator/index.html") | sha256sum }}
+    spec:
+      serviceAccountName: log-flow-demonstrator
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: demonstrator
+          image: {{ include "demo.image" (dict "ctx" . "img" .Values.images.python) }}
+          command: [python3, -u, /app/server.py]
+          env:
+            - {name: NAMESPACE, value: {{ $ns | quote }}}
+            - {name: TENANTS, value: {{ join "," $ids | quote }}}
+            - {name: TENANT_APPS, value: {{ toJson $apps | quote }}}
+            - {name: PARTITIONS, value: {{ .Values.kafka.partitions | quote }}}
+            - {name: GRAFANA_HINT, value: {{ printf "kubectl -n %s port-forward svc/grafana 3000:80" $ns | quote }}}
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: code, mountPath: /app}
+            - {name: keys, mountPath: /keys, readOnly: true}
+      volumes:
+        - name: code
+          configMap: {name: log-flow-demonstrator}
+        - name: keys
+          secret: {secretName: obs-gateway-keys}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: log-flow-demonstrator}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+{{- end }}

@@ -1,0 +1,95 @@
+{{- if .Values.deployTenants }}
+{{- /*
+Step 10. The tenants: one namespace each, with a small app that logs like a
+real service and can send a traced line (files/emitter.py). Their logs reach
+the platform with no configuration in their namespace: the OTel agent reads
+stdout from the node, and maps namespace → tenant.
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- range $t := .Values.tenants }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $t.id }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: emitter
+  namespace: {{ $t.id }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+data:
+  emitter.py: |
+    {{- $.Files.Get "files/emitter.py" | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $t.app }}
+  namespace: {{ $t.id }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $t.app }}
+    app.kubernetes.io/component: emitter
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: emitter}
+  template:
+    metadata:
+      # app.kubernetes.io/name becomes the logs' service_name (the agent's rule).
+      labels: {app.kubernetes.io/name: {{ $t.app }}, app.kubernetes.io/component: emitter, app.kubernetes.io/part-of: log-flow-demo}
+      annotations:
+        checksum/code: {{ $.Files.Get "files/emitter.py" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: {{ $t.app }}
+          image: {{ include "demo.image" (dict "ctx" $ "img" $.Values.images.python) }}
+          command: [python3, -u, /app/emitter.py, "8080"]
+          env:
+            - {name: APP, value: {{ $t.app | quote }}}
+            - {name: OTEL_AGENT_URL, value: {{ printf "http://otel-agent.%s.svc.cluster.local:4318/v1/logs" $ns | quote }}}
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 96Mi}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: code, mountPath: /app}
+      volumes:
+        - name: code
+          configMap: {name: emitter}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: emitter
+  namespace: {{ $t.id }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/component: emitter}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+{{- end }}
+{{- end }}

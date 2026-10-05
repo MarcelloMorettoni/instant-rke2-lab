@@ -1,0 +1,90 @@
+# Step 4. Kafka (run by the Strimzi operator from step 2): the buffer between
+# the OTel agents (producers) and the OTel gateways (one consumer group).
+# 3 nodes (KRaft controller + broker each); every partition on all 3.
+# Production adds TLS + SCRAM users with ACLs (generic/charts/log-platform).
+{{- $k := .Values.kafka }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    strimzi.io/cluster: logs
+spec:
+  replicas: {{ $k.nodes }}
+  roles: [controller, broker]
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ $k.storage }}
+        {{- with .Values.storageClass }}
+        class: {{ . }}
+        {{- end }}
+        deleteClaim: true
+        kraftMetadata: shared
+  resources:
+    requests: {cpu: 100m, memory: 768Mi}
+    limits: {memory: 1Gi}
+  jvmOptions: {"-Xms": 256m, "-Xmx": 512m}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: logs
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  kafka:
+    version: {{ $k.version | quote }}
+    listeners:
+      - {name: plain, port: 9092, type: internal, tls: false}
+    config:
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      auto.create.topics.enable: false
+      message.max.bytes: 8388608
+  entityOperator:
+    topicOperator:
+      resources: {requests: {cpu: 20m, memory: 256Mi}, limits: {memory: 512Mi}}
+  # Partition leaders, replicas and offsets as metrics: the demonstrator reads them.
+  kafkaExporter:
+    topicRegex: otel-logs
+    groupRegex: ".*"
+    resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: otel-logs
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    strimzi.io/cluster: logs
+spec:
+  partitions: {{ $k.partitions }}
+  replicas: 3
+  config:
+    retention.ms: {{ mul (int $k.retentionHours) 3600000 }}
+    min.insync.replicas: 2
+    max.message.bytes: 8388608
+---
+# Kafka's HTTP bridge: lets the demonstrator READ the topic (its own consumer
+# group) to show where a traced line landed: partition, offset, key.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaBridge
+metadata:
+  name: logs
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  bootstrapServers: logs-kafka-bootstrap:9092
+  http:
+    port: 8080
+  resources:
+    requests: {cpu: 20m, memory: 256Mi}
+    limits: {memory: 512Mi}

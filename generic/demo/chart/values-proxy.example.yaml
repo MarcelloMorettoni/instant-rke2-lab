@@ -1,0 +1,15 @@
+# Every image of the demo through ONE registry proxy (or mirror):
+#   helm upgrade --install log-flow-demo generic/demo/chart -n observability -f my-proxy.yaml
+# (and for the step files: generic/demo/render-steps.py after adding -f to its helm call, or
+#  edit image: lines). Each image keeps its upstream path: <proxy>/<path>:<tag>.
+global:
+  imageRegistry: myproxy.bank.internal:5000          # this chart's images, Loki, memcached, Grafana, the Envoy proxies
+strimzi-kafka-operator:
+  defaultImageRegistry: myproxy.bank.internal:5000   # strimzi/operator, strimzi/kafka, kafka-bridge, kafka exporter
+kgateway:
+  image:
+    registry: myproxy.bank.internal:5000/kgateway-dev
+loki:
+  rollout_operator:
+    image:
+      registry: myproxy.bank.internal:5000

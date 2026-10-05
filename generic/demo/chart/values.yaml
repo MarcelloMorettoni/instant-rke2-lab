@@ -1,0 +1,314 @@
+# log-flow-demo: the whole log platform in ONE namespace, small enough for a
+# test cluster, with a web demonstrator that follows one log line through it.
+#
+#   kubectl create namespace observability
+#   kubectl label namespace observability pod-security.kubernetes.io/enforce=privileged
+#   helm upgrade --install log-flow-demo generic/demo/chart -n observability
+#
+# Or apply it step by step: generic/demo/steps/ (README). Same objects.
+#
+# NOT for production: plain Kafka listener, no NetworkPolicies, derived keys,
+# local passwords, one replica of most things. The production charts are
+# generic/charts/ (docs/09).
+
+global:
+  # One registry for the images this chart and Loki/Grafana read directly
+  # (<registry>/<upstream path>:<tag>). Strimzi, kgateway and Loki's
+  # rollout-operator have their own registry values: see values-proxy.example.yaml.
+  imageRegistry: ""
+
+# Everything runs in this namespace; it must be the release namespace.
+namespace:
+  name: observability
+  create: false                 # steps/01-namespace.yaml creates it; with Helm, create it first
+
+clusterName: demo               # k8s_cluster_name on every log line
+
+# The tenants. Each gets: a namespace with a small app that logs (and can
+# send a traced line), a Grafana org and user, a read-gateway view, recording
+# rules (loki.ruler.directories below: keep the two lists in step).
+tenants:
+  - {id: tenant-a, title: "Tenant A", app: payments}
+  - {id: tenant-b, title: "Tenant B", app: orders}
+  - {id: tenant-c, title: "Tenant C", app: inventory}
+deployTenants: true             # the tenants' namespaces and apps (step 10)
+
+# Grafana sign-in: LOCAL users. admin sees every tenant (the platform org);
+# each tenant user (login = tenant id) sees only its own org.
+grafanaUsers:
+  admin: admin
+  password: change-me-now       # initial password of admin and the tenant users
+
+# The read-gateway keys are DERIVED from this seed (sha256), so the step
+# manifests are reproducible. Demo only: production keys are random (Key Vault).
+demoKeySeed: log-flow-demo
+
+images:
+  python: {repository: library/python, tag: 3.13-alpine}          # demonstrator, tenant apps, grafana-sync, jobs
+  otelcol: {repository: otel/opentelemetry-collector-contrib, tag: "0.160.0"}
+  seaweedfs: {repository: chrislusf/seaweedfs, tag: "4.48"}
+  prometheus: {repository: prom/prometheus, tag: v3.5.0}
+  promLabelProxy: {registry: quay.io, repository: prometheuscommunity/prom-label-proxy, tag: v0.15.1}
+
+storageClass: ""                # "" = the cluster's default storage class
+
+# Object storage: SeaweedFS, one pod, S3 API on :8333 (anonymous: demo only).
+objectStorage:
+  size: 10Gi
+
+# Kafka (Strimzi): 3 nodes that are both KRaft controller and broker.
+kafka:
+  version: 4.3.1
+  nodes: 3
+  storage: 2Gi
+  partitions: 6
+  retentionHours: 6
+
+# OTel collectors.
+otel:
+  gatewayReplicas: 2            # consumer group members: Kafka spreads the partitions over them
+  queueSize: 1Gi                # each gateway pod's per-tenant queues
+
+# Recorded metrics: the ruler's results, read through the tenant guard.
+metricsStore:
+  retention: 7d
+  storage: 2Gi
+
+# The demonstrator: the web app that traces a log line (step 09).
+demonstrator:
+  enabled: true
+
+# ------------------------------------------------------------------ subcharts
+strimzi-kafka-operator:
+  watchNamespaces: []           # [] = the release namespace only
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {memory: 768Mi}
+
+kgateway:
+  controller:
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+
+grafana:
+  fullnameOverride: grafana
+  replicas: 1
+  persistence: {enabled: false}   # sqlite in the pod: grafana-sync rebuilds orgs, users and data sources
+  testFramework: {enabled: false}
+  rbac: {create: false}
+  serviceAccount: {create: true, automountServiceAccountToken: false}
+  automountServiceAccountToken: false
+  # The built-in admin is the AUTOMATION account grafana-sync uses (as in
+  # production). People sign in as `admin` (grafanaUsers.admin), created by grafana-sync.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  grafana.ini:
+    server: {root_url: "http://localhost:3000"}
+    auth: {disable_login_form: false}
+    auth.basic: {enabled: true}
+    auth.anonymous: {enabled: false}
+    users:
+      allow_sign_up: false
+      allow_org_create: false
+      auto_assign_org: true
+      auto_assign_org_id: 1
+      auto_assign_org_role: Viewer
+    analytics: {reporting_enabled: false, check_for_updates: false, check_for_plugin_updates: false}
+    news: {news_feed_enabled: false}
+    security: {disable_gravatar: true}
+  sidecar:
+    dashboards: {enabled: false}
+    datasources: {enabled: false}
+
+# Loki, distributed, the same components as production at toy size:
+# 2 distributors, 6 ingesters (2 per zone: each stream on 3 of them),
+# 2 frontends, 2 schedulers, 3 queriers, 2 index gateways, compactor,
+# ruler, two memcached caches. Pod anti-affinity is off (null) so it fits
+# on 3 nodes. Zones are logical (zone-a/b/c): no zone labels needed.
+loki:
+  fullnameOverride: loki
+  deploymentMode: Distributed
+  memcached:
+    image: {repository: library/memcached}
+  loki:
+    auth_enabled: true
+    schemaConfig:
+      configs:
+        - {from: "2026-01-01", store: tsdb, object_store: s3, schema: v13, index: {prefix: loki_index_, period: 24h}}
+    storage:
+      type: s3
+      bucketNames: {chunks: loki-chunks, ruler: loki-ruler, admin: loki-admin}
+      s3:
+        endpoint: seaweedfs.observability.svc.cluster.local:8333
+        region: us-east-1
+        accessKeyId: demo                 # SeaweedFS runs without S3 auth in the demo
+        secretAccessKey: demo
+        s3ForcePathStyle: true
+        insecure: true
+    commonConfig: {replication_factor: 3}
+    rulerConfig:
+      storage: {type: local, local: {directory: /etc/loki/rules}}
+      rule_path: /var/loki/rules-tmp
+      enable_api: false
+      enable_sharding: true
+      evaluation: {mode: local}
+      wal: {dir: /var/loki/ruler-wal}
+      remote_write:
+        enabled: true
+        add_org_id_header: false
+        clients:
+          metrics-store-0: {url: "http://obs-metrics-0.obs-metrics-headless.observability.svc.cluster.local:9090/api/v1/write"}
+    server: {log_level: warn}
+    ingester:
+      chunk_encoding: snappy
+      chunk_idle_period: 1m               # demo: flush to object storage ~1-2 min after a stream goes quiet
+      max_chunk_age: 5m
+      flush_check_period: 15s
+      wal: {enabled: true, dir: /var/loki/wal}
+      autoforget_unhealthy: true
+    querier: {max_concurrent: 4, multi_tenant_queries_enabled: true}
+    compactor:
+      working_directory: /var/loki/compactor
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 1h
+      delete_request_store: s3
+    limits_config:
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+      max_global_streams_per_user: 5000
+      max_line_size: 256KB
+      max_line_size_truncate: true
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      allow_structured_metadata: true
+      discover_log_levels: true
+      otlp_config:
+        resource_attributes:
+          ignore_defaults: true
+          attributes_config:
+            - action: index_label
+              attributes: [k8s.cluster.name, k8s.namespace.name, k8s.container.name, service.name]
+      max_queriers_per_tenant: 2
+      max_query_parallelism: 16
+      split_queries_by_interval: 1h
+      query_timeout: 120s
+      retention_period: 72h
+    analytics: {reporting_enabled: false}
+  distributor:
+    replicas: 2
+    maxUnavailable: 1
+    affinity: null
+    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+  ingester:
+    replicas: 6                           # 2 per zone
+    affinity: null
+    resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {memory: 1Gi}}
+    persistence:
+      enabled: true
+      claims:
+        - {name: data, size: 2Gi}
+    zoneAwareReplication:
+      enabled: true
+      zoneA: {nodeSelector: null, extraAffinity: null}
+      zoneB: {nodeSelector: null, extraAffinity: null}
+      zoneC: {nodeSelector: null, extraAffinity: null}
+  rollout_operator:
+    enabled: true
+  queryFrontend:
+    replicas: 2
+    maxUnavailable: 1
+    affinity: null
+    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+  queryScheduler:
+    replicas: 2
+    maxUnavailable: 1
+    affinity: null
+    resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+  querier:
+    replicas: 3
+    maxUnavailable: 1
+    affinity: null
+    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 1Gi}}
+  indexGateway:
+    replicas: 2
+    maxUnavailable: 1
+    affinity: null
+    resources: {requests: {cpu: 20m, memory: 128Mi}, limits: {memory: 512Mi}}
+    persistence: {enabled: true, size: 2Gi}
+  compactor:
+    replicas: 1
+    affinity: null
+    resources: {requests: {cpu: 20m, memory: 128Mi}, limits: {memory: 512Mi}}
+    persistence:
+      enabled: true
+      claims:
+        - {name: data, size: 2Gi}
+  ruler:
+    enabled: true
+    replicas: 1
+    affinity: null
+    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+    persistence: {enabled: true, size: 1Gi}
+    # Recording rules per Loki tenant (one directory each). tenant="<id>" is
+    # stamped on every rule. `offset 30s`: lines arrive a few seconds late.
+    directories:
+      tenant-a:
+        rules.yaml: |
+          groups:
+            - name: obs-standard
+              interval: 1m
+              rules:
+                - {record: "obs:log_lines:rate1m", labels: {tenant: tenant-a}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"}[1m] offset 30s))'}
+                - {record: "obs:log_errors:rate1m", labels: {tenant: tenant-a}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"} | detected_level=~"error|fatal|critical" [1m] offset 30s))'}
+      tenant-b:
+        rules.yaml: |
+          groups:
+            - name: obs-standard
+              interval: 1m
+              rules:
+                - {record: "obs:log_lines:rate1m", labels: {tenant: tenant-b}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"}[1m] offset 30s))'}
+                - {record: "obs:log_errors:rate1m", labels: {tenant: tenant-b}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"} | detected_level=~"error|fatal|critical" [1m] offset 30s))'}
+      tenant-c:
+        rules.yaml: |
+          groups:
+            - name: obs-standard
+              interval: 1m
+              rules:
+                - {record: "obs:log_lines:rate1m", labels: {tenant: tenant-c}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"}[1m] offset 30s))'}
+                - {record: "obs:log_errors:rate1m", labels: {tenant: tenant-c}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"} | detected_level=~"error|fatal|critical" [1m] offset 30s))'}
+      platform:
+        rules.yaml: |
+          groups:
+            - name: obs-standard
+              interval: 1m
+              rules:
+                - {record: "obs:log_lines:rate1m", labels: {tenant: platform}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"}[1m] offset 30s))'}
+                - {record: "obs:log_errors:rate1m", labels: {tenant: platform}, expr: 'sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"} | detected_level=~"error|fatal|critical" [1m] offset 30s))'}
+  chunksCache:
+    enabled: true
+    replicas: 1
+    allocatedMemory: 256
+    resources: {requests: {cpu: 20m, memory: 300Mi}, limits: {memory: 400Mi}}
+  resultsCache:
+    enabled: true
+    replicas: 1
+    allocatedMemory: 128
+    resources: {requests: {cpu: 20m, memory: 160Mi}, limits: {memory: 256Mi}}
+  overridesExporter: {enabled: false, replicas: 0}
+  gateway: {enabled: false}
+  lokiCanary: {enabled: false}
+  test: {enabled: false}
+  minio: {enabled: false}
+  singleBinary: {replicas: 0}
+  backend: {replicas: 0}
+  read: {replicas: 0}
+  write: {replicas: 0}
+  bloomPlanner: {replicas: 0}
+  bloomBuilder: {replicas: 0}
+  bloomGateway: {replicas: 0}
