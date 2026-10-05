@@ -38,6 +38,16 @@
 {{- else if index (.Values.otelAgent.alternateConfig.exporters | default dict) "kafka" }}
 {{- fail "kafka.enabled is false but the agents still export to Kafka: add environments/overlays/no-kafka.yaml" }}
 {{- end }}
+{{- $rulerOn := and .Values.loki.ruler.enabled (gt (int .Values.loki.ruler.replicas) 0) }}
+{{- if and $rulerOn (not .Values.metricsStore.enabled) }}
+{{- fail "loki.ruler is on but metricsStore is off: the recorded metrics would have nowhere to go" }}
+{{- end }}
+{{- if and $rulerOn (ne (len .Values.loki.loki.rulerConfig.remote_write.clients) (int .Values.metricsStore.replicas)) }}
+{{- fail "loki.loki.rulerConfig.remote_write.clients must have one entry per metricsStore replica (obs-metrics-<n>), so every replica gets every sample" }}
+{{- end }}
+{{- if and $rulerOn (not .Values.loki.ruler.directories) }}
+{{- fail "loki.ruler.directories is empty: add -f rendered/values-tenants.yaml (scripts/render-tenants.py renders the recording rules)" }}
+{{- end }}
 {{- if .Values.keycloak.install }}
 {{- if or (not .Values.keycloak.hostname) (not .Values.grafanaAccess.enabled) }}
 {{- fail "keycloak.install needs keycloak.hostname and grafanaAccess.enabled (Keycloak is served on Grafana's load balancer)" }}

@@ -26,6 +26,7 @@ LOKI_IMAGE="grafana/loki:3.6.11"
 OTELCOL_IMAGE="otel/opentelemetry-collector-contrib:0.160.0"
 PROMTOOL_IMAGE="prom/prometheus:v3.5.0"
 KAFKA_IMAGE="apache/kafka:4.3.1"    # pipeline-test; the cluster runs Strimzi's build of the same version
+PROM_LABEL_PROXY_IMAGE="quay.io/prometheuscommunity/prom-label-proxy:v0.15.1"   # = metricsStore.proxy.image
 CILIUM_CRD_VERSION="v1.17.6"        # schema for templates/networkpolicies-cilium.yaml
 PROM_OPERATOR_VERSION="v0.85.0"     # PodMonitor schema (Azure's azmonitoring group mirrors it)
 

@@ -3,7 +3,10 @@
 For every entry in /config/orgs.json:
   - ensure a Grafana org named after the view (the tenant id, or "platform");
   - ensure ONE Loki data source (uid loki-<view>) pointing at that view on the
-    read gateway, with the view's current key from Key Vault (/keys/obs-key-<view>).
+    read gateway, with the view's current key (/keys/obs-key-<view>);
+  - with RECORDED_METRICS=true, also ONE Prometheus data source (uid metrics-<view>)
+    for the ruler's recorded metrics, through the same view and key
+    (<view>/prometheus: the gateway's tenant guard limits it to the view's tenants).
 Local people (/config/users.json):
   - the admin (every mode): created once with its INITIAL password, made Grafana
     server admin and Admin of the platform org (every tenant);
@@ -25,6 +28,7 @@ import urllib.request
 
 GRAFANA = os.environ.get("GRAFANA_URL", "http://grafana.grafana.svc.cluster.local")
 GATEWAY = os.environ.get("READ_GATEWAY", "http://obs-gateway.loki.svc.cluster.local:8080")
+RECORDED_METRICS = os.environ.get("RECORDED_METRICS", "false").lower() == "true"
 AUTH = "Basic " + base64.b64encode(
     f'{os.environ["GF_ADMIN_USER"]}:{os.environ["GF_ADMIN_PASSWORD"]}'.encode()).decode()
 
@@ -142,18 +146,31 @@ def main():
             print(f"org {view}: cannot create (HTTP {status})")
             failed += 1
             continue
-        ds = {"name": "Loki", "uid": f"loki-{view}", "type": "loki", "access": "proxy",
-              "url": f"{GATEWAY}/{view}", "isDefault": True, "basicAuth": False,
-              "jsonData": {"httpHeaderName1": "X-Api-Key", "maxLines": 5000, "timeout": 300},
-              "secureJsonData": {"httpHeaderValue1": key}}
-        exists = api("GET", f"/api/datasources/uid/loki-{view}", org=org)[0] == 200
-        status, _ = (api("PUT", f"/api/datasources/uid/loki-{view}", ds, org) if exists
-                     else api("POST", "/api/datasources", ds, org))
-        if status >= 400:
-            print(f"org {view}: data source update failed (HTTP {status})")
+        sources = [{"name": "Loki", "uid": f"loki-{view}", "type": "loki", "access": "proxy",
+                    "url": f"{GATEWAY}/{view}", "isDefault": True, "basicAuth": False,
+                    "jsonData": {"httpHeaderName1": "X-Api-Key", "maxLines": 5000, "timeout": 300},
+                    "secureJsonData": {"httpHeaderValue1": key}}]
+        if RECORDED_METRICS:
+            sources.append({"name": "Log metrics (recorded)", "uid": f"metrics-{view}", "type": "prometheus",
+                            "access": "proxy", "url": f"{GATEWAY}/{view}/prometheus", "isDefault": False,
+                            "basicAuth": False,
+                            "jsonData": {"httpHeaderName1": "X-Api-Key", "httpMethod": "POST",
+                                         "timeInterval": "1m", "prometheusType": "Prometheus",
+                                         "timeout": 120},
+                            "secureJsonData": {"httpHeaderValue1": key}})
+        bad = False
+        for ds in sources:
+            exists = api("GET", f"/api/datasources/uid/{ds['uid']}", org=org)[0] == 200
+            status, _ = (api("PUT", f"/api/datasources/uid/{ds['uid']}", ds, org) if exists
+                         else api("POST", "/api/datasources", ds, org))
+            if status >= 400:
+                print(f"org {view}: data source {ds['name']} update failed (HTTP {status})")
+                bad = True
+        if bad:
             failed += 1
             continue
-        print(f"org {view} (id {org}): Loki -> {GATEWAY}/{view} [{', '.join(o['tenants'])}]")
+        print(f"org {view} (id {org}): {' + '.join(d['name'] for d in sources)} -> {GATEWAY}/{view} "
+              f"[{', '.join(o['tenants'])}]")
     failed += sync_local_users()
     status, main_ds = api("GET", "/api/datasources", org=1)
     if status == 200 and main_ds:

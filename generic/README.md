@@ -30,7 +30,8 @@ regulated environment.
 6. **Entra Workload Identity**: no storage keys and no client secrets in the cluster.
 7. **Per-tenant limits and retention** (tiers: bronze/silver/gold) from the same registry, reloaded without restarts.
 8. **Grafana: one org per tenant**. Sign-in via `auth.provider`: Entra ID (default), Keycloak (which the charts can also install), any OIDC provider, or `disabled` (mock users alice/bob/carol for test clusters). Groups → org + role; users are Viewer or Editor, never Admin. A local `admin` exists in every mode, initial password **`change-me-now`**: change it after the install.
-9. **Read gateway (kgateway)**: one view per org, opened only by that org's key; it **sets** `X-Scope-OrgID`.
+9. **Read gateway (kgateway)**: one view per org, opened only by that org's key; it **sets** `X-Scope-OrgID` (and the tenant of the recorded metrics).
+   **Index gateways** serve the index once to every querier; the **ruler** turns each tenant's log counts into small recorded series once a minute, so dashboards and alerts stop re-scanning logs ([picture 10](diagrams/10-index-gateways-and-rulers.png), [ADR 0012](docs/adr/0012-ruler-recorded-metrics.md)).
 10. **NetworkPolicies**: only the OTel gateway can push, only the read gateway can query, and tenants reach nothing but their node's agent.
 
 **Kafka between the collector tiers, and caching on the read path only.** Both are deliberate
@@ -65,7 +66,7 @@ The platform installs as **two Helm charts** with **one folder per environment**
 ```bash
 # 0. Offline checks (no cluster, no Azure): both installations' charts, Loki/OTel configs, CRD schemas, alerts, Terraform
 scripts/validate.sh
-scripts/pipeline-test.sh      # OTel agent → Kafka → gateway → Loki, in Docker (24 checks)
+scripts/pipeline-test.sh      # OTel agent → Kafka → gateway → Loki → ruler → recorded metrics, in Docker (32 checks)
 scripts/render-manifests.sh   # plain YAML per component: manifests/azure, manifests/generic
 
 # 1. Azure resources (from a runner inside the bank's network: Key Vault is private)
@@ -96,18 +97,21 @@ Onboarding a tenant afterwards: [docs/07-tenant-onboarding.md](docs/07-tenant-on
   (`-verify-config`).
 - The generated **OpenTelemetry configs load in `otelcol-contrib` 0.160.0**, with and without
   Kafka. `scripts/pipeline-test.sh` runs agent → **Kafka 4.3.1** → gateway → Loki end to end in
-  Docker (24 checks). It covers:
+  Docker (32 checks). It covers:
   - tenant routing and no cross-tenant reads;
   - a forged OTLP identity being ignored;
   - masking in bodies and attributes;
   - exactly 4 stream labels;
   - per-tenant exporter metrics;
   - Kafka: records produced and consumed, no consumer lag, and **a gateway outage** whose
-    logs wait in Kafka and then reach the right tenant.
+    logs wait in Kafka and then reach the right tenant;
+  - the **ruler** running the rendered recording rules into Prometheus (`tenant=<owner>` on
+    every series), and the **tenant guard** (prom-label-proxy) keeping each view to its own
+    tenants.
 
-  `--no-kafka` runs the pipeline without Kafka (19 checks). A mutation test confirmed the
+  `--no-kafka` runs the pipeline without Kafka (27 checks). A mutation test confirmed the
   spoofing check fails when the protection is removed.
-- **Every custom resource** (40 in the Azure installation, 35 in the generic one) matches the
+- **Every custom resource** (41 in the Azure installation, 36 in the generic one) matches the
   real CRD schemas. Unknown fields count as errors. Schemas checked:
   - Strimzi 1.2.0 (`Kafka`, `KafkaNodePool`, `KafkaTopic`, `KafkaUser`);
   - Keycloak 26.8.0 (`Keycloak`, `KeycloakRealmImport`);
@@ -118,11 +122,12 @@ Onboarding a tenant afterwards: [docs/07-tenant-onboarding.md](docs/07-tenant-on
 
   The Percona example matches the Percona operator 2.9.0 CRD.
 - The **alert rules** pass `promtool`.
-- **Sign-in** (`scripts/auth-test.sh`, a real Grafana 13.2.2 in Docker, 36 checks):
+- **Sign-in** (`scripts/auth-test.sh`, a real Grafana 13.2.2 in Docker, 38 checks):
   - Entra ID and Keycloak settings redirect correctly, with PKCE;
   - the local `admin` (`change-me-now`) works in every mode;
   - in mock mode, alice, bob and carol each see exactly their org, and admin sees every
     tenant;
+  - each org gets its recorded-metrics data source on its own view, and nobody else can read it;
   - changed passwords are never reset.
 - **Grafana's database settings** (host and port from the database Secret through
   `$__env{}`, the rest as `GF_DATABASE_*`) were run with Grafana 13.2.2 against PostgreSQL 17:

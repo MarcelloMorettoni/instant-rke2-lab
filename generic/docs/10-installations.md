@@ -4,7 +4,8 @@
 - OTel agents;
 - Kafka;
 - OTel gateways;
-- distributed, zone-aware Loki;
+- distributed, zone-aware Loki, with index gateways and a ruler (recording rules);
+- the recorded-metrics store and its tenant guard;
 - memcached;
 - the read gateway;
 - Grafana with an org per tenant;

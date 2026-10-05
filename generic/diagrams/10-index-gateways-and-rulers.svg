@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="830" viewBox="0 0 1400 830" role="img" aria-labelledby="t">
+<title id="t">Index gateways and rulers: less work for the read path</title>
+<defs><marker id="ah16A34A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker><marker id="ah4338CA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4338CA"/></marker><marker id="ahDC2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker></defs>
+<rect x="0.5" y="0.5" width="1399" height="829" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="32" y="44" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0F172A" text-anchor="start">Index gateways and rulers: less work for the read path</text>
+<text x="32" y="68" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#64748B" text-anchor="start">Index gateways fetch and serve the index once for every querier; the ruler computes log metrics once for every dashboard and alert.</text>
+<rect x="24" y="92" width="652" height="470" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="38" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">1 · Index gateways: the index, once</text>
+<rect x="44" y="130" width="180" height="136" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="58" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Object storage</text>
+<text x="58" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">TSDB index files,</text>
+<text x="58" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">one per day</text>
+<text x="58" y="208" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">and tenant</text>
+<rect x="264" y="130" width="190" height="136" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="278" y="154" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Index gateways ×3</text>
+<text x="278" y="174" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">one per zone</text>
+<text x="278" y="191" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">index on local disk</text>
+<text x="278" y="208" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">(50 Gi each)</text>
+<rect x="278" y="234" width="162" height="22" rx="11" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1"/>
+<text x="359.0" y="249" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">download once</text>
+<rect x="494" y="120" width="162" height="70" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="508" y="144" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Queriers 4 → 16</text>
+<text x="508" y="164" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">no index download</text>
+<rect x="494" y="206" width="162" height="70" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="508" y="230" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Ruler ×2</text>
+<text x="508" y="250" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">same gateways</text>
+<path d="M224,198 L264,198" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M454,170 L494,155" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<path d="M454,226 L494,241" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<rect x="44" y="300" width="612" height="84" rx="10" fill="#FFF1F2" stroke="#FDA4AF" stroke-width="1.5"/>
+<text x="60" y="326" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#9F1239" text-anchor="start">Without them</text>
+<text x="60" y="348" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">every querier downloads and keeps the index itself: slow to start after scaling,</text>
+<text x="60" y="366" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">each needs index disk and memory, and object storage serves the same files again and again.</text>
+<text x="44" y="418" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">WHAT IT BUYS</text>
+<circle cx="56" cy="444" r="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+<path d="M51,444 L55,448 L61,440" fill="none" stroke="#16A34A" stroke-width="2.2"/>
+<text x="76" y="448" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Queriers scale out fast and stay stateless: the HPA can add them in seconds</text>
+<circle cx="56" cy="472" r="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+<path d="M51,472 L55,476 L61,468" fill="none" stroke="#16A34A" stroke-width="2.2"/>
+<text x="76" y="476" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Object storage reads each index file once per gateway, not once per querier</text>
+<circle cx="56" cy="500" r="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+<path d="M51,500 L55,504 L61,496" fill="none" stroke="#16A34A" stroke-width="2.2"/>
+<text x="76" y="504" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">The ruler&#x27;s own querier uses the same gateways: no second index copy</text>
+<circle cx="56" cy="528" r="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+<path d="M51,528 L55,532 L61,524" fill="none" stroke="#16A34A" stroke-width="2.2"/>
+<text x="76" y="532" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Sizing: 2 (S), 3 (M), 3-6 (L); ring mode shards tenants across them at L</text>
+<rect x="700" y="92" width="676" height="470" rx="12" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="714" y="112" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#64748B" text-anchor="start">2 · Rulers: compute once, read many</text>
+<text x="720" y="128" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">WITHOUT: EVERY VIEWER AND EVERY ALERT SCANS LOGS</text>
+<rect x="720" y="140" width="190" height="80" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="734" y="164" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">Dashboards</text>
+<text x="734" y="184" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">× viewers × refresh</text>
+<rect x="720" y="230" width="190" height="70" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="734" y="254" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">Grafana alerts</text>
+<text x="734" y="274" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">× rules × every minute</text>
+<rect x="950" y="170" width="190" height="90" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="964" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Query frontend</text>
+<text x="964" y="214" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">→ queriers</text>
+<text x="964" y="231" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">same queues as people</text>
+<rect x="1180" y="170" width="176" height="90" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+<text x="1194" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#92400E" text-anchor="start">Chunks</text>
+<text x="1194" y="214" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">scanned every time</text>
+<text x="1194" y="231" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">(Cool/Cold: paid reads)</text>
+<path d="M910,190 L950,205" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#ahDC2626)"/>
+<path d="M910,262 L950,230" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#ahDC2626)"/>
+<path d="M1140,215 L1180,215" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#ahDC2626)"/>
+<text x="720" y="336" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">WITH: THE RULER SCANS EACH MINUTE ONCE</text>
+<rect x="720" y="348" width="190" height="110" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
+<text x="734" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Ruler</text>
+<text x="734" y="392" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">each rule once a minute</text>
+<text x="734" y="409" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">own querier, own queue</text>
+<rect x="734" y="426" width="162" height="22" rx="11" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1"/>
+<text x="815.0" y="441" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">tenants.yaml</text>
+<rect x="950" y="348" width="190" height="110" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="964" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#334155" text-anchor="start">Metrics store</text>
+<text x="964" y="392" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">small series,</text>
+<text x="964" y="409" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">tenant=&lt;owner&gt;</text>
+<rect x="964" y="426" width="162" height="22" rx="11" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+<text x="1045.0" y="441" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">400 d</text>
+<rect x="1180" y="348" width="176" height="110" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5"/>
+<text x="1194" y="372" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5B21B6" text-anchor="start">Dashboards, alerts</text>
+<text x="1194" y="392" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">via the tenant</text>
+<text x="1194" y="409" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">guard: tiny reads</text>
+<path d="M910,403 L950,403" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#ah16A34A)"/>
+<path d="M1180,403 L1140,403" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
+<text x="720" y="478" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Recording rules only: no Alertmanager. Alerts stay in Grafana, but on recorded series.</text>
+<text x="720" y="498" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">Every tenant gets log lines, bytes and errors per namespace and service; tenants add</text>
+<text x="720" y="518" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">their own rules in tenants.yaml (reviewed in git).</text>
+<text x="32" y="600" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#64748B" text-anchor="start" letter-spacing="1">THE DIFFERENCE, IN QUERIES</text>
+<rect x="32" y="614" width="1336" height="30" fill="#F1F5F9" stroke="#E2E8F0"/>
+<text x="44" y="633" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start"></text>
+<text x="400" y="633" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#475569" text-anchor="start">Without a ruler</text>
+<text x="880" y="633" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#475569" text-anchor="start">With recording rules</text>
+<rect x="32" y="644" width="1336" height="30" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="663" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">24 h error-rate panel, 20 viewers, 30 s refresh</text>
+<text x="400" y="663" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2,400 scans of the current hour per hour (finished hours: results cache)</text>
+<text x="880" y="663" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">60 rule runs per hour; the panel reads points from Prometheus</text>
+<rect x="32" y="674" width="1336" height="30" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="693" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">200 tenants × 10 alert rules, every minute</text>
+<text x="400" y="693" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">2,000 LogQL queries a minute, in the users&#x27; queues</text>
+<text x="880" y="693" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">no log queries: alerts read recorded series</text>
+<rect x="32" y="704" width="1336" height="30" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="723" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">A 30-day trend</text>
+<text x="400" y="723" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">30 days of chunks scanned, Cool/Cold storage reads</text>
+<text x="880" y="723" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">30 days of recorded points (≈ 43 k per series)</text>
+<rect x="32" y="734" width="1336" height="30" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="44" y="753" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#0F172A" text-anchor="start">Who waits</text>
+<text x="400" y="753" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">people&#x27;s queries queue behind background load</text>
+<text x="880" y="753" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">rule load runs in the ruler&#x27;s own querier</text>
+<text x="32" y="790" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#64748B" text-anchor="start">Logs stay the source of truth: a recorded series can always be recomputed from Loki. Design: docs/08 (Index gateways and rulers), ADR 0012.</text>
+</svg>

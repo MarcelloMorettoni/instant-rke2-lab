@@ -188,6 +188,37 @@ Changing a limit: edit `tenants.yaml`, run `scripts/render-tenants.py`, then
   - 30-day ranges on the Cold tier.
 - Guardrails are per tenant: `max_query_length`, `query_timeout`, `max_query_series`.
 - Scale queriers if the scheduler queue is long for **all** tenants.
+- The same dashboard panels slow for everyone at each refresh: turn them into recording rules
+  (`recordingRules` in `tenants.yaml`) and point the panels at "Log metrics (recorded)".
+
+## Ruler and recorded metrics
+
+`LokiRulerEvaluationFailures`, `LokiRulerMissedEvaluations`, `LokiRulerRemoteWriteBehind`,
+`MetricsStoreDown`.
+
+```bash
+kubectl -n loki get pods -l app.kubernetes.io/component=ruler
+kubectl -n loki logs sts/loki-ruler --since=1h | grep -iE 'error|failed' | tail
+kubectl -n loki get configmap -l app.kubernetes.io/component=ruler   # one per tenant: loki-ruler-rules-<tenant>
+kubectl -n loki get pods -l app.kubernetes.io/name=obs-metrics
+```
+
+- **Evaluation failures** (`rule_group` label = the tenant's group): usually a tenant rule
+  with invalid LogQL, or one that hits the tenant's query limits. The ruler logs the rule and
+  the error. Fix it in `tenants.yaml`, then render and run step 30.
+- **Missed evaluations**: a group takes longer than its interval.
+  - Usually a tenant rule with a long window (`[1h]` every minute) over a busy namespace;
+    shorten the window or raise the interval in that tenant's rules.
+  - Or add a ruler replica: the groups re-shard.
+- **Remote write behind**: an `obs-metrics` replica is down or slow. The other replica still
+  has every sample, and the ruler keeps results in its WAL (10 Gi) until the replica is back.
+  A replica that was down **has a gap** for that time; reads may hit either one.
+- **Store down**: Grafana's "Log metrics (recorded)" panels fail while both replicas are down.
+  Logs and the Loki data source are unaffected.
+
+Add or change a recording rule: edit `tenants.yaml` (`recordingRules`, standard or the
+tenant's), run `scripts/render-tenants.py`, then `scripts/install.sh <env> 30`. The ruler
+reloads its rule files within a minute; no restart.
 
 ## Compactor
 

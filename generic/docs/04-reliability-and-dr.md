@@ -31,6 +31,10 @@
 | **Key Vault unreachable** | new pods can't sync secrets; running pods unaffected | ESO keeps the last Secret; storage CMK cached by Azure |
 | **Keycloak down** (generic) | nobody can sign in; sessions and ingestion unaffected | 2 instances, state in PostgreSQL. The local `admin` signs in at `/login?disableAutoLogin=true` |
 | **Compactor down** | retention delayed | singleton by design; `LokiRetentionNotRunning` after 3 h |
+| **One ruler lost** | none visible | its rule groups move to the other ruler (ring); its WAL waits on its PVC |
+| **Metrics store replica lost** | none visible | the other replica has every sample; the ruler's WAL buffers for the lost one, which then has a gap for that time |
+| **Both metrics-store replicas down** | "Log metrics (recorded)" panels and alerts fail; logs unaffected | the ruler buffers in its WAL (10 Gi) and catches up; `MetricsStoreDown` |
+| **One index gateway lost** | none visible | queriers and the ruler use the other two; it re-downloads its index on restart |
 | **Region lost** | see DR below | |
 
 ## Upgrades without downtime

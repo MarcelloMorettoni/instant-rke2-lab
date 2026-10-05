@@ -40,8 +40,11 @@ component: [`manifests/`](../manifests/).
 |---|---|---|
 | **Query frontend** | Deployment, 2 | Splits queries into 1-hour slices, shards them, and checks the results cache first. |
 | **Query scheduler** | Deployment, 2 | Queues work fairly per tenant, so one heavy tenant can't starve the others. |
-| **Querier** | Deployment, 4 → 16 (autoscaled) | Runs the queries against stored chunks and the ingesters' recent data. |
-| **Index gateway** | StatefulSet, 3 | Serves the index from local disk, so queriers don't each download it. |
+| **Querier** | Deployment, 4 → 16 (autoscaled) | Pulls work from the schedulers when it has a free worker (no load balancer), and runs it against stored chunks and the ingesters' recent data. |
+| **Index gateway** | StatefulSet, 3 (one per zone) | Downloads the index once and serves it from local disk to the queriers and the ruler, so they don't each download and keep it. |
+| **Ruler** | StatefulSet, 2 | Runs each tenant's recording rules (from `tenants.yaml`) once a minute with its own querier, and writes the results as small series to the metrics store. Dashboards and alerts read those instead of re-scanning logs. |
+| **Metrics store** (`obs-metrics`) | Prometheus, 2 (both written), receive-only | Keeps the recorded series, `tenant="<owner>"` on each, for 400 days. |
+| **Tenant guard** (`obs-metrics-proxy`) | prom-label-proxy, 2 | Adds `tenant=~"<view's tenants>"` to every query of the recorded metrics. Only the read gateway reaches it. |
 | **Results cache** | Memcached, 2 × 2 GB | Caches query results for 12 h, so dashboard refreshes are cheap. |
 | **Chunks cache** | Memcached, 3 × 8 GB | Caches log chunks read from Blob, cutting storage reads and latency. |
 
@@ -52,11 +55,11 @@ Why there is caching only on the read path, and why Kafka sits between the colle
 
 | Component | Runs as | Purpose |
 |---|---|---|
-| **Read gateway (`obs-gateway`)** | kgateway (Envoy), 3 → 9 | The only way to query Loki. Each Grafana org has its own view, opened only by that org's key. It sets the tenant header itself and refuses pushes and deletes. |
+| **Read gateway (`obs-gateway`)** | kgateway (Envoy), 3 → 9 | The only way to query Loki and the recorded metrics. Each Grafana org has its own view, opened only by that org's key. It sets the tenant headers itself and refuses pushes, deletes and remote writes. |
 | **Grafana** | Deployment, 2, ns `grafana` | The UI: one org per tenant, alerting. Sign-in via `auth.provider` (Entra ID, Keycloak, OIDC, or mock users on test clusters), plus a local `admin` (initial password `change-me-now`). |
 | **Grafana ingress** | kgateway, internal load balancer | HTTPS access to Grafana from the bank's network only. |
 | **External Secrets Operator** | Deployment (Azure) | Copies secrets from Key Vault into Kubernetes, so none sit in git or Helm values. Without Key Vault (generic), the chart generates the secrets and keeps them across upgrades. |
-| **grafana-sync** | CronJob, ns `grafana`, every 10 min | Creates one Grafana org per tenant and keeps each org's Loki data source pointed at its view with the current key, so key rotations apply by themselves. |
+| **grafana-sync** | CronJob, ns `grafana`, every 10 min | Creates one Grafana org per tenant and keeps each org's data sources (Loki, and the recorded log metrics) pointed at its view with the current key, so key rotations apply by themselves. |
 
 ## Services in the cluster (generic installation)
 
@@ -87,5 +90,5 @@ Why there is caching only on the read path, and why Kafka sits between the colle
 | Component | Purpose |
 |---|---|
 | **NetworkPolicies** | Tenant pods can reach only their node's agent. Only agents can write to Kafka and only gateways read it; only the gateway can push to Loki, and only the read gateway can query it. |
-| **Tenant registry (`tenants.yaml`)** | The one file that drives the per-tenant mapping, limits, queues, read views and Grafana orgs. |
+| **Tenant registry (`tenants.yaml`)** | The one file that drives the per-tenant mapping, limits, queues, recording rules, read views and Grafana orgs. |
 | **Helm charts** | `log-platform-operators` (CRDs, kgateway, Strimzi, Keycloak operator, External Secrets) and `log-platform` (everything above), configured by one folder per environment: `azure` or `generic` ([09](09-helm-charts.md)). |

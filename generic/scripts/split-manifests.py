@@ -36,6 +36,8 @@ PLATFORM = {
     "32-loki-backend": "Loki compactor (retention, deletes) and overrides exporter",
     "33-loki-caches": "Memcached: chunks cache and results cache",
     "34-loki-shared": "Loki config, runtime overrides (per-tenant limits), memberlist, rollout-operator",
+    "35-loki-ruler": "Loki ruler: recording rules per tenant (one ConfigMap each), evaluated with its own querier",
+    "36-recorded-metrics": "Metrics store (receive-only Prometheus) and the tenant guard (prom-label-proxy)",
     "40-read-gateway": "Read gateway (kgateway): one view per Grafana org, keys, read-only rules",
     "50-grafana": "Grafana (orgs per tenant), sign-in settings, grafana-sync CronJob, database Secret",
     "51-ingress": "Internal load balancer for Grafana (and Keycloak): Gateway, TLS",
@@ -50,6 +52,7 @@ LOKI = {
     "query-frontend": "31-loki-read", "query-scheduler": "31-loki-read",
     "querier": "31-loki-read", "index-gateway": "31-loki-read",
     "compactor": "32-loki-backend", "overrides-exporter": "32-loki-backend",
+    "ruler": "35-loki-ruler",
     "memcached-chunks-cache": "33-loki-caches", "memcached-results-cache": "33-loki-caches",
 }
 GATEWAY_KINDS = {"Gateway", "GatewayParameters", "HTTPRoute", "TrafficPolicy", "DirectResponse", "ListenerPolicy"}
@@ -101,6 +104,8 @@ def platform_component(d: dict) -> str:
             return "40-read-gateway"
         if comp in LOKI:
             return LOKI[comp]
+        if name.startswith("obs-metrics"):
+            return "36-recorded-metrics"
         return "34-loki-shared"
     if "rollout-operator" in name or comp == "rollout-operator" or name.endswith("-loki"):
         return "34-loki-shared"

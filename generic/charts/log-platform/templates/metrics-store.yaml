@@ -1,0 +1,208 @@
+{{- if .Values.metricsStore.enabled }}
+{{- /*
+The recorded-metrics store and its tenant guard, in namespace loki.
+  loki-ruler ──remote write :9090──► obs-metrics-0, obs-metrics-1 (each gets every sample)
+  read gateway /<view>/prometheus/ ──X-Obs-Tenant──► obs-metrics-proxy :8080 ──► obs-metrics :9090
+A Prometheus that only RECEIVES (no scraping): the ruler's results, nothing else.
+*/ -}}
+{{- $m := .Values.metricsStore }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obs-metrics
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    # Receive-only: the Loki ruler writes here (remote write); nothing is scraped.
+    global: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics-headless
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: obs-metrics}
+  ports:
+    - {name: http, port: 9090, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: obs-metrics}
+  ports:
+    - {name: http, port: 9090, targetPort: http}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: obs-metrics
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    app.kubernetes.io/name: obs-metrics
+spec:
+  replicas: {{ $m.replicas }}
+  serviceName: obs-metrics-headless
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: obs-metrics
+        app.kubernetes.io/part-of: log-platform
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: observability-high
+      {{- include "lp.placement" . | nindent 6 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: obs-metrics}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: prometheus
+          image: {{ include "lp.image" (dict "ctx" . "repository" $m.image.repository "tag" $m.image.tag) }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ $m.retention }}
+            - --web.enable-remote-write-receiver
+            - --web.listen-address=:9090
+          ports:
+            - {name: http, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /-/ready, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /-/healthy, port: http}
+            periodSeconds: 30
+            failureThreshold: 6
+          resources:
+            {{- toYaml $m.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus, readOnly: true}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: obs-metrics}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.storageClass.name }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $m.storage }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: obs-metrics
+  namespace: loki
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics}
+---
+# The tenant guard: every query gets tenant=~"<X-Obs-Tenant>", which the read
+# gateway SETS from the view (whatever the client sent). No header: 400.
+# Only query, series and label endpoints exist here; writes and admin: 404.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obs-metrics-proxy
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+    app.kubernetes.io/name: obs-metrics-proxy
+spec:
+  replicas: {{ $m.proxy.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: obs-metrics-proxy
+        app.kubernetes.io/part-of: log-platform
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: observability-high
+      {{- include "lp.placement" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: prom-label-proxy
+          {{- $reg := trimSuffix "/" (default $m.proxy.image.registry .Values.global.imageRegistry) }}
+          image: {{ printf "%s/%s:%s" $reg $m.proxy.image.repository $m.proxy.image.tag }}
+          args:
+            - -insecure-listen-address=0.0.0.0:8080
+            - -upstream=http://obs-metrics.loki.svc.cluster.local:9090
+            - -label=tenant
+            - -header-name=X-Obs-Tenant
+            - -regex-match                   # "cards|shared-services" for a view that reads two tenants
+            - -enable-label-apis             # Prometheus honours match[] on the label endpoints
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 10
+          resources:
+            {{- toYaml $m.proxy.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-metrics-proxy
+  namespace: loki
+  labels:
+    {{- include "lp.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: obs-metrics-proxy}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: obs-metrics-proxy
+  namespace: loki
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+{{- end }}

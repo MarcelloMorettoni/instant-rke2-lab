@@ -574,6 +574,39 @@ loki:
           retention_period: 2160h
           max_query_parallelism: 64
           max_queriers_per_tenant: 8
+  ruler:
+    directories:
+      platform:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: platform\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset 30s))\n\
+          \    labels:\n      tenant: platform\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"error|fatal|critical\"\
+          \ [1m] offset 30s))\n    labels:\n      tenant: platform\n"
+      unassigned:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: unassigned\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset\
+          \ 30s))\n    labels:\n      tenant: unassigned\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"error|fatal|critical\"\
+          \ [1m] offset 30s))\n    labels:\n      tenant: unassigned\n"
+      payments:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: payments\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset 30s))\n\
+          \    labels:\n      tenant: payments\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"error|fatal|critical\"\
+          \ [1m] offset 30s))\n    labels:\n      tenant: payments\n- name: obs-tenant\n  interval: 1m\n  rules:\n  - record: payments:declined:rate5m\n    expr: sum by (k8s_namespace_name, service_name)\
+          \ (rate({k8s_namespace_name=~\"payments(-.+)?\"} |= \"declined\" [5m] offset 30s))\n    labels:\n      tenant: payments\n"
+      cards:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: cards\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset 30s))\n\
+          \    labels:\n      tenant: cards\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"error|fatal|critical\"\
+          \ [1m] offset 30s))\n    labels:\n      tenant: cards\n"
+      lending:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: lending\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset 30s))\n\
+          \    labels:\n      tenant: lending\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"error|fatal|critical\"\
+          \ [1m] offset 30s))\n    labels:\n      tenant: lending\n"
+      shared-services:
+        rules.yaml: "groups:\n- name: obs-standard\n  interval: 1m\n  rules:\n  - record: obs:log_lines:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"}[1m]\
+          \ offset 30s))\n    labels:\n      tenant: shared-services\n  - record: obs:log_bytes:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~\".+\"}[1m] offset\
+          \ 30s))\n    labels:\n      tenant: shared-services\n  - record: obs:log_errors:rate1m\n    expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~\".+\"} | detected_level=~\"\
+          error|fatal|critical\" [1m] offset 30s))\n    labels:\n      tenant: shared-services\n"
 readViews:
 - view: payments
   tenants:

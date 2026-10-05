@@ -55,7 +55,7 @@ run "plan" {
     error_message = "storage must have no shared keys and no public access"
   }
   assert {
-    condition     = length(azurerm_monitor_alert_prometheus_rule_group.loki) == 6
+    condition     = length(azurerm_monitor_alert_prometheus_rule_group.loki) == 7
     error_message = "every group in loki-alerts.yaml must become a rule group"
   }
   assert {

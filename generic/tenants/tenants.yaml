@@ -7,6 +7,7 @@
 #     loki.loki.runtimeConfig       per-tenant limits + retention
 #     readViews                     one read-gateway view per Grafana org
 #     grafanaOrgs, grafanaOrgMapping  orgs, data sources, group → org + role (per provider)
+#     loki.ruler.directories        recording rules per tenant (Loki ruler)
 # The cluster name is per environment: global.clusterName in environments/<env>/values.yaml.
 #
 # Rules (the generator enforces them):
@@ -20,6 +21,27 @@
 #     Keycloak or another OIDC provider). The chart's auth.provider picks one.
 #   - status: active | suspended (collected, nobody can read) |
 #             offboarding (collected if still running, retention forced to 24h, no view)
+#   - recordingRules (optional, per tenant): extra Loki recording rules, on top
+#     of the standard ones below. `record` + `expr` (LogQL metric query) only:
+#     no alerting rules. The generator stamps tenant="<id>" on every result, so
+#     a rule can't write into another tenant's metrics.
+
+# Recording rules: the Loki ruler evaluates these LogQL queries once per
+# interval, per tenant, and writes the results as small Prometheus series
+# (tenant="<id>") to the metrics store. Dashboards and alerts read those series
+# instead of re-scanning logs on every refresh (docs/08, "Rulers").
+# `standard` applies to every Loki tenant (platform, unassigned, all tenants).
+# `offset 30s`: lines reach Loki a few seconds after they're written (agent
+# batches, Kafka); each window is evaluated 30 s late so they're all counted.
+recordingRules:
+  interval: 1m
+  standard:
+    - record: obs:log_lines:rate1m
+      expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"}[1m] offset 30s))
+    - record: obs:log_bytes:rate1m
+      expr: sum by (k8s_namespace_name, service_name) (bytes_rate({k8s_namespace_name=~".+"}[1m] offset 30s))
+    - record: obs:log_errors:rate1m
+      expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~".+"} | detected_level=~"error|fatal|critical" [1m] offset 30s))
 
 # Per-tier defaults.
 #   loki:              Loki limits_config keys, applied as this tenant's overrides
@@ -91,6 +113,10 @@ tenants:
     tier: gold
     status: active
     namespaces: payments(-.+)?
+    # Payments' own dashboard metric, computed once a minute by the ruler.
+    recordingRules:
+      - record: payments:declined:rate5m
+        expr: sum by (k8s_namespace_name, service_name) (rate({k8s_namespace_name=~"payments(-.+)?"} |= "declined" [5m] offset 30s))
     groups:
       entra:
         viewer: 33333333-3333-3333-3333-333333333333

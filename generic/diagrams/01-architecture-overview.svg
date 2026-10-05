@@ -88,19 +88,22 @@
 <text x="574.0" y="515" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="10" font-weight="600" fill="#0F172A" text-anchor="middle">read-only</text>
 <rect x="702" y="372" width="408" height="160" rx="10" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.5"/>
 <text x="716" y="396" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3730A3" text-anchor="start">Query path + caches</text>
-<text x="716" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">frontend → scheduler → queriers → index gateways</text>
-<rect x="716" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
-<text x="761.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">results</text>
-<text x="761.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
-<rect x="814" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
-<text x="859.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">queriers</text>
-<text x="859.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">4 → 16</text>
-<rect x="912" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
-<text x="957.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">chunks</text>
-<text x="957.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
-<rect x="1010" y="452" width="90" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
-<text x="1055.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">index gw</text>
-<text x="1055.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">disk</text>
+<text x="716" y="416" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">frontend → scheduler → queriers; ruler → metrics store</text>
+<rect x="712" y="452" width="74" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="749.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">results</text>
+<text x="749.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
+<rect x="791" y="452" width="74" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="828.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">queriers</text>
+<text x="828.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">4 → 16</text>
+<rect x="870" y="452" width="74" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="907.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">chunks</text>
+<text x="907.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">memcached</text>
+<rect x="949" y="452" width="74" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="986.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">index gw</text>
+<text x="986.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">×3, disk</text>
+<rect x="1028" y="452" width="74" height="56" rx="7" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.2"/>
+<text x="1065.0" y="478.0" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#3730A3" text-anchor="middle">ruler</text>
+<text x="1065.0" y="492.0" font-family="Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace" font-size="9.5" font-weight="400" fill="#64748B" text-anchor="middle">rules/tenant</text>
 <path d="M220,452 L250,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <path d="M446,452 L476,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>
 <path d="M672,452 L702,452" fill="none" stroke="#4338CA" stroke-width="2" marker-end="url(#ah4338CA)"/>

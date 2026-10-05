@@ -36,11 +36,14 @@ backend they share, with the Azure services as the reference.
 | **Query frontend** | Deployment | 2 | none | Splits and shards queries; **results cache**; per-tenant queue |
 | **Query scheduler** | Deployment | 2 | none | Fair queue per tenant |
 | **Querier** | Deployment | 4 → 16 (HPA) | none | Runs queries on Blob chunks and ingesters' recent data |
-| **Index gateway** | StatefulSet | 3 (one per zone) | index on local disk | Serves the TSDB index |
+| **Index gateway** | StatefulSet | 3 (one per zone) | index on local disk (50 Gi) | Downloads the TSDB index once and serves it to the queriers and the ruler, so they don't each fetch and keep it ([08](08-design-questions.md#index-gateways-and-rulers)) |
+| **Ruler** | StatefulSet | 2 (rule groups sharded) | remote-write WAL on disk | Runs each tenant's **recording rules** once a minute with its own querier; writes small series (`tenant=<owner>`) to the metrics store, so dashboards and alerts stop re-scanning logs ([ADR 0012](adr/0012-ruler-recorded-metrics.md)) |
+| **Metrics store** (`obs-metrics`) | StatefulSet (Prometheus, receive-only) | 2 (both written) | 400 d of recorded series, 50 Gi | Holds the ruler's results |
+| **Tenant guard** (`obs-metrics-proxy`) | Deployment (prom-label-proxy) | 2 | none | Forces `tenant=~<view's tenants>` on every query of the recorded metrics |
 | **Compactor** | StatefulSet | 1 | working dir on disk | Compacts the index; per-tenant **retention**; deletes |
 | **Memcached** (chunks, results) | StatefulSets | 3 + 2 | memory | Read-path caches ([08](08-design-questions.md#caching)) |
 | **Overrides exporter**, **rollout-operator** | Deployments | 1 each | none | Limits as metrics; ingester upgrades one zone at a time |
-| **obs-gateway** (read gateway) | kgateway (Envoy) | 3 → 9 | none | The only way into the read path; sets the tenant header |
+| **obs-gateway** (read gateway) | kgateway (Envoy) | 3 → 9 | none | The only way into the read path (logs and recorded metrics); sets the tenant headers |
 | **Grafana** | Deployment, ns `grafana` | 2 | PostgreSQL | UI, one org per tenant, alerting |
 | **External Secrets** | Deployment | 1+ | none | Key Vault → Kubernetes Secrets (Azure; generic: the chart generates them) |
 | **Keycloak** (generic) | Keycloak operator, ns `keycloak` | 2 | PostgreSQL (Percona) | Sign-in when there is no Entra ID: realm `obs`, a group per tenant role |
@@ -113,12 +116,26 @@ Why two collector tiers, why Kafka between them, and what each buffer protects a
 
 1. The user signs in to Grafana with the identity provider (`auth.provider`). Their groups decide
    their org and role. A local `admin` exists in every mode (initial password `change-me-now`).
-2. Each org has one Loki data source: `http://obs-gateway.loki.svc:8080/<view>/`, plus the
-   view's key.
-3. The **read gateway** checks the key, **sets** `X-Scope-OrgID`, and forwards to the query frontend.
-4. The **query frontend** asks the **results cache**, then splits and shards the rest. The
-   **queriers** read the index (through the index gateways), then the chunks (**chunks cache**,
-   then Blob), then recent data from the ingesters.
+2. Each org has two data sources, both through its view and with the view's key:
+   - **Loki**: `http://obs-gateway.loki.svc:8080/<view>/`;
+   - **Log metrics (recorded)**: `…/<view>/prometheus/`.
+3. The **read gateway** checks the key and **sets** the tenant:
+   - logs: `X-Scope-OrgID`, then on to the query frontend;
+   - recorded metrics: `X-Obs-Tenant`, then on to the **tenant guard**, which adds
+     `tenant=~"<tenants>"` to every PromQL selector before the **metrics store** answers.
+4. The **query frontend**:
+   - asks the **results cache**;
+   - splits the rest into 1 h pieces and shards them;
+   - queues the pieces in the **query scheduler**, one queue per tenant, served in turn.
+5. The **queriers** pull pieces from the scheduler when they have a free worker. Nothing
+   balances them; the busiest just pull less ([08](08-design-questions.md#how-do-queries-get-spread-over-the-queriers)).
+   Each querier reads:
+   - the index, through the **index gateways**;
+   - the chunks, from the **chunks cache**, then Blob;
+   - recent data, from the ingesters.
+6. Separately, the **ruler** runs every tenant's recording rules once a minute with its own
+   querier (ingesters, index gateways, Blob). It writes the results to the metrics store, so
+   dashboards and alerts on log counts read those small series instead of steps 4-5.
 
 ![Caching](../diagrams/07-caching.png)
 
@@ -134,6 +151,7 @@ Why two collector tiers, why Kafka between them, and what each buffer protects a
 | **Kafka in the cluster, between the collector tiers** | No bus ([0006](adr/0006-no-kafka-buffer.md)); Event Hubs; Loki's Kafka ingest | Outage backlog off the nodes, replicated; 24 h replay; same in both installations | [0010](adr/0010-kafka-in-cluster.md) |
 | **OpenTelemetry Collector, agent + gateway** | Grafana Alloy; agent only | Bank standard; per-tenant queues; vendor-neutral OTLP | [0007](adr/0007-opentelemetry-collection.md) |
 | **Memcached caches on the read path only** | Redis; no cache; write cache | Loki's tested design; loss costs speed, never data | [0008](adr/0008-caching.md) |
+| **Index gateways + a ruler with recording rules** | Queriers fetching the index; dashboards and alerts scanning logs | The index is fetched once; log metrics are computed once, read many times; rule load stays off people's queues | [0012](adr/0012-ruler-recorded-metrics.md) |
 | **Entra ID directly for Grafana SSO** (Azure); Keycloak installed (generic) | Keycloak brokering Entra ID | Existing MFA/CA/PIM; no extra critical system; tenants aren't token claims | [0009](adr/0009-entra-id-not-keycloak.md) |
 | **Two installation profiles, one backend** | Azure only; two designs | Validate the backend once; run with or without Azure services | [0011](adr/0011-two-installation-profiles.md) |
 
@@ -148,6 +166,7 @@ Why two collector tiers, why Kafka between them, and what each buffer protects a
 | External Secrets | chart 2.11.0 |
 | Strimzi / Kafka | operator 1.2.0 → Kafka 4.3.1 (KRaft) |
 | Keycloak | operator + server 26.8.0 |
+| Metrics store / tenant guard | Prometheus v3.5.0 (receive-only) / prom-label-proxy v0.15.1 |
 | Terraform azurerm | ~> 4.40 (tested with 4.81) |
 
 Loki, Grafana and kgateway match the RKE2 lab ([`../soft-tenancy`](../../soft-tenancy)).

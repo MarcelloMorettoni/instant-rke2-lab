@@ -3,7 +3,9 @@
 #   ingress  otel/otel-gateway ──► distributor :3100 (OTLP push)
 #            loki/obs-gateway ───► query-frontend :3100 (read; header set by the view)
 #            grafana/grafana ────► obs-gateway :8080
-#            ama-metrics ────────► metrics ports;  API server ──► rollout-operator :8443
+#            loki/ruler ─────────► obs-metrics :9090 (recorded metrics, remote write)
+#            loki/obs-gateway ───► obs-metrics-proxy :8080 ──► obs-metrics :9090 (read)
+#            scrapers ───────────► metrics ports;  API server ──► rollout-operator :8443
 #   egress   DNS, Loki ◄──► Loki, Blob private endpoint, Entra ID, API server (rollout-operator)
 # Tenant namespaces appear nowhere: they can neither push nor query.
 apiVersion: networking.k8s.io/v1
@@ -97,11 +99,72 @@ spec:
             matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: query-frontend}
       ports:
         - {port: 3100, protocol: TCP}
+    {{- if .Values.metricsStore.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+      ports:
+        - {port: 8080, protocol: TCP}
+    {{- end }}
     - to:                                   # config (xDS) from the kgateway controller
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: {{ .Values.operatorsNamespace }}}
       ports:
         - {port: 9977, protocol: TCP}
+{{- if .Values.metricsStore.enabled }}
+---
+# Recorded metrics: the ruler writes to the store; only the tenant guard
+# (obs-metrics-proxy) reads it, and only the read gateway reaches the guard.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ruler-to-metrics-store, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: ruler}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: obs-metrics}
+      ports:
+        - {port: 9090, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: obs-metrics, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: ruler}
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+      ports:
+        - {port: 9090, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: obs-metrics-proxy, namespace: loki}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: obs-metrics-proxy}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {gateway.networking.k8s.io/gateway-name: obs-gateway}
+      ports:
+        - {port: 8080, protocol: TCP}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: obs-metrics}
+      ports:
+        - {port: 9090, protocol: TCP}
+{{- end }}
 ---
 # Object storage (Blob private endpoint, or network.objectStoreEgress) + identity
 # (Workload Identity token exchange with Entra ID).
@@ -163,4 +226,5 @@ spec:
         - {port: 9150, protocol: TCP}      # memcached exporter
         - {port: 9091, protocol: TCP}      # read-gateway proxy stats (envoy)
         - {port: 8001, protocol: TCP}      # rollout-operator
+        - {port: 9090, protocol: TCP}      # metrics store (its own Prometheus metrics)
 {{- end }}

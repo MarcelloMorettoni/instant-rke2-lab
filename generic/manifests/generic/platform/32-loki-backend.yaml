@@ -119,7 +119,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: 0ffce4256a7b2df03be8d21ef85b40cb9768cbe53db5fdfd3ee794ef5a805e48
+        checksum/config: f0067af3e9b238c9cc7a2e0156158b42c8bf74099768973a521400af06a4edb5
       labels:
         helm.sh/chart: loki-7.3.0
         app.kubernetes.io/name: loki
@@ -237,7 +237,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: 0ffce4256a7b2df03be8d21ef85b40cb9768cbe53db5fdfd3ee794ef5a805e48
+        checksum/config: f0067af3e9b238c9cc7a2e0156158b42c8bf74099768973a521400af06a4edb5
       labels:
         helm.sh/chart: loki-7.3.0
         app.kubernetes.io/name: loki

@@ -5,6 +5,8 @@
 #                        ├─► OTel agent ──► Kafka topic otel-logs ──► OTel gateway ──OTLP/HTTP──► Loki
 #   an app's OTLP push ──┘   (tenant, mask)                           (route, queue per tenant)
 #
+#   Loki ruler ──recorded metrics──► metrics store (Prometheus) ◄── tenant guard (prom-label-proxy)
+#
 #   scripts/pipeline-test.sh              with Kafka (the default pipeline)
 #   scripts/pipeline-test.sh --no-kafka   agent ──OTLP/gRPC──► gateway (overlays/no-kafka.yaml)
 #
@@ -12,7 +14,8 @@
 # and the chart's Loki limits (charts/log-platform/values.yaml). Only differences from
 # production: k8s_attributes is removed (no Kubernetes API here), Kafka is one broker
 # without TLS/SCRAM (those settings are checked by validate.sh), and endpoints/paths
-# point at the test containers.
+# point at the test containers, and the recording rules run every 10 s with a
+# 5 s offset (instead of 1 m and 30 s) so the test doesn't wait minutes.
 # That means an OTLP push can't be matched to a pod here, which is exactly
 # the "unknown sender" case: it must land in `unassigned`, whatever it claims.
 #
@@ -33,11 +36,11 @@ python3 "${GEN_DIR}/scripts/render-tenants.py" >/dev/null
 
 W="$(mktemp -d)"; NET="otel-pipeline-test-$$"
 cleanup() {
-  docker rm -f "${NET}-loki" "${NET}-gateway" "${NET}-agent" "${NET}-kafka" >/dev/null 2>&1 || true
+  docker rm -f "${NET}-loki" "${NET}-gateway" "${NET}-agent" "${NET}-kafka" "${NET}-metrics" "${NET}-guard" >/dev/null 2>&1 || true
   docker network rm "${NET}" >/dev/null 2>&1 || true
   rm -rf "${W}"
 }
-trap cleanup EXIT
+[[ -n "${PIPELINE_KEEP:-}" ]] || trap cleanup EXIT   # PIPELINE_KEEP=1: leave the containers for debugging
 
 # ---- Loki: production limits (per-tenant overrides + otlp_config), local storage
 python3 - "${GEN_DIR}" "${W}" "${KAFKA}" <<'PY'
@@ -61,8 +64,24 @@ cfg = {
     "runtime_config": {"file": "/etc/loki/runtime.yaml"},
     "querier": {"multi_tenant_queries_enabled": True},
     "analytics": {"reporting_enabled": False},
+    # The chart's ruler settings, writing to the test metrics store.
+    "ruler": {**{k: v for k, v in chart["loki"]["loki"]["rulerConfig"].items() if k not in ("remote_write", "wal")},
+              "wal": {"dir": "/tmp/loki/ruler-wal"}, "rule_path": "/tmp/loki/rules-tmp",
+              "remote_write": {"enabled": True, "add_org_id_header": False,
+                               "clients": {"metrics-store-0": {"url": "http://metrics:9090/api/v1/write"}}}},
 }
 (w / "loki.yaml").write_text(yaml.safe_dump(cfg))
+# The RENDERED recording rules, one directory per tenant, sped up for the test.
+for tenant, files in tenants["loki"]["ruler"]["directories"].items():
+    d = w / "rules" / tenant
+    d.mkdir(parents=True)
+    rules = yaml.safe_load(files["rules.yaml"])
+    for g in rules["groups"]:
+        g["interval"] = "10s"
+        for r in g["rules"]:
+            r["expr"] = r["expr"].replace("offset 30s", "offset 5s")
+    (d / "rules.yaml").write_text(yaml.safe_dump(rules, sort_keys=False))
+(w / "prometheus.yml").write_text("global: {}\n")
 
 # ---- collectors: rendered configs, minus the Kubernetes API, pointed at the test containers
 def load(name):
@@ -110,13 +129,21 @@ X="${W}/pods/random-ns_job-x_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/job"
 mkdir -p "$P" "$C" "$X"
 printf '%s stdout F payment ok card=4111111111111111 ts=1727530000000 iban=DE89370400440532013000\n' "${NOW}" > "$P/0.log"
 printf '%s stdout F Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def\n' "${NOW}" >> "$P/0.log"
+printf '%s stdout F level=error msg="payment declined"\n' "${NOW}" >> "$P/0.log"
 printf '%s stderr F cards service started\n' "${NOW}" > "$C/0.log"
 printf '%s stdout F stray workload\n' "${NOW}" > "$X/0.log"
 chmod -R a+rX "${W}"
 
 docker network create "${NET}" >/dev/null
+# The metrics store (receive-only Prometheus) and the tenant guard, as in the chart.
+docker run -d --name "${NET}-metrics" --network "${NET}" --network-alias metrics -p 127.0.0.1::9090 \
+  -v "${W}/prometheus.yml:/etc/prometheus/prometheus.yml:ro" "${PROMTOOL_IMAGE}" \
+  --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --web.enable-remote-write-receiver >/dev/null
+docker run -d --name "${NET}-guard" --network "${NET}" -p 127.0.0.1::8080 "${PROM_LABEL_PROXY_IMAGE}" \
+  -insecure-listen-address=0.0.0.0:8080 -upstream=http://metrics:9090 -label=tenant \
+  -header-name=X-Obs-Tenant -regex-match -enable-label-apis >/dev/null
 docker run -d --name "${NET}-loki" --network "${NET}" --network-alias loki -p 127.0.0.1::3100 \
-  -v "${W}/loki.yaml:/etc/loki/loki.yaml:ro" -v "${W}/runtime.yaml:/etc/loki/runtime.yaml:ro" \
+  -v "${W}/loki.yaml:/etc/loki/loki.yaml:ro" -v "${W}/runtime.yaml:/etc/loki/runtime.yaml:ro" -v "${W}/rules:/etc/loki/rules:ro" \
   "${LOKI_IMAGE}" -config.file=/etc/loki/loki.yaml >/dev/null
 LOKI="localhost:$(docker port "${NET}-loki" 3100/tcp | head -1 | cut -d: -f2)"
 for _ in $(seq 1 40); do curl -sf "${LOKI}/ready" >/dev/null && break; sleep 1; done
@@ -169,7 +196,7 @@ for s in json.load(sys.stdin)["data"]["result"]:
         print(json.dumps({"labels": s["stream"], "line": v[1], "meta": m.get("structuredMetadata", {})}))'
 }
 for _ in $(seq 1 90); do
-  [[ "$(query payments | wc -l)" -ge 2 && "$(query unassigned | wc -l)" -ge 2 ]] && break; sleep 1
+  [[ "$(query payments | wc -l)" -ge 3 && "$(query unassigned | wc -l)" -ge 2 ]] && break; sleep 1
 done
 sleep 3   # let the gateway commit its last offsets
 PAY="$(query payments)"; CARDS="$(query cards)"; UNASSIGNED="$(query unassigned)"; OTHER="$(query lending)"
@@ -180,7 +207,7 @@ AGENT_METRICS="$(curl -sf "localhost:$(docker port "${NET}-agent" 8888/tcp | hea
 
 PASS=0; FAIL=0
 t() { if eval "$2"; then ok "PASS  $1"; PASS=$((PASS+1)); else err "FAIL  $1"; FAIL=$((FAIL+1)); fi; }
-t "payments: its 2 file lines, from namespace payments-prod"   '[[ $(grep -c payments-prod <<<"${PAY}") -eq 2 ]]'
+t "payments: its 3 file lines, from namespace payments-prod"   '[[ $(grep -c payments-prod <<<"${PAY}") -eq 3 ]]'
 t "cards: its 1 line and nothing else"                          '[[ $(wc -l <<<"${CARDS}") -eq 1 ]]'
 t "lending: nothing"                                            '[[ -z "${OTHER}" ]]'
 t "unmapped namespace → unassigned"                             'grep -q "stray workload" <<<"${UNASSIGNED}"'
@@ -199,6 +226,31 @@ t "service.name falls back to the container name"               'grep -q "\"serv
 t "gateway metrics: records sent to Loki per tenant"           'grep -qE "^otelcol_exporter_sent_log_records\{.*exporter=\"otlp_http/payments\".* [1-9]" <<<"${GW_METRICS}"'
 t "agent metrics: nothing failed to send"                       '! grep -qE "^otelcol_exporter_send_failed_log_records\{.* [1-9]" <<<"${AGENT_METRICS}"'
 t "obs.tenant never reaches Loki"                               '! grep -q obs_tenant <<<"${PAY}${CARDS}${UNASSIGNED}"'
+# ---- the ruler's recorded metrics, and the tenant guard in front of them
+METRICS="localhost:$(docker port "${NET}-metrics" 9090/tcp | head -1 | cut -d: -f2)"
+GUARD="localhost:$(docker port "${NET}-guard" 8080/tcp | head -1 | cut -d: -f2)"
+# Range selectors ([5m]): a 1-minute rule's series goes stale a minute after the
+# sample lines (all stamped at the test's start), and an instant query would miss it.
+promq() {  # promq <base> <query> [tenant header] → tenant:metric of each series, sorted
+  curl -sf ${3:+-H "X-Obs-Tenant: $3"} "$1/api/v1/query" --data-urlencode "query=$2" \
+    | python3 -c 'import json,sys; print(" ".join(sorted({r["metric"].get("tenant","-") + ":" + r["metric"]["__name__"] for r in json.load(sys.stdin)["data"]["result"]})))'
+}
+# Each tenant's rule groups run on their own schedule: wait for both tenants.
+for _ in $(seq 1 90); do
+  got="$(promq "${METRICS}" '{__name__=~"obs:log_lines:rate1m|obs:log_errors:rate1m|payments:declined:rate5m"}[5m]')"
+  [[ "${got}" == *payments:payments:declined* && "${got}" == *payments:obs:log_errors* && "${got}" == *cards:obs:log_lines* ]] && break
+  sleep 1
+done
+REC="$(promq "${METRICS}" '{__name__=~"obs:.+|payments:.+"}[5m]')"
+t "ruler: log lines recorded per tenant (tenant label set)"     'grep -q "payments:obs:log_lines:rate1m" <<<"${REC}" && grep -q "cards:obs:log_lines:rate1m" <<<"${REC}"'
+t "ruler: error lines recorded (detected_level)"                'grep -q "payments:obs:log_errors:rate1m" <<<"${REC}"'
+t "ruler: the tenant's own rule (payments:declined:rate5m)"     'grep -q "payments:payments:declined:rate5m" <<<"${REC}"'
+t "guard: payments' view sees only payments"                    '[[ "$(promq "${GUARD}" "{__name__=~\"obs:.+\"}[5m]" payments | tr " " "\n" | cut -d: -f1 | sort -u)" == payments ]]'
+t "guard: asking for cards from payments' view returns nothing" '[[ -z "$(promq "${GUARD}" "obs:log_lines:rate1m{tenant=\"cards\"}[5m]" payments)" ]]'
+t "guard: a two-tenant view (cards|shared-services) sees cards" 'grep -q "cards:" <<<"$(promq "${GUARD}" "obs:log_lines:rate1m[5m]" "cards|shared-services")" && ! grep -q "payments:" <<<"$(promq "${GUARD}" "obs:log_lines:rate1m[5m]" "cards|shared-services")"'
+t "guard: no tenant header → refused"                           '[[ "$(curl -s -o /dev/null -w "%{http_code}" "${GUARD}/api/v1/query" --data-urlencode query=up)" == 400 ]]'
+t "guard: remote write through it → not found"                  '[[ "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "X-Obs-Tenant: payments" "${GUARD}/api/v1/write")" == 404 ]]'
+
 if (( KAFKA )); then
   GROUP="$(docker exec "${NET}-kafka" /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
     --describe --group otel-gateway 2>/dev/null || true)"

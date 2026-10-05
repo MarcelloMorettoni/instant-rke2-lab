@@ -5,7 +5,7 @@ The whole platform installs as **two Helm releases**, driven by **one folder per
 | Chart | Release / namespace | Contains | Why separate |
 |---|---|---|---|
 | [`charts/log-platform-operators`](../charts/log-platform-operators) | `log-platform-operators` in **`platform-operators`** | CRDs (`crds/`): Gateway API v1.6.1, kgateway v2.4.5, Keycloak 26.8.0; the kgateway controller; the **Strimzi** Kafka operator 1.2.0 (watches `kafka`); the **Keycloak operator** (`keycloak.install`); External Secrets Operator 2.11.0 (`keyVault.enabled`); namespaces `loki`, `kafka`, `keycloak` | Cluster-level operators and their CRDs. A single release can't install CRDs and use them at the same time. |
-| [`charts/log-platform`](../charts/log-platform) | `log-platform` in **`loki`** | Loki 7.3.0, the OTel agent + OTel gateway (collector chart 0.173.1), Grafana 13.2.5, plus every platform object: **Kafka** cluster, topic and users; **Keycloak** and its realm; namespaces, priority classes, storage class, NetworkPolicies, read gateway and per-tenant views, Grafana ingress, secrets (Key Vault or generated), org mapping, grafana-sync, PodMonitors and alerts | Everything that belongs to the log platform |
+| [`charts/log-platform`](../charts/log-platform) | `log-platform` in **`loki`** | Loki 7.3.0, the OTel agent + OTel gateway (collector chart 0.173.1), Grafana 13.2.5, plus every platform object: **Kafka** cluster, topic and users; **Keycloak** and its realm; the **ruler**'s recording rules, the metrics store and its tenant guard; namespaces, priority classes, storage class, NetworkPolicies, read gateway and per-tenant views, Grafana ingress, secrets (Key Vault or generated), org mapping, grafana-sync, PodMonitors and alerts | Everything that belongs to the log platform |
 
 - Dependencies are **vendored** (`charts/*/charts/*.tgz`), so installs work without internet
   access to chart repositories.
@@ -80,6 +80,8 @@ myproxy.bank.internal:5000/library/memcached:1.6.39-alpine
 myproxy.bank.internal:5000/library/python:3.13-alpine
 myproxy.bank.internal:5000/otel/opentelemetry-collector-contrib:0.160.0
 myproxy.bank.internal:5000/prom/memcached-exporter:v0.15.4
+myproxy.bank.internal:5000/prom/prometheus:v3.5.0
+myproxy.bank.internal:5000/prometheuscommunity/prom-label-proxy:v0.15.1
 myproxy.bank.internal:5000/strimzi/kafka:1.2.0-kafka-4.3.1
 myproxy.bank.internal:5000/strimzi/operator:1.2.0
 myproxy.bank.internal:5000/kgateway-dev/envoy-wrapper:v2.4.5
@@ -101,7 +103,7 @@ Other things to know:
 - Upstream paths are kept, including images from other registries:
   - `kgateway-dev/...` comes from cr.kgateway.dev;
   - `external-secrets/...` from ghcr.io;
-  - `strimzi/...` and `keycloak/...` from quay.io.
+  - `strimzi/...`, `keycloak/...` and `prometheuscommunity/prom-label-proxy` from quay.io.
 
   Configure the proxy to serve each upstream under those paths.
 - `library/` is used for Docker Hub "official" images (memcached, python).
@@ -215,6 +217,7 @@ Each has `operators/` (kgateway, Strimzi, Keycloak operator, External Secrets) a
 ```text
 00-namespaces-and-classes   10-kafka        20-otel-agent      21-otel-gateway
 30-loki-write               31-loki-read    32-loki-backend    33-loki-caches    34-loki-shared
+35-loki-ruler               36-recorded-metrics
 40-read-gateway             50-grafana      51-ingress         60-keycloak       70-secret-store
 80-network-policies         90-monitoring
 ```
@@ -240,17 +243,21 @@ Once, it also:
 - runs `promtool` on the alerts;
 - runs Terraform `validate` and `test`.
 
-`scripts/pipeline-test.sh` runs the real collectors, Kafka 4.3.1 and Loki in containers,
-with 24 checks:
+`scripts/pipeline-test.sh` runs the real collectors, Kafka 4.3.1, Loki (with its ruler),
+Prometheus and prom-label-proxy in containers, with 32 checks:
 - agent → Kafka → gateway → Loki with per-tenant routing and masking;
 - a gateway outage: the logs wait in Kafka, then reach the right tenant;
-- `--no-kafka` runs the pipeline without Kafka (19 checks).
+- the **rendered recording rules** in the ruler: per-tenant series with `tenant=<owner>`, error
+  counts, the tenant's own rule;
+- the tenant guard: a view sees only its tenants (and both in a two-tenant view); asking for
+  another tenant returns nothing; no header is refused;
+- `--no-kafka` runs the pipeline without Kafka (27 checks).
 
 The test-cluster overlay was also checked by inspecting the rendered pods: none requires the
 dedicated node pool, and the ingesters stay pinned to their zones.
 
 `scripts/auth-test.sh` starts the chart's Grafana image with each provider's rendered
-settings and accounts, and runs the real `grafana-sync` code against it (36 checks):
+settings and accounts, and runs the real `grafana-sync` code against it (38 checks):
 - **Every mode**: `admin` / `change-me-now` signs in, is server admin, and is Admin of the
   platform org. The password form is at `/login?disableAutoLogin=true`, and the sync runs as
   its own automation account.

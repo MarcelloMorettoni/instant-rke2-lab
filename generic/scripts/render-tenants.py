@@ -15,6 +15,7 @@ Outputs (in rendered/, safe to commit: no secrets):
                             grafanaOrgs                  orgs + data sources (grafana-sync)
                             grafanaOrgMapping            Entra group -> org + role, allowed groups
                             keycloakGroups               realm groups (groups.oidc) + their Entra IDs
+                            loki.ruler.directories       recording rules per Loki tenant
     grafana-orgs.json     the same orgs, for scripts/tenant-keys.sh
 """
 
@@ -43,6 +44,8 @@ OIDC_GROUP_RE = re.compile(r"^[A-Za-z0-9._/@-]{1,200}$")
 PROVIDER_GROUPS = ("entra", "oidc")          # oidc = keycloak and any other OIDC provider
 STATUSES = {"active", "suspended", "offboarding"}
 RESERVED = {"platform", "unassigned"}
+METRIC_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+DURATION_RE = re.compile(r"^[0-9]+[smh]$")
 
 
 
@@ -111,7 +114,29 @@ def load() -> dict:
         for other in t.get("alsoRead") or []:
             if other not in seen:
                 die(f"{t['id']}: alsoRead names unknown tenant {other!r}")
+    rr = reg.setdefault("recordingRules", {})
+    if not DURATION_RE.match(str(rr.setdefault("interval", "1m"))):
+        die(f"recordingRules.interval {rr['interval']!r}: a duration like 1m")
+    check_rules(rr.setdefault("standard", []), "recordingRules.standard")
+    for owner in [reg["platform"], reg["unassigned"], *(reg.get("tenants") or [])]:
+        check_rules(owner.get("recordingRules") or [], f"{owner['id']}.recordingRules")
     return reg
+
+
+def check_rules(rules: list, where: str) -> None:
+    """Recording rules only: record + expr (+ labels). No alerting rules."""
+    names = set()
+    for r in rules:
+        unknown = set(r) - {"record", "expr", "labels"}
+        if unknown or "alert" in r:
+            die(f"{where}: only record, expr and labels are allowed (no alerting rules), got {sorted(unknown)}")
+        if not METRIC_RE.match(str(r.get("record", ""))):
+            die(f"{where}: record {r.get('record')!r} is not a valid metric name")
+        if not str(r.get("expr", "")).strip():
+            die(f"{where}: {r['record']} has no expr")
+        if r["record"] in names:
+            die(f"{where}: {r['record']} defined twice")
+        names.add(r["record"])
 
 
 def tenant_for(reg: dict, namespace: str) -> str:
@@ -200,6 +225,27 @@ def render_overrides(reg: dict) -> dict:
     return overrides
 
 
+# --------------------------------------------------------------------------- ruler
+def render_rules(reg: dict) -> dict:
+    """loki.ruler.directories: one directory (= Loki tenant) per data owner, with the
+    standard rules and the owner's own. tenant="<id>" is set on every rule LAST,
+    overriding anything the rule says, so no rule can write another tenant's series."""
+    rr = reg["recordingRules"]
+    dirs = {}
+    for o in owners(reg):
+        if o.get("status") == "offboarding":
+            continue                      # data is being deleted; nothing to record
+        groups = []
+        for name, rules in (("obs-standard", rr["standard"]), ("obs-tenant", o.get("recordingRules") or [])):
+            if rules:
+                groups.append({"name": name, "interval": rr["interval"], "rules": [
+                    {"record": r["record"], "expr": " ".join(str(r["expr"]).split()),
+                     "labels": {**(r.get("labels") or {}), "tenant": o["id"]}} for r in rules]})
+        if groups:
+            dirs[o["id"]] = {"rules.yaml": yaml.safe_dump({"groups": groups}, sort_keys=False, width=200)}
+    return dirs
+
+
 # --------------------------------------------------------------------------- views
 def readable_tenants(reg: dict) -> dict[str, list[str]]:
     """view -> list of Loki tenants that view's Grafana org may read."""
@@ -277,7 +323,8 @@ def main() -> None:
     values = {
         "otelAgent": {"alternateConfig": render_otel_agent(reg)},
         "otelGateway": {"alternateConfig": render_otel_gateway(reg)},
-        "loki": {"loki": {"runtimeConfig": {"overrides": render_overrides(reg)}}},
+        "loki": {"loki": {"runtimeConfig": {"overrides": render_overrides(reg)}},
+                 "ruler": {"directories": render_rules(reg)}},
         "readViews": [{"view": v, "tenants": t} for v, t in readable_tenants(reg).items()],
         "grafanaOrgs": orgs,
         "grafanaOrgMapping": mapping,

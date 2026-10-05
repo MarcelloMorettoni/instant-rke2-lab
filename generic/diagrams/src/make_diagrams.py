@@ -146,9 +146,10 @@ def overview() -> Svg:
           "violet", "/payments/ + key")
     s.box(476, 372, 196, 160, "obs-gateway", ["kgateway (Envoy)", "one view per org", "SETS X-Scope-OrgID"], "sky",
           "read-only")
-    s.box(702, 372, 408, 160, "Query path + caches", ["frontend → scheduler → queriers → index gateways"], "indigo")
-    for i, (n, sub) in enumerate([("results", "memcached"), ("queriers", "4 → 16"), ("chunks", "memcached"), ("index gw", "disk")]):
-        s.mini(716 + i * 98, 452, 90, 56, n, "indigo", sub)
+    s.box(702, 372, 408, 160, "Query path + caches", ["frontend → scheduler → queriers; ruler → metrics store"], "indigo")
+    for i, (n, sub) in enumerate([("results", "memcached"), ("queriers", "4 → 16"), ("chunks", "memcached"),
+                                  ("index gw", "×3, disk"), ("ruler", "rules/tenant")]):
+        s.mini(712 + i * 79, 452, 74, 56, n, "indigo", sub)
     s.arrow([(220, 452), (250, 452)], READ)
     s.arrow([(446, 452), (476, 452)], READ)
     s.arrow([(672, 452), (702, 452)], READ)
@@ -244,7 +245,7 @@ def write_path() -> Svg:
 
 # --------------------------------------------------------------------------- 3
 def read_path() -> Svg:
-    s = Svg(1240, 720, "Read path: who can see which tenant",
+    s = Svg(1240, 820, "Read path: who can see which tenant",
             "Identity comes from the provider's groups (auth.provider); the tenant from the gateway view. Nothing a user sends changes it.")
     s.lane(32, 110, "Identity provider groups")
     s.lane(292, 110, "Grafana org")
@@ -258,17 +259,16 @@ def read_path() -> Svg:
     for i, (g, org, view, hdr, entra, oidc, local) in enumerate(rows):
         y = 126 + i * 118
         s.box(32, y, 220, 104, g, [f"Entra: {entra}", f"Keycloak/OIDC: {oidc}", f"viewer · editor · {local}"], "green", title_size=12.5)
-        s.box(292, y, 220, 104, f'org "{org}"', ["1 Loki data source:", f"`gateway{view}`", "+ its own key (encrypted)"], "violet")
-        s.box(552, y, 270, 104, f"view-{org}", ["key must be obs-key-" + org, "push / delete → 403"], "sky")
-        s.pill(566, y + 72, 242, f"X-Scope-OrgID: {hdr}"[:38], PAL["sky"][1])
+        s.box(292, y, 220, 104, f'org "{org}"', ["Loki + recorded metrics:", f"`gateway{view}(prometheus/)`", "+ the view's key (encrypted)"], "violet")
+        s.box(552, y, 270, 104, f"view-{org}", ["key must be obs-key-" + org, "sets X-Scope-OrgID + X-Obs-Tenant"], "sky")
+        s.pill(566, y + 72, 242, f"tenants: {hdr}"[:38], PAL["sky"][1])
         s.arrow([(252, y + 48), (292, y + 48)], READ)
         s.arrow([(512, y + 48), (552, y + 48)], READ)
         s.arrow([(822, y + 48), (862, y + 48)], READ)
-    s.box(862, 126, 352, 340, "query-frontend → queriers", ["reads only the tenants in the header", "",
-          "`payments → payments' data`", "`cards|shared-services → both`",
-          "`platform|... → everything (SRE)`", "", "per-tenant query limits:", "`max_query_parallelism`",
-          "`max_queriers_per_tenant`", "`query_timeout, max_query_length`", "", "NetworkPolicy: only the gateway",
-          "may reach the query-frontend"], "indigo")
+    s.box(862, 126, 352, 340, "Loki · recorded metrics", ["logs: query-frontend → queriers read", "only the tenants in X-Scope-OrgID",
+          "`payments → payments' data`", "`cards|shared-services → both`", "",
+          "metrics: the tenant guard adds", "`tenant=~\"<X-Obs-Tenant>\"`", "to every PromQL query",
+          "", "per-tenant query limits;", "NetworkPolicy: only the gateway", "reaches the frontend and the guard"], "indigo")
 
     s.lane(32, 510, "What the design blocks")
     attacks = [
@@ -277,7 +277,10 @@ def read_path() -> Svg:
         ("Org Admin adds a data source", "users are never Admin; without a key: 401"),
         ("Tenant pod calls Loki or the gateway", "NetworkPolicy: connection dropped"),
         ("User in no mapped group", "denied at login (allowed_groups)"),
-        ("Push or delete via the gateway", "403 on every view"),
+        ("Push, delete or remote write via the gateway", "403 on every view"),
+        ("PromQL for another tenant's metrics", "the guard replaces tenant= with the view's"),
+        ("A rule writing another tenant's series", "generator stamps tenant=<owner> on every rule"),
+        ("Editing rules at runtime", "rules come from git only; ruler API is off"),
     ]
     for i, (a, r) in enumerate(attacks):
         x = 32 + (i % 3) * 400
@@ -453,18 +456,31 @@ def _core(s: Svg, top: int, users: str) -> None:
     s.box(44, y, 140, 132, "Bank users", [users[0], users[1]], "slate", "HTTPS")
     s.box(204, y, 160, 132, "Load balancer", ["internal only", "kgateway (Envoy)", "TLS ends here"], "sky", "Grafana + SSO")
     s.box(384, y, 170, 132, "Grafana", ["org per tenant", "group → org, role", "local admin"], "violet", "ns grafana")
-    s.box(574, y, 160, 132, "Read gateway", ["view per org", "key per view", "SETS X-Scope-OrgID"], "sky", "read-only")
-    s.box(754, y, 356, 132, "Loki read", ["query-frontend → scheduler → queriers", "index gateways; memcached results",
-          "and chunks caches"], "indigo", "per-tenant query limits")
+    s.box(574, y, 160, 132, "Read gateway", ["view per org", "key per view", "SETS the tenant"], "sky", "read-only")
+    s.box(754, y, 356, 132, "Loki read", [], "indigo", "per-tenant query limits")
+    for i, (n, sub) in enumerate([("frontend", "+ scheduler"), ("queriers", "4 → 16"), ("index gw", "×3, disk"),
+                                  ("caches", "memcached")]):
+        s.mini(766 + i * 85, y + 36, 79, 54, n, "indigo", sub)
     for x in (184, 364, 554, 734):
         s.arrow([(x, y + 66), (x + 20, y + 66)], READ)
+    s.lane(754, top + 352, "Recorded metrics (ruler)")
+    y = top + 364
+    s.box(574, y, 160, 110, "Tenant guard", ["prom-label-proxy", "tenant=~<view>"], "sky", "every query")
+    s.box(754, y, 170, 110, "Metrics store", ["Prometheus ×2", "receive-only, 400 d"], "slate", "ns loki")
+    s.box(944, y, 166, 110, "Ruler ×2", ["recording rules", "per tenant, 1/min"], "indigo", "own querier")
+    s.arrow([(654, top + 320), (654, y)], READ)
+    s.arrow([(734, y + 55), (754, y + 55)], READ)
+    s.arrow([(944, y + 55), (924, y + 55)], WRITE)
+    s.arrow([(1027, y), (1027, top + 320)], NEUTRAL, dashed=True)
+    s.text(1034, top + 346, "reads logs via the", 10, MUTED)
+    s.text(1034, top + 358, "index gateways", 10, MUTED)
 
 
 def generic() -> Svg:
-    s = Svg(1400, 860, "Generic installation: everything runs in the cluster",
+    s = Svg(1400, 1000, "Generic installation: everything runs in the cluster",
             "No Azure service needed. Kafka, Keycloak, PostgreSQL, secrets and monitoring are in-cluster; "
             "log storage is any S3 API (Azure Blob for now).")
-    s.frame(24, 88, 1106, 650, "Kubernetes cluster (3 zones recommended)  ·  environments/generic")
+    s.frame(24, 88, 1106, 786, "Kubernetes cluster (3 zones recommended)  ·  environments/generic")
     _core(s, 128, ("browser, bank", "network"))
     s.box(1160, 140, 216, 320, "Object storage", ["chunks + TSDB index", "<tenant>/ prefix", "",
           "any S3 API:", "Rook/Ceph RGW,", "on-prem S3", "(overlays/s3-storage.yaml)", "", "today: Azure Blob,", "Workload Identity"],
@@ -472,8 +488,8 @@ def generic() -> Svg:
     s.arrow([(1110, 206), (1160, 206)], WRITE, "flush", ly=197)
     s.arrow([(1160, 382), (1110, 382)], READ, "read", ly=373)
 
-    s.lane(44, 472, "Platform services, in the cluster")
-    y = 512
+    s.lane(44, 618, "Platform services, in the cluster")
+    y = 650
     s.box(44, y, 200, 160, "Keycloak", ["Keycloak operator", "realm obs: tenant", "groups, grafana client", "Entra broker: optional"],
           "green", "ns keycloak")
     s.box(264, y, 200, 160, "PostgreSQL", ["Percona operator", "(you bring it)", "Grafana + Keycloak", "HA, pgBackRest"],
@@ -483,68 +499,134 @@ def generic() -> Svg:
     s.box(704, y, 200, 160, "Monitoring", ["Prometheus Operator", "PodMonitors", "PrometheusRule", "(the same alerts)"],
           "slate", "ns monitoring")
     s.box(924, y, 186, 160, "Operators", ["kgateway", "Strimzi", "Keycloak operator"], "slate", "platform-operators")
-    s.arrow([(444, 448), (444, 486), (144, 486), (144, 512)], READ, dashed=True)
-    s.text(380, 481, "sign-in (OIDC)", 10.5, READ, 600, "middle")
-    s.arrow([(494, 448), (494, 496), (364, 496), (364, 512)], NEUTRAL, dashed=True)
-    s.text(502, 478, "state", 10.5, MUTED, 600, "start")
-    s.arrow([(244, 614), (264, 614)], NEUTRAL, dashed=True)
+    s.arrow([(444, 448), (444, 630), (144, 630), (144, 650)], READ, dashed=True)
+    s.text(436, 520, "sign-in", 10.5, READ, 600, "end")
+    s.arrow([(494, 448), (494, 638), (364, 638), (364, 650)], NEUTRAL, dashed=True)
+    s.text(502, 520, "state", 10.5, MUTED, 600, "start")
+    s.arrow([(244, 752), (264, 752)], NEUTRAL, dashed=True)
 
-    s.add(f'<rect x="44" y="686" width="1066" height="36" rx="8" fill="{PAL["slate"][0]}" stroke="{PAL["slate"][1]}"/>')
-    s.text(577, 709, "keyVault.enabled: false · postgres.provider: percona · keycloak.install: true · "
+    s.add(f'<rect x="44" y="824" width="1066" height="36" rx="8" fill="{PAL["slate"][0]}" stroke="{PAL["slate"][1]}"/>')
+    s.text(577, 847, "keyVault.enabled: false · postgres.provider: percona · keycloak.install: true · "
            "auth.provider: keycloak · monitoring.prometheusOperator.enabled: true", 10.5, BODY, anchor="middle", mono=True)
-    s.text(24, 768, "The Loki backend (rows 1-2) is identical to the Azure installation (picture 09): only the services around it change.",
+    s.text(24, 908, "The Loki backend (rows 1-3) is identical to the Azure installation (picture 09): only the services around it change.",
            12.5, INK, 600)
-    s.text(24, 790, "Manifests per component: manifests/generic/ (scripts/render-manifests.sh).  Install: scripts/install.sh generic.",
+    s.text(24, 930, "Manifests per component: manifests/generic/ (scripts/render-manifests.sh).  Install: scripts/install.sh generic.",
            11.5, MUTED)
-    s.text(24, 808, "Not in the cluster: the users' browsers, DNS names for Grafana and Keycloak, and (until s3-storage.yaml) the Blob account.",
+    s.text(24, 948, "Not in the cluster: the users' browsers, DNS names for Grafana and Keycloak, and (until s3-storage.yaml) the Blob account.",
            11.5, MUTED)
     return s
 
 
 # --------------------------------------------------------------------------- 9
 def azure() -> Svg:
-    s = Svg(1400, 950, "Azure installation: the same backend, with Azure services around it",
+    s = Svg(1400, 1040, "Azure installation: the same backend, with Azure services around it",
             "AKS with Blob, Key Vault, Entra ID, PostgreSQL flexible server and managed Prometheus. "
             "Kafka and Loki stay in the cluster.")
-    s.frame(24, 88, 1106, 470, "AKS cluster (private API, 3 availability zones, zonal node pools)  ·  environments/azure")
+    s.frame(24, 88, 1106, 528, "AKS cluster (private API, 3 availability zones, zonal node pools)  ·  environments/azure")
     _core(s, 128, ("SSO through", "Entra ID"))
-    s.box(754, 468, 356, 76, "External Secrets Operator", ["Key Vault → Secrets (Workload Identity)"], "green")
+    s.box(44, 492, 310, 110, "External Secrets", ["Key Vault → Kubernetes Secrets", "with Workload Identity"], "green")
     s.box(1160, 140, 216, 320, "Azure Blob (GZRS)", ["chunks + TSDB index", "<tenant>/ prefix", "",
           "3 zones + paired region", "private endpoint only", "no shared keys:", "Workload Identity", "CMK in Key Vault (HSM)", "",
           "Cool 30 d, Cold 180 d"], "amber", "the source of truth")
     s.arrow([(1110, 206), (1160, 206)], WRITE, "flush", ly=197)
     s.arrow([(1160, 382), (1110, 382)], READ, "read", ly=373)
 
-    s.frame(24, 582, 1352, 152, "Azure services (Terraform: infra/terraform)")
+    s.frame(24, 660, 1352, 152, "Azure services (Terraform: infra/terraform)")
     svc = [("Disks + node pools", ["disk encryption set (CMK)", "zonal pools loki1/2/3"], "slate"),
+           ("Key Vault (HSM)", ["CMKs: Blob + disks", "secrets for ESO"], "green"),
            ("Entra ID", ["Grafana SSO: group → org", "Workload Identity: Loki, ESO"], "green"),
            ("PostgreSQL flexible", ["Grafana state", "zone-redundant HA"], "amber"),
-           ("Key Vault (HSM)", ["CMKs: Blob + disks", "secrets for ESO"], "green"),
            ("Managed Prometheus", ["azmonitoring PodMonitors", "rule groups: same alerts"], "slate"),
            ("Log Analytics / SIEM", ["audit: storage,", "Key Vault, database"], "slate")]
     for i, (t, ls, pal) in enumerate(svc):
-        s.box(44 + i * 222, 622, 206, 92, t, ls, pal)
-    s.arrow([(444, 448), (444, 566), (369, 566), (369, 622)], READ, dashed=True)
+        s.box(44 + i * 222, 700, 206, 92, t, ls, pal)
+    s.arrow([(199, 602), (199, 630), (369, 630), (369, 700)], NEUTRAL, dashed=True)
+    s.text(206, 624, "secrets", 10.5, MUTED, 600)
+    s.arrow([(444, 448), (444, 650), (591, 650), (591, 700)], READ, dashed=True)
     s.text(436, 520, "SSO", 10.5, READ, 600, "end")
-    s.arrow([(494, 448), (494, 580), (591, 580), (591, 622)], NEUTRAL, dashed=True)
-    s.text(543, 574, "state", 10.5, MUTED, 600, "middle")
-    s.arrow([(813, 544), (813, 622)], NEUTRAL, dashed=True)
-    s.text(822, 600, "secrets", 10.5, MUTED, 600)
+    s.arrow([(494, 448), (494, 640), (813, 640), (813, 700)], NEUTRAL, dashed=True)
+    s.text(502, 520, "state", 10.5, MUTED, 600, "start")
 
-    s.lane(32, 768, "What changes between the two installations")
+    s.lane(32, 846, "What changes between the two installations")
     rows = [("", "Generic (picture 08)", "Azure (this picture)"),
             ("Log storage", "any S3 API (Azure Blob for now)", "Blob GZRS, private endpoint, Workload Identity, CMK"),
             ("Secrets", "generated by the chart, kept on upgrade", "Key Vault + External Secrets"),
             ("Grafana's database", "PostgreSQL by the Percona operator", "Azure Database for PostgreSQL (flexible)"),
             ("Sign-in", "Keycloak in the cluster (optionally brokering Entra ID)", "Entra ID (or Keycloak / OIDC)"),
             ("Monitoring", "Prometheus Operator: PodMonitors + PrometheusRule", "managed Prometheus + rule groups"),
-            ("Kafka, collectors, Loki, read gateway", "the same", "the same")]
+            ("Kafka, collectors, Loki, ruler, read gateway", "the same", "the same")]
     for r, (a, b, c) in enumerate(rows):
-        y = 780 + r * 21
+        y = 858 + r * 21
         s.add(f'<rect x="32" y="{y}" width="1336" height="21" fill="{"#F1F5F9" if r == 0 else "#FFFFFF"}" stroke="{LINE}"/>')
         s.text(44, y + 15, a, 11, INK, 700)
         s.text(330, y + 15, b, 11, BODY, 700 if r == 0 else 400)
         s.text(830, y + 15, c, 11, BODY, 700 if r == 0 else 400)
+    return s
+
+
+# --------------------------------------------------------------------------- 10
+def relief() -> Svg:
+    s = Svg(1400, 830, "Index gateways and rulers: less work for the read path",
+            "Index gateways fetch and serve the index once for every querier; the ruler computes log metrics once "
+            "for every dashboard and alert.")
+    # ---- 1 · index gateways
+    s.frame(24, 92, 652, 470, "1 · Index gateways: the index, once")
+    s.box(44, 130, 180, 136, "Object storage", ["TSDB index files,", "one per day", "and tenant"], "amber")
+    s.box(264, 130, 190, 136, "Index gateways ×3", ["one per zone", "index on local disk", "(50 Gi each)"], "indigo", "download once")
+    s.box(494, 120, 162, 70, "Queriers 4 → 16", ["no index download"], "indigo")
+    s.box(494, 206, 162, 70, "Ruler ×2", ["same gateways"], "indigo")
+    s.arrow([(224, 198), (264, 198)], READ)
+    s.arrow([(454, 170), (494, 155)], READ)
+    s.arrow([(454, 226), (494, 241)], READ)
+    s.add(f'<rect x="44" y="300" width="612" height="84" rx="10" fill="{PAL["rose"][0]}" stroke="{PAL["rose"][1]}" stroke-width="1.5"/>')
+    s.text(60, 326, "Without them", 12.5, PAL["rose"][2], 700)
+    s.text(60, 348, "every querier downloads and keeps the index itself: slow to start after scaling,", 11.5, BODY)
+    s.text(60, 366, "each needs index disk and memory, and object storage serves the same files again and again.", 11.5, BODY)
+    s.lane(44, 418, "What it buys")
+    for i, t in enumerate(["Queriers scale out fast and stay stateless: the HPA can add them in seconds",
+                           "Object storage reads each index file once per gateway, not once per querier",
+                           "The ruler's own querier uses the same gateways: no second index copy",
+                           "Sizing: 2 (S), 3 (M), 3-6 (L); ring mode shards tenants across them at L"]):
+        s.check(56, 444 + i * 28)
+        s.text(76, 448 + i * 28, t, 11.5, BODY)
+
+    # ---- 2 · rulers
+    s.frame(700, 92, 676, 470, "2 · Rulers: compute once, read many")
+    s.lane(720, 128, "Without: every viewer and every alert scans logs")
+    s.box(720, 140, 190, 80, "Dashboards", ["× viewers × refresh"], "violet")
+    s.box(720, 230, 190, 70, "Grafana alerts", ["× rules × every minute"], "violet")
+    s.box(950, 170, 190, 90, "Query frontend", ["→ queriers", "same queues as people"], "indigo")
+    s.box(1180, 170, 176, 90, "Chunks", ["scanned every time", "(Cool/Cold: paid reads)"], "amber")
+    s.arrow([(910, 190), (950, 205)], BLOCK)
+    s.arrow([(910, 262), (950, 230)], BLOCK)
+    s.arrow([(1140, 215), (1180, 215)], BLOCK)
+    s.lane(720, 336, "With: the ruler scans each minute once")
+    s.box(720, 348, 190, 110, "Ruler", ["each rule once a minute", "own querier, own queue"], "indigo", "tenants.yaml")
+    s.box(950, 348, 190, 110, "Metrics store", ["small series,", "tenant=<owner>"], "slate", "400 d")
+    s.box(1180, 348, 176, 110, "Dashboards, alerts", ["via the tenant", "guard: tiny reads"], "violet")
+    s.arrow([(910, 403), (950, 403)], WRITE)
+    s.arrow([(1180, 403), (1140, 403)], READ)
+    s.text(720, 478, "Recording rules only: no Alertmanager. Alerts stay in Grafana, but on recorded series.", 11.5, BODY)
+    s.text(720, 498, "Every tenant gets log lines, bytes and errors per namespace and service; tenants add", 11.5, BODY)
+    s.text(720, 518, "their own rules in tenants.yaml (reviewed in git).", 11.5, BODY)
+
+    # ---- the numbers
+    s.lane(32, 600, "The difference, in queries")
+    rows = [("", "Without a ruler", "With recording rules"),
+            ("24 h error-rate panel, 20 viewers, 30 s refresh", "2,400 scans of the current hour per hour (finished hours: results cache)",
+             "60 rule runs per hour; the panel reads points from Prometheus"),
+            ("200 tenants × 10 alert rules, every minute", "2,000 LogQL queries a minute, in the users' queues",
+             "no log queries: alerts read recorded series"),
+            ("A 30-day trend", "30 days of chunks scanned, Cool/Cold storage reads", "30 days of recorded points (≈ 43 k per series)"),
+            ("Who waits", "people's queries queue behind background load", "rule load runs in the ruler's own querier")]
+    for r, (a, b, c) in enumerate(rows):
+        y = 614 + r * 30
+        s.add(f'<rect x="32" y="{y}" width="1336" height="30" fill="{"#F1F5F9" if r == 0 else "#FFFFFF"}" stroke="{LINE}"/>')
+        s.text(44, y + 19, a, 11.5, INK, 700)
+        s.text(400, y + 19, b, 11.5, BODY, 700 if r == 0 else 400)
+        s.text(880, y + 19, c, 11.5, BODY, 700 if r == 0 else 400)
+    s.text(32, 790, "Logs stay the source of truth: a recorded series can always be recomputed from Loki. "
+           "Design: docs/08 (Index gateways and rulers), ADR 0012.", 11.5, MUTED)
     return s
 
 
@@ -553,7 +635,7 @@ def main() -> None:
                      ("03-read-path-and-tenancy", read_path), ("04-zones-and-failure", zones),
                      ("05-disaster-recovery", dr), ("06-durability-and-buffers", durability),
                      ("07-caching", caching), ("08-generic-in-cluster", generic),
-                     ("09-azure-components", azure)]:
+                     ("09-azure-components", azure), ("10-index-gateways-and-rulers", relief)]:
         (OUT / f"{name}.svg").write_text(fn().render())
         print(f"diagrams/{name}.svg")
 

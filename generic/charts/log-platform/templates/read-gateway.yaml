@@ -1,6 +1,7 @@
-# The read gateway (kgateway): the ONLY way into Loki's query path. Each view
-# (one per Grafana org, from readViews) opens only with that view's key and
-# SETS X-Scope-OrgID to the view's tenant list, replacing anything sent.
+# The read gateway (kgateway): the ONLY way into Loki's query path and the
+# recorded metrics. Each view (one per Grafana org, from readViews) opens only
+# with that view's key and SETS X-Scope-OrgID (logs) / X-Obs-Tenant (recorded
+# metrics) to the view's tenant list, replacing anything sent.
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
@@ -133,9 +134,26 @@ spec:
         - {name: loki-query-frontend, port: 3100}
       timeouts: {request: {{ index $r 1 }}}
     {{- end }}
+    {{- if $.Values.metricsStore.enabled }}
+    # Recorded metrics (Prometheus API): the same view and key; the proxy
+    # behind it forces tenant=~"<this header>" on every query.
+    - matches:
+        - path: {type: PathPrefix, value: {{ printf "/%s/prometheus/api/v1" $v.view }}}
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set: [{name: X-Obs-Tenant, value: {{ $hdr | quote }}}]
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /api/v1}
+      backendRefs:
+        - {name: obs-metrics-proxy, port: 8080}
+      timeouts: {request: 120s}
+    {{- end }}
     - matches:
         - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/push}
         - path: {type: PathPrefix, value: /{{ $v.view }}/loki/api/v1/delete}
+        - path: {type: PathPrefix, value: /{{ $v.view }}/prometheus/api/v1/write}
       filters:
         - type: ExtensionRef
           extensionRef: {group: gateway.kgateway.dev, kind: DirectResponse, name: read-only}

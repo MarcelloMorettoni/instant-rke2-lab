@@ -1,5 +1,6 @@
 {{- if .Values.grafanaSync.enabled }}
-# Keeps every Grafana org's Loki data source on its view, with its current key.
+# Keeps every Grafana org's data sources (Loki, and the recorded log metrics)
+# on its view, with its current key.
 # Runs every grafanaSync.schedule; install.sh also starts one run right away:
 #   kubectl -n grafana create job --from=cronjob/grafana-sync grafana-sync-now
 apiVersion: v1
@@ -38,7 +39,7 @@ spec:
           labels:
             app.kubernetes.io/name: grafana-sync
           annotations:
-            checksum/config: {{ printf "%s%s%s" (.Files.Get "files/grafana-sync.py") (toJson .Values.grafanaOrgs) (toJson .Values.auth.mock) (toJson .Values.auth.admin) | sha256sum }}
+            checksum/config: {{ printf "%s%s%s%s%v" (.Files.Get "files/grafana-sync.py") (toJson .Values.grafanaOrgs) (toJson .Values.auth.mock) (toJson .Values.auth.admin) .Values.metricsStore.enabled | sha256sum }}
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
@@ -57,6 +58,7 @@ spec:
                 - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
                 - {name: GRAFANA_URL, value: "http://grafana.grafana.svc.cluster.local"}
                 - {name: READ_GATEWAY, value: "http://obs-gateway.loki.svc.cluster.local:8080"}
+                - {name: RECORDED_METRICS, value: {{ .Values.metricsStore.enabled | toString | quote }}}
                 - name: GF_ADMIN_USER
                   valueFrom: {secretKeyRef: {name: grafana-admin, key: admin-user}}
                 - name: GF_ADMIN_PASSWORD

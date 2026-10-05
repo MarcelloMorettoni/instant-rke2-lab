@@ -274,6 +274,34 @@ monitoring:
     namespace: monitoring       # where Prometheus runs (NetworkPolicies let it scrape)
     labels: {}                  # e.g. {release: kube-prometheus-stack}, if Prometheus selects on them
 
+# ---------------------------------------------------------------- recorded metrics
+# Where the ruler's results live, and how a tenant reads only its own:
+#   loki-ruler ──remote write──► obs-metrics-0/1 (Prometheus, receiver only)
+#   Grafana org ──key──► read gateway /<view>/prometheus/ (sets X-Obs-Tenant)
+#     ──► obs-metrics-proxy (prom-label-proxy: tenant=~"<view's tenants>" on
+#         EVERY query, whatever the query says) ──► obs-metrics
+# The same in both installations (docs/10).
+metricsStore:
+  enabled: true
+  replicas: 2                   # each gets every sample (two ruler remote-write clients)
+  retention: 400d               # recorded series are small: keep them as long as gold logs
+  storage: 50Gi
+  image:
+    repository: prom/prometheus
+    tag: v3.5.0
+  resources:
+    requests: {cpu: 500m, memory: 2Gi}
+    limits: {memory: 4Gi}
+  proxy:
+    replicas: 2
+    image:
+      repository: prometheuscommunity/prom-label-proxy   # quay.io upstream
+      registry: quay.io                                  # used when global.imageRegistry is ""
+      tag: v0.15.1
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 256Mi}
+
 # ---------------------------------------------------------------- per tenant
 # Rendered from tenants/tenants.yaml by scripts/render-tenants.py into
 # rendered/values-tenants.yaml. Don't edit here.
@@ -331,6 +359,25 @@ loki:
 
     commonConfig:
       replication_factor: 3
+
+    # Ruler: rules come from files (one ConfigMap per tenant, generated from
+    # tenants.yaml, reviewed in git), not from an API. Results go to BOTH
+    # metrics-store replicas, so either one can serve reads.
+    rulerConfig:
+      storage:
+        type: local
+        local: {directory: /etc/loki/rules}
+      rule_path: /var/loki/rules-tmp
+      enable_api: false                            # nobody edits rules at runtime
+      enable_sharding: true
+      evaluation: {mode: local}                    # own querier: rule load stays off the users' queues
+      wal: {dir: /var/loki/ruler-wal}
+      remote_write:
+        enabled: true
+        add_org_id_header: false
+        clients:                                   # one per metricsStore replica (validate.yaml checks the count)
+          metrics-store-0: {url: "http://obs-metrics-0.obs-metrics-headless.loki.svc.cluster.local:9090/api/v1/write"}
+          metrics-store-1: {url: "http://obs-metrics-1.obs-metrics-headless.loki.svc.cluster.local:9090/api/v1/write"}
 
     server:
       log_level: warn                              # Loki's own logs never carry log lines at warn
@@ -390,7 +437,9 @@ loki:
       reject_old_samples_max_age: 168h
       creation_grace_period: 10m
       allow_structured_metadata: true
-      discover_log_levels: true
+      discover_log_levels: true                    # detected_level, used by obs:log_errors:rate1m
+      ruler_max_rule_groups_per_tenant: 10
+      ruler_max_rules_per_rule_group: 30
       # Logs arrive as OTLP (OpenTelemetry collectors → /otlp/v1/logs). Only
       # these bounded resource attributes become stream labels (dots become
       # underscores: k8s_namespace_name, service_name, ...). Every other
@@ -626,11 +675,36 @@ loki:
     nodeSelector: *obsNodes
     tolerations: *obsTolerations
 
-  # Tenants alert with Grafana-managed alerts in their own org (docs/02).
-  # The Loki ruler stays off: one component less, no multi-tenant Alertmanager.
+  # The ruler: evaluates each tenant's RECORDING rules (tenants.yaml, rendered
+  # into ruler.directories) once per interval, with its own embedded querier
+  # (local evaluation: rule load never waits in the users' query queues), and
+  # writes the results to the metrics store (metricsStore). Dashboards and
+  # alerts read those small series instead of re-scanning logs (docs/08).
+  # No alerting rules: tenants alert in Grafana, on the recorded metrics.
   ruler:
-    enabled: false
-    replicas: 0
+    enabled: true
+    replicas: 2                                    # rule groups are sharded between them (ring)
+    priorityClassName: observability-high
+    maxUnavailable: 1
+    resources:
+      requests: {cpu: "1", memory: 2Gi}
+      limits: {memory: 4Gi}
+    nodeSelector: *obsNodes
+    tolerations: *obsTolerations
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: ruler
+            app.kubernetes.io/name: loki
+    # The remote-write WAL: results wait here while the metrics store is down.
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: obs-zonal-ssd
+    directories: {}                                # rendered/values-tenants.yaml: one per tenant
 
   # ---------------------------------------------------------------- caches
   chunksCache:

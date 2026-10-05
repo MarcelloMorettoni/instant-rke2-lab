@@ -181,3 +181,42 @@ groups:
         annotations:
           summary: 'The gateways are {{ $value }} batches behind: logs reach Loki late. Kafka holds them for kafka.topic.retentionHours.'
           runbook: docs/06-operations-runbook.md#kafka
+
+  # The ruler (recording rules) and the recorded-metrics store.
+  - name: loki-ruler
+    rules:
+      - alert: LokiRulerEvaluationFailures
+        expr: sum by (cluster, rule_group) (rate(loki_prometheus_rule_evaluation_failures_total[5m])) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Recording rules in {{ $labels.rule_group }} fail to evaluate: their metrics have gaps.'
+          runbook: docs/06-operations-runbook.md#ruler-and-recorded-metrics
+
+      - alert: LokiRulerMissedEvaluations
+        expr: sum by (cluster, rule_group) (rate(loki_prometheus_rule_group_iterations_missed_total[10m])) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: '{{ $labels.rule_group }} takes longer than its interval: evaluations are skipped.'
+          runbook: docs/06-operations-runbook.md#ruler-and-recorded-metrics
+
+      - alert: LokiRulerRemoteWriteBehind
+        expr: |
+          max by (cluster, remote_name) (loki_ruler_wal_prometheus_remote_storage_queue_highest_timestamp_seconds)
+            - max by (cluster, remote_name) (loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds)
+            > 300
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'The ruler is {{ $value }} s behind writing to {{ $labels.remote_name }}: that metrics-store replica is down or slow. Results wait in the ruler WAL.'
+          runbook: docs/06-operations-runbook.md#ruler-and-recorded-metrics
+
+      - alert: MetricsStoreDown
+        expr: min by (cluster) (up{job="loki/metrics-store"}) == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'A recorded-metrics store replica is down; the other one serves reads.'
+          runbook: docs/06-operations-runbook.md#ruler-and-recorded-metrics
+

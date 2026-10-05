@@ -9,6 +9,9 @@ name ("" = portNumber), path ("" = /metrics), port number.
   (list "loki-read-gateway" "loki" "gateway.networking.k8s.io/gateway-name" "obs-gateway" "" "/stats/prometheus" 9091)
   (list "otel-agent" "otel-agent" "obs.platform/role" "otel-agent" "metrics" "" 0)
   (list "otel-gateway" "otel" "obs.platform/role" "otel-gateway" "metrics" "" 0) }}
+{{- if .Values.metricsStore.enabled }}
+{{- $targets = append $targets (list "metrics-store" "loki" "app.kubernetes.io/name" "obs-metrics" "http" "" 0) }}
+{{- end }}
 {{- if and .Values.kafka.enabled .Values.kafka.exporter }}
 {{- $targets = append $targets (list "kafka-exporter" "kafka" "strimzi.io/name" "logs-kafka-exporter" "tcp-prometheus" "" 0) }}
 {{- end }}
@@ -51,7 +54,7 @@ spec:
           targetLabel: job
         {{- else }}
         - targetLabel: job
-          replacement: {{ $name | replace "-" "/" | replace "loki/read/gateway" "loki/read-gateway" }}
+          replacement: {{ $name | replace "-" "/" | replace "loki/read/gateway" "loki/read-gateway" | replace "metrics/store" "loki/metrics-store" }}
         {{- end }}
 {{- end }}
 {{- end }}

@@ -1,4 +1,4 @@
-# 08 · Design questions: Kafka, caching, OpenTelemetry
+# 08 · Design questions: Kafka, caching, index gateways and rulers, OpenTelemetry
 
 Answers to the questions architecture boards, risk and operations ask most
 often. Each answer states the reason, what was verified, and when the answer
@@ -159,6 +159,113 @@ until the numbers justify it. Grow the caches when:
 
 First add memcached replicas or memory; turn on `chunksCache.l2` only after that.
 See [ADR 0008](adr/0008-caching.md).
+
+## Index gateways and rulers
+
+![Index gateways and rulers](../diagrams/10-index-gateways-and-rulers.png)
+
+### "How do queries get spread over the queriers?"
+
+There is no load balancer between the query frontend, the scheduler and the queriers.
+The **queriers pull work** from a queue:
+
+```
+read gateway (Envoy) ──per request──► query-frontend pods (2)
+  frontend: results cache → split by 1 h → shard → sub-queries
+  frontend ──enqueue──► query-scheduler pods (2), one queue PER TENANT
+  queriers (4 → 16) ──pull──► 8 workers per querier (max_concurrent), spread over the schedulers
+  querier ──result──► straight back to the frontend that enqueued it
+```
+
+1. **Gateway → frontend**: kgateway's Envoy balances each request over the frontend pods (the
+   `loki-query-frontend` Service's endpoints). Frontends hold no state, so any pod will do.
+2. **Frontend**:
+   - answers what it can from the **results cache**;
+   - splits the rest into 1 h pieces (`split_queries_by_interval`) and shards them over the
+     TSDB index;
+   - the tier's `max_query_parallelism` (32 / 64 / 128) caps how many pieces of one tenant's
+     query are in flight.
+3. **Frontend → scheduler**: `loki-query-scheduler` is a headless Service. DNS returns every
+   scheduler pod, and each frontend connects to all of them and enqueues on any.
+4. **Scheduler**: keeps a queue **per tenant** and serves the tenants in turn (round robin).
+   One tenant with a thousand pieces can't starve one with ten.
+   - `max_queriers_per_tenant` (4 / 8 / 12 by tier) limits which queriers may take a
+     tenant's work, so a heavy tenant can't occupy all of them;
+   - `max_outstanding_requests_per_tenant` (4096) turns a flood into 429s for that tenant
+     only.
+5. **Queriers**: each one runs 8 workers (`max_concurrent`), connected to the schedulers
+   (found the same way, through DNS), and asks for the next piece whenever a worker is free. A busy querier simply asks less often, which is
+   least-loaded balancing without a balancer. A new querier (HPA, 4 → 16) starts pulling as
+   soon as it's ready.
+6. **Results** go straight from the querier to the frontend that enqueued the piece. The
+   frontend merges them, stores them in the results cache and answers.
+
+Live tail (`/tail`) is the exception: the frontend proxies it to the queriers' Service
+directly, without the scheduler.
+
+The ruler never uses this path. In local evaluation it runs its own querier against the
+ingesters, the index gateways and storage (below).
+
+### "What do the index gateways take off the queriers?"
+
+The index:
+- with TSDB, each day's index is a set of files in object storage;
+- **without index gateways, every querier downloads and keeps the index** it needs. It is
+  slow to start after scaling, needs index disk and memory, and object storage serves the
+  same files again and again;
+- **with them**, 3 index gateways (one per zone, 50 Gi disk each) download each file once and
+  answer the queriers' and the ruler's index lookups over gRPC.
+
+Queriers become small and stateless, which is what lets the HPA add them quickly. At L
+scale, switch the gateways to `ring` mode, which shards tenants across them
+([05](05-sizing-and-capacity.md#rules-of-thumb-behind-the-numbers)).
+
+### "What does the ruler take off the read path?"
+
+Repetition ([ADR 0012](adr/0012-ruler-recorded-metrics.md)):
+- **Without a ruler**, every dashboard panel that counts logs scans chunks on every refresh,
+  for every viewer, and every Grafana alert on LogQL runs a log query every minute. All of it
+  goes through the frontend into the **same per-tenant queues as people's queries**. The
+  results cache only covers finished hours; the current one is scanned again each time.
+- **With recording rules**, the ruler runs each rule **once a minute**, with its own querier,
+  and writes the result as a small series (`tenant="<owner>"`) to the metrics store.
+  Dashboards and alerts read those series through the read gateway's **tenant guard**.
+
+| | Without a ruler | With recording rules |
+|---|---|---|
+| 24 h error-rate panel, 20 viewers, 30 s refresh | 2,400 scans of the current hour per hour | 60 rule runs per hour; the panel reads points |
+| 200 tenants × 10 alert rules, every minute | 2,000 LogQL queries a minute in the users' queues | no log queries: alerts read recorded series |
+| A 30-day trend | 30 days of chunks, Cool/Cold storage reads | 30 days of points (≈ 43 k per series) |
+| Who waits | people, behind background load | nobody: rules run in the ruler's own querier |
+
+What every tenant gets, from `tenants.yaml`:
+- `obs:log_lines:rate1m`, `obs:log_bytes:rate1m`, `obs:log_errors:rate1m`, per namespace and
+  service;
+- plus the tenant's own `recordingRules` (e.g. payments' `payments:declined:rate5m`).
+
+In Grafana: data source **"Log metrics (recorded)"**, next to "Loki".
+
+### "Can a tenant see or write another tenant's recorded metrics?"
+
+No, by the same pattern as logs:
+- **Write**:
+  - a rule's LogQL runs under its own tenant's ID, so it only reads that tenant's logs;
+  - the generator stamps `tenant="<owner>"` on every rule, over whatever the rule says;
+  - rules only come from git (the ruler API is off).
+- **Read**:
+  - the view (same key as for logs) **sets** `X-Obs-Tenant`;
+  - the guard (prom-label-proxy) rewrites every selector to `tenant=~"<that>"`, replacing any
+    `tenant` matcher in the query;
+  - no header → 400; remote write → 403 at the gateway, 404 at the guard.
+
+`scripts/pipeline-test.sh` checks each of these against the real Loki ruler, Prometheus and
+prom-label-proxy.
+
+### "Why no alerting rules in the Loki ruler?"
+
+They need an Alertmanager, and a shared one would need its own tenant isolation. Alerts stay
+in each tenant's Grafana org (contact points, silences and routing per org), but on the
+recorded series: a Prometheus query instead of a log scan.
 
 ## OpenTelemetry
 

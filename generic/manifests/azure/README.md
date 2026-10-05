@@ -20,12 +20,14 @@ at install time (Percona users) are missing.
 | [`platform/32-loki-backend.yaml`](platform/32-loki-backend.yaml) | Loki compactor (retention, deletes) and overrides exporter | 1 Deployment, 3 Service, 1 StatefulSet |
 | [`platform/33-loki-caches.yaml`](platform/33-loki-caches.yaml) | Memcached: chunks cache and results cache | 2 PodDisruptionBudget, 2 Service, 2 StatefulSet |
 | [`platform/34-loki-shared.yaml`](platform/34-loki-shared.yaml) | Loki config, runtime overrides (per-tenant limits), memberlist, rollout-operator | 1 ClusterRole, 1 ClusterRoleBinding, 2 ConfigMap, 1 Deployment, 1 MutatingWebhookConfiguration, 2 Role, 2 RoleBinding, 2 Service, 2 ServiceAccount, 3 ValidatingWebhookConfiguration |
+| [`platform/35-loki-ruler.yaml`](platform/35-loki-ruler.yaml) | Loki ruler: recording rules per tenant (one ConfigMap each), evaluated with its own querier | 6 ConfigMap, 1 PodDisruptionBudget, 1 Service, 1 StatefulSet |
+| [`platform/36-recorded-metrics.yaml`](platform/36-recorded-metrics.yaml) | Metrics store (receive-only Prometheus) and the tenant guard (prom-label-proxy) | 1 ConfigMap, 1 Deployment, 2 PodDisruptionBudget, 3 Service, 1 StatefulSet |
 | [`platform/40-read-gateway.yaml`](platform/40-read-gateway.yaml) | Read gateway (kgateway): one view per Grafana org, keys, read-only rules | 1 DirectResponse, 5 ExternalSecret, 1 Gateway, 1 GatewayParameters, 5 HTTPRoute, 1 ListenerPolicy, 5 TrafficPolicy |
 | [`platform/50-grafana.yaml`](platform/50-grafana.yaml) | Grafana (orgs per tenant), sign-in settings, grafana-sync CronJob, database Secret | 3 ConfigMap, 1 CronJob, 1 Deployment, 3 ExternalSecret, 1 PodDisruptionBudget, 2 Secret, 2 Service, 1 ServiceAccount |
 | [`platform/51-ingress.yaml`](platform/51-ingress.yaml) | Internal load balancer for Grafana (and Keycloak): Gateway, TLS | 1 ExternalSecret, 1 Gateway, 1 GatewayParameters, 1 HTTPRoute |
 | [`platform/70-secret-store.yaml`](platform/70-secret-store.yaml) | Key Vault ClusterSecretStore (External Secrets) | 1 ClusterSecretStore |
-| [`platform/80-network-policies.yaml`](platform/80-network-policies.yaml) | NetworkPolicies (and Cilium policies) for every platform namespace | 18 NetworkPolicy |
-| [`platform/90-monitoring.yaml`](platform/90-monitoring.yaml) | PodMonitors and the PrometheusRule (alerts) | 5 PodMonitor |
+| [`platform/80-network-policies.yaml`](platform/80-network-policies.yaml) | NetworkPolicies (and Cilium policies) for every platform namespace | 21 NetworkPolicy |
+| [`platform/90-monitoring.yaml`](platform/90-monitoring.yaml) | PodMonitors and the PrometheusRule (alerts) | 6 PodMonitor |
 
 CRDs, installed by the operators chart (not copied here):
 

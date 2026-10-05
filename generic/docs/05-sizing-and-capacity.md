@@ -16,7 +16,9 @@ before go-live.
 | Ingester PVC | 50 Gi | 100 Gi | 200 Gi, Premium SSD v2 |
 | Queriers | 2 → 6 | 4 → 16, 2 CPU / 6 Gi | 16 → 64 |
 | Query frontend / scheduler | 2 / 2 | 2 / 2 | 3 / 3 |
-| Index gateways | 2 | 3 | 3-6 |
+| Index gateways | 2 | 3 (50 Gi disk each) | 3-6, `ring` mode |
+| Ruler | 1 | 2 × 1 CPU / 2 Gi, WAL 10 Gi | 3-4 × 2 CPU / 4 Gi |
+| Metrics store (recorded series) | 2 × 0.25 CPU / 1 Gi, 20 Gi | 2 × 0.5 CPU / 2 Gi, 50 Gi | 2 × 1 CPU / 4 Gi, 100 Gi |
 | Chunks cache | 1 × 4 GB | 3 × 8 GB | 6 × 16 GB |
 | Loki nodes (per zone) | 1-2 × D8ds_v5 | **2-5 × D16ds_v5** | 5-12 × D16ds_v5 / E16ds_v5 |
 
@@ -76,6 +78,16 @@ before go-live.
 - **Queriers**: one CPU core scans roughly 100-300 MB/s of compressed chunks.
   Query speed ≈ bytes scanned ÷ (queriers × cores). Narrow label selectors
   matter more than hardware.
+- **Index gateways**: `simple` mode (each serves every tenant) up to M. At L, `ring` mode
+  shards tenants across them, so each holds part of the index. Their disk holds the index of
+  the retention period being queried: 50 Gi covers M.
+- **Ruler**: cost = rules × tenants × (data in the rule's window) per interval. The 3
+  standard rules scan 1 minute of each tenant's logs per minute: at M that is ~3 × 0.7 GB raw
+  per minute in total, spread over the 2 rulers. Tenant rules with long windows
+  (`[1h]` every minute) cost 60× more; review them like any query. Watch
+  `loki_prometheus_rule_group_iterations_missed_total`.
+- **Metrics store**: series = tenants × namespaces × services × rules. 200 tenants × 50 services
+  × 3 rules ≈ 30 k series at one sample a minute ≈ 65 MB/day, ~26 GB over 400 days.
 - **Storage**: compression ~8-10× on typical application logs.
   M: 1 TB/day raw ≈ 110 GB/day stored.
 
@@ -125,6 +137,8 @@ spread over all ingesters. Read-side isolation also comes from `max_queriers_per
 | Node pool at `max_count` | raise `loki_nodes_per_zone.max` (Terraform) |
 | Kafka broker disk > 70 % | more disk (`kafka.brokers.storage`, expandable), or shorter `kafka.topic.retentionHours` |
 | Kafka consumer lag growing while Loki is healthy | more gateway pods (steps of 3) and partitions |
+| `LokiRulerMissedEvaluations` | more ruler replicas (groups re-shard), or shorter rule windows |
+| Querier CPU high while dashboards refresh | move those panels to recorded metrics (a `recordingRules` entry) |
 
 ## Load test before go-live
 

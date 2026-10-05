@@ -30,7 +30,7 @@ cluster, [10](10-installations.md)) differs, it says so, and the differences are
 | No public endpoints | Blob and Key Vault: public access disabled, private endpoints only. PostgreSQL: VNet-integrated. Grafana: internal load balancer |
 | Default deny | `loki`, `otel`, `otel-agent`, `grafana` namespaces deny everything, then allow the flows below ([policies](../charts/log-platform/templates/)) |
 | Write path | tenant pods → their node's OTel agent only; agents → Kafka :9093 only, and only agents and gateways reach the brokers (Strimzi's NetworkPolicy from the listener's `networkPolicyPeers`); gateway → distributor :3100 only (optional L7: `POST /otlp/v1/logs` only, with ACNS) |
-| Read path | only the gateway → query-frontend; only Grafana → gateway |
+| Read path | only the gateway → query-frontend and → tenant guard → metrics store; only Grafana → gateway; only the ruler writes to the metrics store |
 | Tenants | no tenant namespace can open a connection into `loki` or `grafana` |
 | Egress | Entra ID + Blob only; FQDN-restricted by the hub firewall, or in-cluster by `cilium-fqdn.yaml` with ACNS |
 | In transit | TLS to Blob/Key Vault/PostgreSQL/Entra; HTTPS to Grafana (and Keycloak); **TLS to Kafka** (the collectors verify the brokers against the listener's CA), and Strimzi's own TLS between brokers. Other pod-to-pod traffic inside the cluster is plain HTTP/gRPC. If the policy requires encryption in transit **inside** the cluster, enable WireGuard node-to-node encryption (Azure CNI Cilium/ACNS) or the AKS Istio add-on (mTLS) |
@@ -111,8 +111,14 @@ numbers. `docs/06` shows how to test a pattern.
 - `auth_enabled: true`: every request must name a tenant; there is no default tenant.
 - Rules sidecar **off**. It would watch ConfigMaps in every namespace and needs
   a ClusterRole that reads every Secret.
-- Ruler **off**: tenants alert with Grafana-managed alerts in their own org, so
-  there's no multi-tenant Alertmanager to secure.
+- Ruler **on, for recording rules only** ([ADR 0012](adr/0012-ruler-recorded-metrics.md)):
+  - rules come from `tenants.yaml` through git review, and the ruler API is off;
+  - every result is stamped `tenant="<owner>"`;
+  - no alerting rules, so no multi-tenant Alertmanager to secure. Tenants alert in their own
+    Grafana org, on the recorded series.
+- The recorded metrics are read only through the read gateway's views and the tenant guard,
+  which forces the view's tenants into every query. Only the ruler can write to the store
+  (NetworkPolicy), and nothing can write through the guard.
 - `analytics.reporting_enabled: false`, the collectors export only to Loki, Grafana
   update checks off: no phone-home.
 - Loki's own log level is `warn`, so Loki's logs don't echo tenants' log lines.

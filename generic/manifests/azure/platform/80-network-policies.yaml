@@ -323,11 +323,95 @@ spec:
     - port: 3100
       protocol: TCP
   - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: obs-metrics-proxy
+    ports:
+    - port: 8080
+      protocol: TCP
+  - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: platform-operators
     ports:
     - port: 9977
+      protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ruler-to-metrics-store
+  namespace: loki
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/component: ruler
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: obs-metrics
+    ports:
+    - port: 9090
+      protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: obs-metrics
+  namespace: loki
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: obs-metrics
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: loki
+          app.kubernetes.io/component: ruler
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: obs-metrics-proxy
+    ports:
+    - port: 9090
+      protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: obs-metrics-proxy
+  namespace: loki
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: obs-metrics-proxy
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          gateway.networking.k8s.io/gateway-name: obs-gateway
+    ports:
+    - port: 8080
+      protocol: TCP
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: obs-metrics
+    ports:
+    - port: 9090
       protocol: TCP
 
 ---
@@ -421,6 +505,8 @@ spec:
     - port: 9091
       protocol: TCP
     - port: 8001
+      protocol: TCP
+    - port: 9090
       protocol: TCP
 
 ---

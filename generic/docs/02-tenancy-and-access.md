@@ -12,9 +12,11 @@ in the identity provider (IAM process) or the gateway's config. Those are what t
 | OTel gateway | who can connect | NetworkPolicy: only the agents (ns `otel-agent`) |
 | Loki (write) | who can connect | NetworkPolicy: only the OTel gateway (ns `otel`) reaches the distributors |
 | Loki (read) | `X-Scope-OrgID` | set by the gateway view, never by the caller |
+| Recorded metrics (write) | the rule's owner | the ruler runs each tenant's rules under its ID; the generator stamps `tenant=<owner>` on every rule; rules only from git |
+| Recorded metrics (read) | `X-Obs-Tenant` | set by the gateway view; the tenant guard (prom-label-proxy) forces `tenant=~<it>` on every query |
 | Gateway view | per-view key | kgateway `apiKeyAuth`, key only in Key Vault → Grafana |
 | Grafana org | identity-provider group (Entra object ID, or Keycloak/OIDC group name) | `org_mapping` + `allowed_groups` (generated per provider) |
-| Grafana data source | org membership | one data source per org, users never org Admin |
+| Grafana data source | org membership | one Loki + one recorded-metrics data source per org, users never org Admin |
 
 ## The tenant registry
 
@@ -26,6 +28,7 @@ tenants.yaml ──► rendered/values-tenants.yaml   values for charts/log-plat
                    otelAgent.alternateConfig      namespace regex → tenant (OTTL)
                    otelGateway.alternateConfig    one exporter + persistent queue per tenant
                    loki.loki.runtimeConfig        tier limits + retention per tenant
+                   loki.ruler.directories         recording rules per tenant (tenant=<id> stamped on each)
                    readViews                      → HTTPRoute + key policy + ExternalSecret per view
                    grafanaOrgs                    → orgs + data sources (grafana-sync CronJob)
                    grafanaOrgMapping              → group → org + role, allowed groups (per provider)

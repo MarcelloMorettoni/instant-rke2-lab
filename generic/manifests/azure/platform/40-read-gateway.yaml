@@ -252,10 +252,33 @@ spec:
   - matches:
     - path:
         type: PathPrefix
+        value: /payments/prometheus/api/v1
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Obs-Tenant
+          value: payments
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /api/v1
+    backendRefs:
+    - name: obs-metrics-proxy
+      port: 8080
+    timeouts:
+      request: 120s
+  - matches:
+    - path:
+        type: PathPrefix
         value: /payments/loki/api/v1/push
     - path:
         type: PathPrefix
         value: /payments/loki/api/v1/delete
+    - path:
+        type: PathPrefix
+        value: /payments/prometheus/api/v1/write
     filters:
     - type: ExtensionRef
       extensionRef:
@@ -321,10 +344,33 @@ spec:
   - matches:
     - path:
         type: PathPrefix
+        value: /cards/prometheus/api/v1
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Obs-Tenant
+          value: cards|shared-services
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /api/v1
+    backendRefs:
+    - name: obs-metrics-proxy
+      port: 8080
+    timeouts:
+      request: 120s
+  - matches:
+    - path:
+        type: PathPrefix
         value: /cards/loki/api/v1/push
     - path:
         type: PathPrefix
         value: /cards/loki/api/v1/delete
+    - path:
+        type: PathPrefix
+        value: /cards/prometheus/api/v1/write
     filters:
     - type: ExtensionRef
       extensionRef:
@@ -390,10 +436,33 @@ spec:
   - matches:
     - path:
         type: PathPrefix
+        value: /lending/prometheus/api/v1
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Obs-Tenant
+          value: lending
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /api/v1
+    backendRefs:
+    - name: obs-metrics-proxy
+      port: 8080
+    timeouts:
+      request: 120s
+  - matches:
+    - path:
+        type: PathPrefix
         value: /lending/loki/api/v1/push
     - path:
         type: PathPrefix
         value: /lending/loki/api/v1/delete
+    - path:
+        type: PathPrefix
+        value: /lending/prometheus/api/v1/write
     filters:
     - type: ExtensionRef
       extensionRef:
@@ -459,10 +528,33 @@ spec:
   - matches:
     - path:
         type: PathPrefix
+        value: /shared-services/prometheus/api/v1
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Obs-Tenant
+          value: shared-services
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /api/v1
+    backendRefs:
+    - name: obs-metrics-proxy
+      port: 8080
+    timeouts:
+      request: 120s
+  - matches:
+    - path:
+        type: PathPrefix
         value: /shared-services/loki/api/v1/push
     - path:
         type: PathPrefix
         value: /shared-services/loki/api/v1/delete
+    - path:
+        type: PathPrefix
+        value: /shared-services/prometheus/api/v1/write
     filters:
     - type: ExtensionRef
       extensionRef:
@@ -528,10 +620,33 @@ spec:
   - matches:
     - path:
         type: PathPrefix
+        value: /platform/prometheus/api/v1
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Obs-Tenant
+          value: platform|unassigned|payments|cards|lending|shared-services
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /api/v1
+    backendRefs:
+    - name: obs-metrics-proxy
+      port: 8080
+    timeouts:
+      request: 120s
+  - matches:
+    - path:
+        type: PathPrefix
         value: /platform/loki/api/v1/push
     - path:
         type: PathPrefix
         value: /platform/loki/api/v1/delete
+    - path:
+        type: PathPrefix
+        value: /platform/prometheus/api/v1/write
     filters:
     - type: ExtensionRef
       extensionRef:

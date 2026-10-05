@@ -74,7 +74,7 @@ start() {  # Grafana with the chart's settings; its built-in admin = the automat
 }
 sync() {  # grafana-sync exactly as the CronJob runs it
   GRAFANA_URL="${G}" GF_ADMIN_USER="$(cat "${W}/grafana-admin/admin-user")" \
-    GF_ADMIN_PASSWORD="$(cat "${W}/grafana-admin/admin-password")" python3 "${W}/sync.py" > "${W}/sync.log" 2>&1
+    GF_ADMIN_PASSWORD="$(cat "${W}/grafana-admin/admin-password")" RECORDED_METRICS=true python3 "${W}/sync.py" > "${W}/sync.log" 2>&1
 }
 # Settings as the login page gives them to the browser (window.grafanaBootData,
 # a JS object; the two fields used here are plain JSON inside it).
@@ -135,6 +135,8 @@ t "mock: alice can't read cards' data source"   '[[ "$(curl -s -o /dev/null -w "
 # the org's own data source is checked as the automation account.)
 AUTO="$(cat "${W}/grafana-admin/admin-user"):$(cat "${W}/grafana-admin/admin-password")"
 t "mock: each org's Loki data source → its view" '[[ "$(curl -sf -u "${AUTO}" -H "X-Grafana-Org-Id: ${CARDS_ORG}" "${G}/api/datasources/uid/loki-cards" | python3 -c "import json,sys; print(json.load(sys.stdin)[\"url\"])")" == http://obs-gateway.loki.svc.cluster.local:8080/cards ]]'
+t "mock: each org's recorded-metrics data source → its view's /prometheus, with the view key" '[[ "$(curl -sf -u "${AUTO}" -H "X-Grafana-Org-Id: ${CARDS_ORG}" "${G}/api/datasources/uid/metrics-cards" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[\"type\"], d[\"url\"], d[\"jsonData\"][\"httpHeaderName1\"], d[\"secureJsonFields\"].get(\"httpHeaderValue1\"))")" == "prometheus http://obs-gateway.loki.svc.cluster.local:8080/cards/prometheus X-Api-Key True" ]]'
+t "mock: alice can't read cards' recorded-metrics data source" '[[ "$(curl -s -o /dev/null -w "%{http_code}" -u alice:change-me-now -H "X-Grafana-Org-Id: ${CARDS_ORG}" "${G}/api/datasources/uid/metrics-cards")" =~ ^40[13]$ ]]'
 t "mock: wrong password refused"                '[[ "$(curl -s -o /dev/null -w "%{http_code}" -u alice:wrong "${G}/api/user")" == 401 ]]'
 # People change their passwords; the next grafana-sync run must not undo it.
 curl -sf -o /dev/null -u alice:change-me-now -X PUT -H 'Content-Type: application/json' "${G}/api/user/password" \

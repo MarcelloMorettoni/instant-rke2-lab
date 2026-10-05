@@ -58,6 +58,13 @@ loki:
       enabled: true
       claims:
         - {name: data, accessModes: [ReadWriteOnce], size: 10Gi, storageClass: obs-zonal-ssd}
+  ruler:
+    nodeSelector: null
+    tolerations: null
+    topologySpreadConstraints: null
+    replicas: 1
+    resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1Gi}}
+    persistence: {enabled: true, size: 5Gi, storageClass: obs-zonal-ssd}
   overridesExporter: {nodeSelector: null, tolerations: null}
   rollout_operator: {nodeSelector: null, tolerations: null}
   chunksCache:
@@ -105,3 +112,9 @@ kafka:
 keycloak:
   instances: 1
   resources: {requests: {cpu: 250m, memory: 768Mi}, limits: {memory: 1536Mi}}
+
+# Recorded metrics: 2 small replicas (the ruler writes to both).
+metricsStore:
+  storage: 10Gi
+  resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1Gi}}
+  proxy: {replicas: 1}

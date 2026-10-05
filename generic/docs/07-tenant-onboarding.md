@@ -54,7 +54,9 @@ cluster, and no change needs Terraform.
    gateway exporter and queue, Loki overrides, read view, and org mapping (Grafana restarts
    if that changed). Step 40 runs grafana-sync now instead of at its next schedule.
 6. Tell the team: "Sign in at https://grafana.obs.bank.internal. Your logs are in the
-   *treasury* org, data source *Loki*."
+   *treasury* org, data source *Loki*. Log volumes and error rates per namespace and service
+   are already recorded in *Log metrics (recorded)*: build dashboards and alerts on those.
+   For your own log metrics, ask for a `recordingRules` entry."
 
 A tenant's logs flow from the moment its namespace exists and the OTel agents have the new
 mapping. Logs written **before** the mapping existed went to `unassigned`, and stay
@@ -69,6 +71,7 @@ there. They are not moved.
 | Add a namespace pattern | `namespaces:` | step 30 (chart upgrade): the collectors roll out |
 | Cross-tenant read | `alsoRead:` | step 30 (chart upgrade): the view's header changes |
 | Groups | `groups:` | step 30 (chart upgrade): Grafana restarts, users re-map at next login |
+| Recording rules (dashboard/alert metrics) | `recordingRules:` (record + LogQL expr) | step 30: the ruler loads them within a minute; the series appear in the org's "Log metrics (recorded)" data source |
 
 ## Suspend a tenant
 

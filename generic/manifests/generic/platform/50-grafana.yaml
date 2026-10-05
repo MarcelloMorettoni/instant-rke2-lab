@@ -269,41 +269,47 @@ metadata:
     helm.sh/chart: log-platform-0.1.0
 data:
   grafana-sync.py: "\"\"\"Keep Grafana in step with the tenant registry (runs as a CronJob).\n\nFor every entry in /config/orgs.json:\n  - ensure a Grafana org named after the view (the tenant id, or \"\
-    platform\");\n  - ensure ONE Loki data source (uid loki-<view>) pointing at that view on the\n    read gateway, with the view's current key from Key Vault (/keys/obs-key-<view>).\nLocal people (/config/users.json):\n\
-    \  - the admin (every mode): created once with its INITIAL password, made Grafana\n    server admin and Admin of the platform org (every tenant);\n  - the mock users (auth.provider: disabled): created\
-    \ once with their initial\n    password, each a member of exactly its own org.\nPasswords are set ONLY when a user is created, never reset: a password someone\nchanged in Grafana stays changed. SSO\
-    \ users are mapped to orgs by group at login.\nThis job signs in as the automation account (GF_ADMIN_*), not as the admin, so\nchanging the admin's password never breaks it.\nIdempotent. Never prints\
-    \ a key or a password. Exits non-zero if anything failed.\n\"\"\"\nimport base64\nimport json\nimport os\nimport sys\nimport time\nimport urllib.error\nimport urllib.request\n\nGRAFANA = os.environ.get(\"\
-    GRAFANA_URL\", \"http://grafana.grafana.svc.cluster.local\")\nGATEWAY = os.environ.get(\"READ_GATEWAY\", \"http://obs-gateway.loki.svc.cluster.local:8080\")\nAUTH = \"Basic \" + base64.b64encode(\n\
-    \    f'{os.environ[\"GF_ADMIN_USER\"]}:{os.environ[\"GF_ADMIN_PASSWORD\"]}'.encode()).decode()\n\n\ndef api(method, path, body=None, org=None):\n    req = urllib.request.Request(GRAFANA + path, method=method,\n\
-    \                                 data=json.dumps(body).encode() if body is not None else None)\n    req.add_header(\"Authorization\", AUTH)\n    req.add_header(\"Content-Type\", \"application/json\"\
-    )\n    if org:\n        req.add_header(\"X-Grafana-Org-Id\", str(org))\n    try:\n        with urllib.request.urlopen(req, timeout=30) as r:\n            raw = r.read()\n            return r.status,\
-    \ (json.loads(raw) if raw else {})\n    except urllib.error.HTTPError as e:\n        return e.code, {}\n\n\ndef wait_for_grafana():\n    for _ in range(60):\n        try:\n            if api(\"GET\"\
-    , \"/api/health\")[0] == 200:\n                return\n        except OSError:\n            pass\n        time.sleep(5)\n    sys.exit(\"grafana not reachable\")\n\n\ndef org_id(name):\n    status, body\
-    \ = api(\"GET\", f\"/api/orgs/name/{name}\")\n    return body.get(\"id\") if status == 200 else None\n\n\ndef initial_password(login):\n    for path in (f\"/local/{login}\", \"/breakglass/password\"\
-    ):\n        if os.path.exists(path):\n            return open(path).read().strip()\n    return None\n\n\ndef ensure_user(login, org=None):\n    \"\"\"Create the user if missing (with its initial password).\
-    \ Returns its id.\"\"\"\n    status, body = api(\"GET\", f\"/api/users/lookup?loginOrEmail={login}\")\n    if status == 200:\n        return body.get(\"id\"), False\n    password = initial_password(login)\n\
-    \    if not password:\n        print(f\"user {login}: no initial password (Secret grafana-local-users / grafana-breakglass)\")\n        return None, False\n    body = {\"name\": login, \"login\": login,\
-    \ \"email\": f\"{login}@local\", \"password\": password}\n    if org:\n        body[\"OrgId\"] = org\n    status, body = api(\"POST\", \"/api/admin/users\", body)\n    return body.get(\"id\"), True\n\
-    \n\ndef set_membership(uid, login, org, role, only=False):\n    if api(\"POST\", f\"/api/orgs/{org}/users\", {\"loginOrEmail\": login, \"role\": role})[0] >= 400:\n        api(\"PATCH\", f\"/api/orgs/{org}/users/{uid}\"\
-    , {\"role\": role})\n    api(\"POST\", f\"/api/users/{uid}/using/{org}\")\n    if only and org != 1:\n        api(\"DELETE\", f\"/api/orgs/1/users/{uid}\")\n\n\ndef sync_local_users():\n    \"\"\"The\
-    \ admin and the mock users. Returns the number of failures.\"\"\"\n    try:\n        local = json.load(open(\"/config/users.json\"))\n    except (OSError, ValueError):\n        return 0\n    failed\
-    \ = 0\n    for u in local.get(\"users\") or []:\n        login, org_name, role = u[\"login\"], u[\"org\"], u[\"role\"]\n        org = org_id(org_name)\n        uid, created = ensure_user(login, org)\n\
-    \        if not (uid and org):\n            print(f\"mock user {login}: failed (org {org_name} exists: {bool(org)})\")\n            failed += 1\n            continue\n        set_membership(uid, login,\
-    \ org, role, only=True)\n        print(f\"mock user {login}: {role} in org {org_name}{' (created)' if created else ''}\")\n    admin = local.get(\"admin\")\n    if admin:\n        uid, created = ensure_user(admin)\n\
-    \        platform = org_id(\"platform\")\n        if not (uid and platform):\n            print(f\"admin {admin}: failed\")\n            return failed + 1\n        api(\"PUT\", f\"/api/admin/users/{uid}/permissions\"\
-    , {\"isGrafanaAdmin\": True})\n        set_membership(uid, admin, platform, \"Admin\")\n        print(f\"admin {admin}: server admin, Admin in org platform{' (created)' if created else ''}\")\n    return\
-    \ failed\n\n\ndef main():\n    wait_for_grafana()\n    orgs = json.load(open(\"/config/orgs.json\"))\n    failed = 0\n    for o in orgs:\n        view = o[\"view\"]\n        key_file = f\"/keys/obs-key-{view}\"\
-    \n        if not os.path.exists(key_file):\n            print(f\"org {view}: no key yet (obs-key-{view} in Key Vault? External Secrets synced?)\")\n            failed += 1\n            continue\n  \
-    \      key = open(key_file).read().strip()\n        status, body = api(\"GET\", f\"/api/orgs/name/{view}\")\n        org = body.get(\"id\") if status == 200 else None\n        if not org:\n        \
-    \    status, body = api(\"POST\", \"/api/orgs\", {\"name\": view})\n            org = body.get(\"orgId\")\n        if not org:\n            print(f\"org {view}: cannot create (HTTP {status})\")\n  \
-    \          failed += 1\n            continue\n        ds = {\"name\": \"Loki\", \"uid\": f\"loki-{view}\", \"type\": \"loki\", \"access\": \"proxy\",\n              \"url\": f\"{GATEWAY}/{view}\", \"\
-    isDefault\": True, \"basicAuth\": False,\n              \"jsonData\": {\"httpHeaderName1\": \"X-Api-Key\", \"maxLines\": 5000, \"timeout\": 300},\n              \"secureJsonData\": {\"httpHeaderValue1\"\
-    : key}}\n        exists = api(\"GET\", f\"/api/datasources/uid/loki-{view}\", org=org)[0] == 200\n        status, _ = (api(\"PUT\", f\"/api/datasources/uid/loki-{view}\", ds, org) if exists\n      \
-    \               else api(\"POST\", \"/api/datasources\", ds, org))\n        if status >= 400:\n            print(f\"org {view}: data source update failed (HTTP {status})\")\n            failed += 1\n\
-    \            continue\n        print(f\"org {view} (id {org}): Loki -> {GATEWAY}/{view} [{', '.join(o['tenants'])}]\")\n    failed += sync_local_users()\n    status, main_ds = api(\"GET\", \"/api/datasources\"\
-    , org=1)\n    if status == 200 and main_ds:\n        print(f\"WARNING: Main Org has {len(main_ds)} data source(s); unmapped logins land there\")\n    sys.exit(1 if failed else 0)\n\n\nif __name__ ==\
-    \ \"__main__\":\n    main()\n"
+    platform\");\n  - ensure ONE Loki data source (uid loki-<view>) pointing at that view on the\n    read gateway, with the view's current key (/keys/obs-key-<view>);\n  - with RECORDED_METRICS=true, also\
+    \ ONE Prometheus data source (uid metrics-<view>)\n    for the ruler's recorded metrics, through the same view and key\n    (<view>/prometheus: the gateway's tenant guard limits it to the view's tenants).\n\
+    Local people (/config/users.json):\n  - the admin (every mode): created once with its INITIAL password, made Grafana\n    server admin and Admin of the platform org (every tenant);\n  - the mock users\
+    \ (auth.provider: disabled): created once with their initial\n    password, each a member of exactly its own org.\nPasswords are set ONLY when a user is created, never reset: a password someone\nchanged\
+    \ in Grafana stays changed. SSO users are mapped to orgs by group at login.\nThis job signs in as the automation account (GF_ADMIN_*), not as the admin, so\nchanging the admin's password never breaks\
+    \ it.\nIdempotent. Never prints a key or a password. Exits non-zero if anything failed.\n\"\"\"\nimport base64\nimport json\nimport os\nimport sys\nimport time\nimport urllib.error\nimport urllib.request\n\
+    \nGRAFANA = os.environ.get(\"GRAFANA_URL\", \"http://grafana.grafana.svc.cluster.local\")\nGATEWAY = os.environ.get(\"READ_GATEWAY\", \"http://obs-gateway.loki.svc.cluster.local:8080\")\nRECORDED_METRICS\
+    \ = os.environ.get(\"RECORDED_METRICS\", \"false\").lower() == \"true\"\nAUTH = \"Basic \" + base64.b64encode(\n    f'{os.environ[\"GF_ADMIN_USER\"]}:{os.environ[\"GF_ADMIN_PASSWORD\"]}'.encode()).decode()\n\
+    \n\ndef api(method, path, body=None, org=None):\n    req = urllib.request.Request(GRAFANA + path, method=method,\n                                 data=json.dumps(body).encode() if body is not None\
+    \ else None)\n    req.add_header(\"Authorization\", AUTH)\n    req.add_header(\"Content-Type\", \"application/json\")\n    if org:\n        req.add_header(\"X-Grafana-Org-Id\", str(org))\n    try:\n\
+    \        with urllib.request.urlopen(req, timeout=30) as r:\n            raw = r.read()\n            return r.status, (json.loads(raw) if raw else {})\n    except urllib.error.HTTPError as e:\n    \
+    \    return e.code, {}\n\n\ndef wait_for_grafana():\n    for _ in range(60):\n        try:\n            if api(\"GET\", \"/api/health\")[0] == 200:\n                return\n        except OSError:\n\
+    \            pass\n        time.sleep(5)\n    sys.exit(\"grafana not reachable\")\n\n\ndef org_id(name):\n    status, body = api(\"GET\", f\"/api/orgs/name/{name}\")\n    return body.get(\"id\") if\
+    \ status == 200 else None\n\n\ndef initial_password(login):\n    for path in (f\"/local/{login}\", \"/breakglass/password\"):\n        if os.path.exists(path):\n            return open(path).read().strip()\n\
+    \    return None\n\n\ndef ensure_user(login, org=None):\n    \"\"\"Create the user if missing (with its initial password). Returns its id.\"\"\"\n    status, body = api(\"GET\", f\"/api/users/lookup?loginOrEmail={login}\"\
+    )\n    if status == 200:\n        return body.get(\"id\"), False\n    password = initial_password(login)\n    if not password:\n        print(f\"user {login}: no initial password (Secret grafana-local-users\
+    \ / grafana-breakglass)\")\n        return None, False\n    body = {\"name\": login, \"login\": login, \"email\": f\"{login}@local\", \"password\": password}\n    if org:\n        body[\"OrgId\"] =\
+    \ org\n    status, body = api(\"POST\", \"/api/admin/users\", body)\n    return body.get(\"id\"), True\n\n\ndef set_membership(uid, login, org, role, only=False):\n    if api(\"POST\", f\"/api/orgs/{org}/users\"\
+    , {\"loginOrEmail\": login, \"role\": role})[0] >= 400:\n        api(\"PATCH\", f\"/api/orgs/{org}/users/{uid}\", {\"role\": role})\n    api(\"POST\", f\"/api/users/{uid}/using/{org}\")\n    if only\
+    \ and org != 1:\n        api(\"DELETE\", f\"/api/orgs/1/users/{uid}\")\n\n\ndef sync_local_users():\n    \"\"\"The admin and the mock users. Returns the number of failures.\"\"\"\n    try:\n       \
+    \ local = json.load(open(\"/config/users.json\"))\n    except (OSError, ValueError):\n        return 0\n    failed = 0\n    for u in local.get(\"users\") or []:\n        login, org_name, role = u[\"\
+    login\"], u[\"org\"], u[\"role\"]\n        org = org_id(org_name)\n        uid, created = ensure_user(login, org)\n        if not (uid and org):\n            print(f\"mock user {login}: failed (org\
+    \ {org_name} exists: {bool(org)})\")\n            failed += 1\n            continue\n        set_membership(uid, login, org, role, only=True)\n        print(f\"mock user {login}: {role} in org {org_name}{'\
+    \ (created)' if created else ''}\")\n    admin = local.get(\"admin\")\n    if admin:\n        uid, created = ensure_user(admin)\n        platform = org_id(\"platform\")\n        if not (uid and platform):\n\
+    \            print(f\"admin {admin}: failed\")\n            return failed + 1\n        api(\"PUT\", f\"/api/admin/users/{uid}/permissions\", {\"isGrafanaAdmin\": True})\n        set_membership(uid,\
+    \ admin, platform, \"Admin\")\n        print(f\"admin {admin}: server admin, Admin in org platform{' (created)' if created else ''}\")\n    return failed\n\n\ndef main():\n    wait_for_grafana()\n \
+    \   orgs = json.load(open(\"/config/orgs.json\"))\n    failed = 0\n    for o in orgs:\n        view = o[\"view\"]\n        key_file = f\"/keys/obs-key-{view}\"\n        if not os.path.exists(key_file):\n\
+    \            print(f\"org {view}: no key yet (obs-key-{view} in Key Vault? External Secrets synced?)\")\n            failed += 1\n            continue\n        key = open(key_file).read().strip()\n\
+    \        status, body = api(\"GET\", f\"/api/orgs/name/{view}\")\n        org = body.get(\"id\") if status == 200 else None\n        if not org:\n            status, body = api(\"POST\", \"/api/orgs\"\
+    , {\"name\": view})\n            org = body.get(\"orgId\")\n        if not org:\n            print(f\"org {view}: cannot create (HTTP {status})\")\n            failed += 1\n            continue\n  \
+    \      sources = [{\"name\": \"Loki\", \"uid\": f\"loki-{view}\", \"type\": \"loki\", \"access\": \"proxy\",\n                    \"url\": f\"{GATEWAY}/{view}\", \"isDefault\": True, \"basicAuth\":\
+    \ False,\n                    \"jsonData\": {\"httpHeaderName1\": \"X-Api-Key\", \"maxLines\": 5000, \"timeout\": 300},\n                    \"secureJsonData\": {\"httpHeaderValue1\": key}}]\n     \
+    \   if RECORDED_METRICS:\n            sources.append({\"name\": \"Log metrics (recorded)\", \"uid\": f\"metrics-{view}\", \"type\": \"prometheus\",\n                            \"access\": \"proxy\"\
+    , \"url\": f\"{GATEWAY}/{view}/prometheus\", \"isDefault\": False,\n                            \"basicAuth\": False,\n                            \"jsonData\": {\"httpHeaderName1\": \"X-Api-Key\",\
+    \ \"httpMethod\": \"POST\",\n                                         \"timeInterval\": \"1m\", \"prometheusType\": \"Prometheus\",\n                                         \"timeout\": 120},\n   \
+    \                         \"secureJsonData\": {\"httpHeaderValue1\": key}})\n        bad = False\n        for ds in sources:\n            exists = api(\"GET\", f\"/api/datasources/uid/{ds['uid']}\"\
+    , org=org)[0] == 200\n            status, _ = (api(\"PUT\", f\"/api/datasources/uid/{ds['uid']}\", ds, org) if exists\n                         else api(\"POST\", \"/api/datasources\", ds, org))\n \
+    \           if status >= 400:\n                print(f\"org {view}: data source {ds['name']} update failed (HTTP {status})\")\n                bad = True\n        if bad:\n            failed += 1\n\
+    \            continue\n        print(f\"org {view} (id {org}): {' + '.join(d['name'] for d in sources)} -> {GATEWAY}/{view} \"\n              f\"[{', '.join(o['tenants'])}]\")\n    failed += sync_local_users()\n\
+    \    status, main_ds = api(\"GET\", \"/api/datasources\", org=1)\n    if status == 200 and main_ds:\n        print(f\"WARNING: Main Org has {len(main_ds)} data source(s); unmapped logins land there\"\
+    )\n    sys.exit(1 if failed else 0)\n\n\nif __name__ == \"__main__\":\n    main()\n"
   orgs.json: '[{"org":"platform","tenants":["platform","unassigned","payments","cards","lending","shared-services"],"title":"Platform","view":"platform"},{"org":"payments","tenants":["payments"],"title":"Payments","view":"payments"},{"org":"cards","tenants":["cards","shared-services"],"title":"Cards","view":"cards"},{"org":"lending","tenants":["lending"],"title":"Lending","view":"lending"},{"org":"shared-services","tenants":["shared-services"],"title":"Shared
     services","view":"shared-services"}]'
   users.json: '{"admin":"admin","users":[]}'
@@ -555,7 +561,7 @@ spec:
           labels:
             app.kubernetes.io/name: grafana-sync
           annotations:
-            checksum/config: 4c7e3871c46b5adb5b71592342ff6761dcc3a2efa23ce6d3ccb3cc9d2fe79abe
+            checksum/config: 612ccdcff75477ef9a0d12d5099ff6c80f0b98ed74b7ab236ff4f1c2820202e3
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
@@ -586,6 +592,8 @@ spec:
               value: http://grafana.grafana.svc.cluster.local
             - name: READ_GATEWAY
               value: http://obs-gateway.loki.svc.cluster.local:8080
+            - name: RECORDED_METRICS
+              value: 'true'
             - name: GF_ADMIN_USER
               valueFrom:
                 secretKeyRef:
