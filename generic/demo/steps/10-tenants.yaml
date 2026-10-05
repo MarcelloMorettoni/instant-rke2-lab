@@ -1,7 +1,7 @@
 # Step 10: The tenants: tenant-a, tenant-b, tenant-c, each with an app that logs
 # Their logs reach the platform with nothing configured in their namespaces.
 #
-#   kubectl apply -n observability -f 10-tenants.yaml
+#   kubectl apply -f 10-tenants.yaml
 # wait: kubectl -n tenant-a rollout status deploy/payments --timeout=5m
 # wait: kubectl -n tenant-b rollout status deploy/orders --timeout=5m
 # wait: kubectl -n tenant-c rollout status deploy/inventory --timeout=5m
@@ -840,3 +840,123 @@ spec:
       volumes:
         - name: code
           configMap: {name: emitter}
+---
+# Source: log-flow-demo/templates/10-tenants-policies.yaml
+# Step 10, network, tenant tenant-a: its app sends OTLP to the agent on its
+# node (stdout needs no network: the agent reads it from the node's disk), and
+# accepts the demonstrator's "send a traced line" / "generate workload" calls.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: payments
+  namespace: tenant-a
+  labels:
+    app.kubernetes.io/part-of: log-flow-demo
+    app.kubernetes.io/managed-by: Helm
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/component: emitter}
+  ingress:
+    - fromEntities: [host]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "log-flow-demonstrator"
+      toPorts:
+        - ports:
+            - {port: "8080", protocol: TCP}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: "kube-dns"
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "otel-agent"
+      toPorts:
+        - ports:
+            - {port: "4317", protocol: TCP}
+            - {port: "4318", protocol: TCP}
+---
+# Source: log-flow-demo/templates/10-tenants-policies.yaml
+# Step 10, network, tenant tenant-b: its app sends OTLP to the agent on its
+# node (stdout needs no network: the agent reads it from the node's disk), and
+# accepts the demonstrator's "send a traced line" / "generate workload" calls.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: orders
+  namespace: tenant-b
+  labels:
+    app.kubernetes.io/part-of: log-flow-demo
+    app.kubernetes.io/managed-by: Helm
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/component: emitter}
+  ingress:
+    - fromEntities: [host]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "log-flow-demonstrator"
+      toPorts:
+        - ports:
+            - {port: "8080", protocol: TCP}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: "kube-dns"
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "otel-agent"
+      toPorts:
+        - ports:
+            - {port: "4317", protocol: TCP}
+            - {port: "4318", protocol: TCP}
+---
+# Source: log-flow-demo/templates/10-tenants-policies.yaml
+# Step 10, network, tenant tenant-c: its app sends OTLP to the agent on its
+# node (stdout needs no network: the agent reads it from the node's disk), and
+# accepts the demonstrator's "send a traced line" / "generate workload" calls.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: inventory
+  namespace: tenant-c
+  labels:
+    app.kubernetes.io/part-of: log-flow-demo
+    app.kubernetes.io/managed-by: Helm
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/component: emitter}
+  ingress:
+    - fromEntities: [host]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "log-flow-demonstrator"
+      toPorts:
+        - ports:
+            - {port: "8080", protocol: TCP}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: "kube-dns"
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: "otel-agent"
+      toPorts:
+        - ports:
+            - {port: "4317", protocol: TCP}
+            - {port: "4318", protocol: TCP}

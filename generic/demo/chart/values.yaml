@@ -7,9 +7,14 @@
 #
 # Or apply it step by step: generic/demo/steps/ (README). Same objects.
 #
-# NOT for production: plain Kafka listener, no NetworkPolicies, derived keys,
-# local passwords, one replica of most things. The production charts are
-# generic/charts/ (docs/09).
+# The cluster must already run:
+#   - kgateway (with the Gateway API CRDs): the demo adds a Gateway, routes and
+#     policies for it, nothing else (readGateway below);
+#   - Cilium. With default deny, every flow the demo needs is allowed by a
+#     CiliumNetworkPolicy shipped with the component (network below).
+#
+# NOT for production: plain Kafka listener, derived keys, local passwords, one
+# replica of most things. The production charts are generic/charts/ (docs/09).
 
 global:
   # One registry for the images this chart and Loki/Grafana read directly
@@ -78,17 +83,33 @@ metricsStore:
 demonstrator:
   enabled: true
 
+# The read gateway runs on the cluster's kgateway (already installed).
+readGateway:
+  gatewayClassName: kgateway
+  controllerNamespace: kgateway-system      # where the kgateway controller runs
+  controllerLabels: {kgateway: kgateway}    # its pods' labels (they serve xDS on :9977)
+
+# Cilium, default deny: a CiliumNetworkPolicy for every flow, shipped in the
+# same step as the component it opens (so each step works as it's applied).
+network:
+  ciliumPolicies: true
+  # Also allow the demo's Envoy proxies INTO the kgateway controller (a policy
+  # in readGateway.controllerNamespace). false if your policies already do.
+  controllerIngressPolicy: true
+  dns:                                      # where pods resolve names
+    namespace: kube-system
+    labels: {k8s-app: kube-dns}
+    cidrs: []                               # NodeLocal DNSCache: e.g. [169.254.20.10/32]
+  # The API server calls the rollout-operator's webhooks (:8443). A managed
+  # control plane may reach the pod as `world`, not `kube-apiserver`.
+  webhookFromEntities: [kube-apiserver, remote-node, host, world]
+
 # ------------------------------------------------------------------ subcharts
 strimzi-kafka-operator:
   watchNamespaces: []           # [] = the release namespace only
   resources:
     requests: {cpu: 100m, memory: 384Mi}
     limits: {memory: 768Mi}
-
-kgateway:
-  controller:
-    resources:
-      requests: {cpu: 50m, memory: 128Mi}
 
 grafana:
   fullnameOverride: grafana

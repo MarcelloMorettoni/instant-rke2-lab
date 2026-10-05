@@ -3,9 +3,11 @@ name: log-flow-demo
 description: >-
   The multi-tenant log platform in one namespace (observability), for
   learning: Kafka (Strimzi), OpenTelemetry agent and gateway, distributed Loki
-  with index gateways and a ruler, the read gateway (kgateway), Grafana with
-  local users, three demo tenants, and a web demonstrator that follows one log
-  line through every component. Not for production (generic/charts/ is).
+  with index gateways and a ruler, the read gateway (on the cluster's existing
+  kgateway), Grafana with local users, three demo tenants, and a web
+  demonstrator that follows one log line through every component. Ships a
+  CiliumNetworkPolicy for every flow, for clusters that deny by default.
+  Not for production (generic/charts/ is).
 type: application
 version: 0.1.0
 appVersion: "1.0"
@@ -15,9 +17,6 @@ dependencies:
   - name: strimzi-kafka-operator
     version: 1.2.0
     repository: https://strimzi.io/charts/
-  - name: kgateway
-    version: v2.4.5
-    repository: oci://cr.kgateway.dev/kgateway-dev/charts
   - name: loki
     version: 7.3.0
     repository: https://grafana.github.io/helm-charts

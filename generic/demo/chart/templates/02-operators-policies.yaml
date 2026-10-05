@@ -1,0 +1,20 @@
+{{- if .Values.network.ciliumPolicies }}
+{{- $ns := .Release.Namespace }}
+# Step 2, network: the Strimzi operator talks to the API server and to the
+# Kafka cluster it runs (its nodes, the entity operator, the bridge).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: strimzi-cluster-operator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {name: strimzi-cluster-operator}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.toAPI" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "strimzi.io/cluster" "logs")) | nindent 4 }}
+{{- end }}

@@ -67,3 +67,66 @@ spec:
     - name: local-users
       secret: {secretName: grafana-local-users}
 {{- end }}
+
+{{/* ------------------------------------------------ Cilium (default deny) */}}
+{{/* A peer: (dict "ns" <namespace> "labels" <dict>) → one endpoint selector. */}}
+{{- define "demo.peer" -}}
+- matchLabels:
+    k8s:io.kubernetes.pod.namespace: {{ .ns }}
+    {{- range $k, $v := .labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+{{- end }}
+
+{{/* An ingress rule: (dict "ns" "labels" "ports") — no ports = every port. */}}
+{{- define "demo.from" -}}
+- fromEndpoints:
+    {{- include "demo.peer" . | nindent 4 }}
+{{- with .ports }}
+  toPorts:
+    - ports:
+        {{- range . }}
+        - {port: {{ . | quote }}, protocol: TCP}
+        {{- end }}
+{{- end }}
+{{- end }}
+
+{{/* An egress rule: (dict "ns" "labels" "ports") — no ports = every port. */}}
+{{- define "demo.to" -}}
+- toEndpoints:
+    {{- include "demo.peer" . | nindent 4 }}
+{{- with .ports }}
+  toPorts:
+    - ports:
+        {{- range . }}
+        - {port: {{ . | quote }}, protocol: TCP}
+        {{- end }}
+{{- end }}
+{{- end }}
+
+{{/* Kubelet probes come from the pod's own node. */}}
+{{- define "demo.fromNode" -}}
+- fromEntities: [host]
+{{- end }}
+
+{{/* DNS lookups. */}}
+{{- define "demo.toDNS" -}}
+- toEndpoints:
+    {{- include "demo.peer" (dict "ns" .Values.network.dns.namespace "labels" .Values.network.dns.labels) | nindent 4 }}
+  toPorts:
+    - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+{{- with .Values.network.dns.cidrs }}
+- toCIDR: {{ toJson . }}
+  toPorts:
+    - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+{{- end }}
+{{- end }}
+
+{{- define "demo.toAPI" -}}
+- toEntities: [kube-apiserver]
+{{- end }}
+
+{{/* The demonstrator reads this pod's metrics/API on these ports. (list ctx ports) */}}
+{{- define "demo.fromDemonstrator" -}}
+{{- include "demo.from" (dict "ns" (index . 0).Release.Namespace "labels" (dict "app.kubernetes.io/name" "log-flow-demonstrator") "ports" (index . 1)) }}
+{{- end }}

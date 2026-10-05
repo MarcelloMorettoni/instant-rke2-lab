@@ -190,7 +190,7 @@
 
 <section class="card">
   <h2><span class="n">6</span>Demo vs. production</h2>
-  <p class="lead" style="margin:0">Same components and data path as the production charts (<code>generic/charts</code>), at toy size: one namespace, no NetworkPolicies, Kafka without TLS/SCRAM, derived keys, local Grafana users, SeaweedFS instead of Blob/S3, one or two replicas of most things. The production version adds per-namespace isolation, TLS, Key Vault or generated secrets, SSO, alerts and sizing (docs/01, docs/10).</p>
+  <p class="lead" style="margin:0">Same components and data path as the production charts (<code>generic/charts</code>), at toy size: one namespace, Kafka without TLS/SCRAM, derived keys, local Grafana users, SeaweedFS instead of Blob/S3, one or two replicas of most things. Like production, every flow is allowed explicitly (here: CiliumNetworkPolicies on a default-deny cluster) and the read gateway runs on kgateway. The production version adds per-component namespaces, TLS, Key Vault or generated secrets, SSO, alerts and sizing (docs/01, docs/10).</p>
 </section>
 </main>
 

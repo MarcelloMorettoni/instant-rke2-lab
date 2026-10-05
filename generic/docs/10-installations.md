@@ -102,7 +102,8 @@ Both installations pass the same checks (`scripts/validate.sh`, `scripts/pipelin
 
 ## Try it first: the demo
 
-[`demo/`](../demo/README.md) runs the same backend at toy size in one namespace on any test
-cluster, with three tenants and a web demonstrator. It generates workload per tenant and
+[`demo/`](../demo/README.md) runs the same backend at toy size in one namespace on a test
+cluster that already has kgateway and Cilium (default deny; the demo ships its policies),
+with three tenant namespaces and a web demonstrator. It generates workload per tenant and
 follows a log line through Kafka, the collectors, the Loki ring, the query path, object
 storage and the ruler. It is meant for learning the design, not as a third installation.

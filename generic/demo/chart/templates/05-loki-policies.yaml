@@ -1,0 +1,74 @@
+{{- if .Values.network.ciliumPolicies }}
+{{- $ns := .Release.Namespace }}
+{{- $loki := dict "app.kubernetes.io/name" "loki" }}
+# Step 5, network. Loki's parts (and its memcached caches) talk to each other
+# on any port: HTTP :3100, gRPC :9095, memberlist :7946. Out: object storage,
+# and the ruler's results to the metrics store. The demonstrator reads :3100.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loki
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: loki}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" $loki) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "rollout-operator") "ports" (list 3100)) | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list . (list 3100)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" $loki) | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "seaweedfs") "ports" (list 8333)) | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "obs-metrics") "ports" (list 9090)) | nindent 4 }}
+---
+# THE write path into Loki: only the OTel gateways may push, and only to the distributors.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loki-distributor-from-otel-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: distributor}
+  ingress:
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "otel-gateway") "ports" (list 3100)) | nindent 4 }}
+---
+# THE read path into Loki: only the read gateway's Envoy pods reach the query frontends.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loki-query-frontend-from-read-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: loki, app.kubernetes.io/component: query-frontend}
+  ingress:
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "gateway.networking.k8s.io/gateway-name" "obs-gateway") "ports" (list 3100)) | nindent 4 }}
+---
+# Loki's rollout-operator: upgrades the ingesters zone by zone. The API server
+# calls its webhooks (:8443): a managed control plane may arrive as `world`.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rollout-operator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: rollout-operator}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    - fromEntities: {{ toJson .Values.network.webhookFromEntities }}
+      toPorts:
+        - ports:
+            - {port: "8443", protocol: TCP}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.toAPI" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" $loki "ports" (list 3100)) | nindent 4 }}
+{{- end }}

@@ -8,7 +8,8 @@
 #   generic/demo/walkthrough.sh --context <kube-context> --delete      remove the demo
 #
 # --context is required, and must be the current kubectl context: the script
-# never guesses which cluster to change.
+# never guesses which cluster to change. The cluster must already run kgateway
+# (Gateway API CRDs included) and Cilium; the script checks before it starts.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 STEPS="${DIR}/steps"
@@ -33,25 +34,42 @@ if (( DELETE )); then
   echo "${B}Removing the demo from ${CONTEXT}${N}"
   files=("${STEPS}"/[0-9][0-9]-*.yaml)
   for (( i=${#files[@]}-1; i>=0; i-- )); do
-    k delete -n "${NS}" -f "${files[i]}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    k delete -f "${files[i]}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   done
   k -n "${NS}" delete kafka --all --ignore-not-found >/dev/null 2>&1 || true
   k -n "${NS}" delete pvc --all --ignore-not-found --wait=false || true
   k delete namespace "${NS}" tenant-a tenant-b tenant-c --ignore-not-found --wait=false || true
-  echo "CRDs are left in place (other things may use them). To remove them too:"
+  k delete ciliumnetworkpolicy -A -l app.kubernetes.io/part-of=log-flow-demo --ignore-not-found >/dev/null 2>&1 || true
+  echo "Strimzi's CRDs are left in place (other things may use them). To remove them too:"
   echo "  kubectl delete -f ${STEPS}/00-crds/"
   exit 0
 fi
 
 pause() { (( PAUSE )) && read -r -p "${Y}Enter to apply it…${N}" _ || true; }
 
+# What the demo expects to find on the cluster.
+missing=()
+for crd in gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io \
+           gatewayparameters.gateway.kgateway.dev trafficpolicies.gateway.kgateway.dev \
+           ciliumnetworkpolicies.cilium.io; do
+  k get crd "${crd}" >/dev/null 2>&1 || missing+=("${crd}")
+done
+k get gatewayclass "$(sed -n 's/^  gatewayClassName: //p' "${DIR}/chart/values.yaml")" >/dev/null 2>&1 \
+  || missing+=("GatewayClass $(sed -n 's/^  gatewayClassName: //p' "${DIR}/chart/values.yaml")")
+if (( ${#missing[@]} )); then
+  echo "${R}This cluster is missing what the demo builds on (kgateway, Cilium):${N}" >&2
+  printf '  %s\n' "${missing[@]}" >&2
+  exit 1
+fi
+
 if (( 10#${FROM} == 0 )); then
-  echo; echo "${B}Step 00: CRDs (Gateway API, kgateway, Strimzi)${N}"
-  echo "The object types the operators understand: Kafka, KafkaTopic, Gateway, HTTPRoute, …"
+  echo; echo "${B}Step 00: Strimzi's CRDs${N}"
+  echo "The object types Strimzi understands: Kafka, KafkaNodePool, KafkaTopic, KafkaBridge, …"
+  echo "(kgateway and the Gateway API CRDs are already on the cluster.)"
   pause
   k apply --server-side -f "${STEPS}/00-crds/" >/dev/null
   k wait --for=condition=Established crd/kafkas.kafka.strimzi.io crd/kafkabridges.kafka.strimzi.io \
-    crd/gateways.gateway.networking.k8s.io crd/trafficpolicies.gateway.kgateway.dev --timeout=2m >/dev/null
+    crd/kafkatopics.kafka.strimzi.io crd/kafkanodepools.kafka.strimzi.io --timeout=2m >/dev/null
   echo "${G}✓ CRDs established${N}"
 fi
 
@@ -61,7 +79,7 @@ for f in "${STEPS}"/[0-9][0-9]-*.yaml; do
   echo
   sed -n 's/^# \(Step .*\)$/'"${B}"'\1'"${N}"'/p; 2s/^# //p' "${f}" | head -2
   pause
-  k apply -n "${NS}" -f "${f}" >/dev/null
+  k apply -f "${f}" >/dev/null
   while read -r cmd; do
     echo "  waiting: ${cmd#kubectl }"
     # shellcheck disable=SC2086

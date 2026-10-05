@@ -1,0 +1,32 @@
+{{- if and .Values.network.ciliumPolicies .Values.demonstrator.enabled }}
+{{- $ns := .Release.Namespace }}
+{{- $tenantNs := list }}
+{{- range .Values.tenants }}{{- $tenantNs = append $tenantNs .id }}{{- end }}
+# Step 9, network. The demonstrator looks at everything: the API server (pods,
+# nodes), every pod here (metrics, the Kafka bridge, the read gateway, S3), and
+# the tenants' apps (to send a traced line or a burst). Each of those allows it
+# in on its own ports, in its own step. People reach it with port-forward.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: log-flow-demonstrator
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: log-flow-demonstrator}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.toAPI" . | nindent 4 }}
+    - toEndpoints:
+        - matchLabels: {k8s:io.kubernetes.pod.namespace: {{ $ns }}}
+    - toEndpoints:
+        - matchExpressions:
+            - {key: k8s:io.kubernetes.pod.namespace, operator: In, values: {{ toJson $tenantNs }}}
+            - {key: app.kubernetes.io/component, operator: In, values: [emitter]}
+      toPorts:
+        - ports:
+            - {port: "8080", protocol: TCP}
+{{- end }}

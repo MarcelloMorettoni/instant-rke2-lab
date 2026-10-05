@@ -1,0 +1,49 @@
+{{- if .Values.network.ciliumPolicies }}
+{{- $ns := .Release.Namespace }}
+{{- $kafka := dict "strimzi.io/cluster" "logs" "strimzi.io/kind" "Kafka" }}
+# Step 4, network. The Kafka nodes, the entity operator and the exporter
+# (strimzi.io/kind: Kafka) talk among themselves on any port (KRaft :9090,
+# replication :9091, agent :8443). Clients use the plain listener :9092:
+# the OTel agents (produce), the OTel gateways (consume), the bridge.
+# Strimzi adds its own ingress NetworkPolicies on top; these add the rest.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- toYaml $kafka | nindent 6 }}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" $kafka) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "name" "strimzi-cluster-operator")) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "otel-agent") "ports" (list 9092)) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "otel-gateway") "ports" (list 9092)) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "strimzi.io/cluster" "logs" "strimzi.io/kind" "KafkaBridge") "ports" (list 9092)) | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list . (list 9404)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.toAPI" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" $kafka) | nindent 4 }}
+---
+# The HTTP bridge: the demonstrator reads the topic through it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-bridge
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {strimzi.io/cluster: logs, strimzi.io/kind: KafkaBridge}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "name" "strimzi-cluster-operator")) | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list . (list 8080)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" $kafka "ports" (list 9092)) | nindent 4 }}
+{{- end }}

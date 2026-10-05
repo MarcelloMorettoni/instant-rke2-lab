@@ -53,7 +53,7 @@ and [ADR 0010](docs/adr/0010-kafka-in-cluster.md).
 | [`environments/`](environments/) | One folder per cluster: **`azure/`** and **`generic/`** to start from; `values.yaml` (incl. **`global.imageRegistry`**), `cluster.env`, overlays (`test-cluster`, `no-zones`, `no-kafka`, `s3-storage`) |
 | [`manifests/`](manifests/) | **Plain YAML per component** for each installation, rendered from the charts (`scripts/render-manifests.sh`), for review |
 | [`examples/`](examples/) | The Percona PostgreSQL cluster the generic installation expects |
-| [`demo/`](demo/README.md) | **A learning demo**: the whole platform in one namespace (`observability`), three tenants that log, and a web demonstrator that generates workload and follows a log line through every component. Helm chart or step-by-step manifests |
+| [`demo/`](demo/README.md) | **A learning demo** for a cluster that already runs kgateway and Cilium (default deny): the whole platform in one namespace (`observability`), three tenant namespaces that log, a CiliumNetworkPolicy for every flow, and a web demonstrator that generates workload and follows a log line through every component. Helm chart or step-by-step manifests |
 | [`collector/`](collector/) | OTel agent + gateway config templates (the generator adds the tenants) |
 | [`alerts/`](alerts/) | Alert rules (Prometheus format → Azure managed Prometheus via Terraform, or a PrometheusRule from the chart) |
 | [`infra/terraform/`](infra/terraform/) | Azure: Blob, Key Vault + CMKs, identities, zonal node pools, PostgreSQL, alerts, diagnostics |

@@ -1,0 +1,25 @@
+{{- if and .Values.network.ciliumPolicies .Values.deployTenants }}
+{{- $ns := .Release.Namespace }}
+{{- range $t := .Values.tenants }}
+---
+# Step 10, network, tenant {{ $t.id }}: its app sends OTLP to the agent on its
+# node (stdout needs no network: the agent reads it from the node's disk), and
+# accepts the demonstrator's "send a traced line" / "generate workload" calls.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ $t.app }}
+  namespace: {{ $t.id }}
+  labels:
+    {{- include "demo.labels" $ | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/component: emitter}
+  ingress:
+    {{- include "demo.fromNode" $ | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list $ (list 8080)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" $ | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "otel-agent") "ports" (list 4317 4318)) | nindent 4 }}
+{{- end }}
+{{- end }}

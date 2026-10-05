@@ -1,0 +1,36 @@
+{{- if .Values.network.ciliumPolicies }}
+{{- $ns := .Release.Namespace }}
+# Step 3, network: S3 (:8333) for Loki, the bucket Job and the demonstrator.
+# SeaweedFS's own parts (master, volume, filer) talk to each other in the pod.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: seaweedfs
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: seaweedfs}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "seaweedfs")) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "loki") "ports" (list 8333)) | nindent 4 }}
+    {{- include "demo.from" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "seaweedfs-buckets") "ports" (list 8333)) | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list . (list 8333)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "seaweedfs")) | nindent 4 }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: seaweedfs-buckets
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: seaweedfs-buckets}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "seaweedfs") "ports" (list 8333)) | nindent 4 }}
+{{- end }}

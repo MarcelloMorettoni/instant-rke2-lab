@@ -1,0 +1,50 @@
+{{- if .Values.network.ciliumPolicies }}
+{{- $ns := .Release.Namespace }}
+{{- $tenantNs := list }}
+{{- range .Values.tenants }}{{- $tenantNs = append $tenantNs .id }}{{- end }}
+# Step 6, network.
+#   tenant pods ──OTLP :4317/:4318──► the agent on their node
+#   agent ──► API server (who is this pod?), Kafka :9092 (produce)
+#   gateway ──► Kafka :9092 (consume), Loki distributors :3100 (push)
+#   the demonstrator reads both on :8888 (their metrics)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: otel-agent
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: otel-agent}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    - fromEndpoints:
+        - matchExpressions:
+            - {key: k8s:io.kubernetes.pod.namespace, operator: In, values: {{ toJson $tenantNs }}}
+      toPorts:
+        - ports:
+            - {port: "4317", protocol: TCP}
+            - {port: "4318", protocol: TCP}
+    {{- include "demo.fromDemonstrator" (list . (list 8888)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.toAPI" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "strimzi.io/cluster" "logs" "strimzi.io/kind" "Kafka") "ports" (list 9092)) | nindent 4 }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: otel-gateway
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {app.kubernetes.io/name: otel-gateway}
+  ingress:
+    {{- include "demo.fromNode" . | nindent 4 }}
+    {{- include "demo.fromDemonstrator" (list . (list 8888)) | nindent 4 }}
+  egress:
+    {{- include "demo.toDNS" . | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "strimzi.io/cluster" "logs" "strimzi.io/kind" "Kafka") "ports" (list 9092)) | nindent 4 }}
+    {{- include "demo.to" (dict "ns" $ns "labels" (dict "app.kubernetes.io/name" "loki" "app.kubernetes.io/component" "distributor") "ports" (list 3100)) | nindent 4 }}
+{{- end }}

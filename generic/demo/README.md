@@ -16,8 +16,12 @@ Loki ruler ─► metrics store ◄─ tenant guard ◄─ read gateway
   - the read gateway has the same views and keys;
   - Loki is distributed, with zone-aware ingesters, index gateways, a ruler and caches;
   - grafana-sync is the same script.
+- **Built for a cluster that already runs kgateway and Cilium with default deny**:
+  - the demo adds a Gateway, routes and policies to your kgateway; it installs no controller;
+  - every flow it needs is allowed by a CiliumNetworkPolicy, shipped in the same step as the
+    component it opens.
 - **Toy-sized and simplified** (not for production):
-  - one namespace and no NetworkPolicies;
+  - one namespace;
   - Kafka without TLS/SCRAM;
   - keys derived from a seed, and local Grafana passwords;
   - SeaweedFS as the S3 store;
@@ -27,6 +31,17 @@ Loki ruler ─► metrics store ◄─ tenant guard ◄─ read gateway
 
 - A Kubernetes cluster with **3 nodes** (about 4 vCPU and 8 GiB each). The demo requests
   roughly 2 CPU, 9 GiB of memory and 40 GiB of persistent volumes (default storage class).
+- **kgateway already installed**, with the Gateway API CRDs. The chart was validated against
+  kgateway v2.4.5 (it uses `GatewayParameters`, `TrafficPolicy` with `apiKeyAuth`,
+  `ListenerPolicy`, `DirectResponse`). Set these in the values if yours differ:
+  - `readGateway.gatewayClassName` (default `kgateway`);
+  - `readGateway.controllerNamespace` (default `kgateway-system`);
+  - `readGateway.controllerLabels` (default `kgateway: kgateway`).
+- **Cilium**, with default deny. The policies cover:
+  - DNS (to `kube-dns` in `kube-system`; change `network.dns` if yours differs, and set
+    `network.dns.cidrs` if pods resolve through NodeLocal DNSCache);
+  - the API server (`kube-apiserver` entity) and kubelet probes (`host` entity);
+  - every flow between the demo's pods.
 - `kubectl` and, for the Helm way, `helm` 3.
 - Images from Docker Hub and quay.io, or a proxy:
   [`chart/values-proxy.example.yaml`](chart/values-proxy.example.yaml) sets one registry for
@@ -50,21 +65,24 @@ generic/demo/walkthrough.sh --context <your-test-cluster> --pause
 
 | Step | What appears |
 |---|---|
-| 00 | CRDs: Gateway API, kgateway, Strimzi |
+| 00 | Strimzi's CRDs (kgateway's and the Gateway API's are already on the cluster) |
 | 01 | Namespace `observability` (privileged Pod Security: the agent reads `/var/log/pods`) |
-| 02 | Operators: Strimzi (runs Kafka) and kgateway (runs the read gateway) |
+| 02 | The Strimzi operator (runs Kafka) |
 | 03 | Object storage: SeaweedFS (S3) and its buckets |
 | 04 | Kafka: 3 nodes, topic `otel-logs` (6 partitions, 3 replicas), HTTP bridge |
 | 05 | Loki, distributed: 2 distributors, 6 ingesters (2 per zone), 2 frontends, 2 schedulers, 3 queriers, 2 index gateways, compactor, ruler, caches |
 | 06 | OpenTelemetry: the agent on every node, the gateway (2 pods, one consumer group) |
-| 07 | Read gateway: one view + key per tenant (and `platform` for admin); metrics store + tenant guard |
+| 07 | Read gateway on your kgateway: one view + key per tenant (and `platform` for admin); metrics store + tenant guard; a policy in the kgateway controller's namespace so the Envoy pods get their config |
 | 08 | Grafana, and grafana-sync: one org per tenant, data sources, local users |
 | 09 | The demonstrator |
 | 10 | The tenants: `tenant-a` (payments), `tenant-b` (orders), `tenant-c` (inventory), each logging from the start |
 
+Each step brings its own CiliumNetworkPolicies, so it works the moment it's applied.
+
 By hand, the same thing: `kubectl apply --server-side -f steps/00-crds/`, then
-`kubectl apply -n observability -f steps/NN-*.yaml` in order, with the `# wait:` commands from
-each header. Resume with `--from 05`, remove it all with `--delete`.
+`kubectl apply -f steps/NN-*.yaml` in order (every object names its namespace), with the
+`# wait:` commands from each header. Resume with `--from 05`, remove it all with `--delete`.
+The walkthrough first checks that kgateway (its GatewayClass and CRDs) and Cilium are there.
 
 ### With Helm (one command)
 
@@ -136,11 +154,34 @@ has `obs:log_lines:rate1m` and `obs:log_errors:rate1m`.
    - sign in as tenant-b: nothing;
    - sign in as admin: everything.
 
+## The network policies (Cilium, default deny)
+
+Each step adds the allows its components need, and nothing more:
+
+| Step | Policy | Allows |
+|---|---|---|
+| 02 | `strimzi-cluster-operator` | → API server, → the Kafka cluster's pods |
+| 03 | `seaweedfs`, `seaweedfs-buckets` | Loki, the bucket Job and the demonstrator → S3 :8333 |
+| 04 | `kafka`, `kafka-bridge` | Kafka pods ↔ each other (any port); OTel agents, gateways and the bridge → :9092; operator → all; demonstrator → exporter :9404 and bridge :8080 |
+| 05 | `loki`, `loki-distributor-from-otel-gateway`, `loki-query-frontend-from-read-gateway`, `rollout-operator` | Loki ↔ Loki (any port), → S3, ruler → metrics store; **only the OTel gateways push** (distributors :3100); **only the read gateway queries** (frontends :3100); API server → rollout-operator webhooks :8443 |
+| 06 | `otel-agent`, `otel-gateway` | tenants' pods → agent :4317/:4318; agent → API server, Kafka; gateway → Kafka, distributors |
+| 07 | `read-gateway`, `tenant-guard`, `metrics-store`, and `observability-read-gateway-xds` in the kgateway controller's namespace | Grafana and demonstrator → Envoy :8080; Envoy → frontends, guard, controller xDS :9977; guard → store :9090 |
+| 08 | `grafana`, `grafana-sync` | grafana-sync → Grafana :3000; Grafana → read gateway |
+| 09 | `log-flow-demonstrator` | → API server, this namespace's pods (each allows it in on its own ports), tenants' apps :8080 |
+| 10 | one per tenant namespace | demonstrator → app :8080; app → the agent :4317/:4318 |
+
+Every policy also allows DNS and kubelet probes (`host`). People reach Grafana and the
+demonstrator with `kubectl port-forward`, which goes through the kubelet, not the pod
+network. A tenant pod can reach nothing in `observability` but its node's agent.
+
 ## When something is stuck
 
 | Symptom | Look at |
 |---|---|
-| Kafka not Ready | `kubectl -n observability get kafka,kafkanodepool,pods -l strimzi.io/cluster=logs`; the PVCs need a default storage class |
+| Anything times out | dropped traffic: `hubble observe -n observability --verdict DROPPED` (or `-n tenant-a`) names the flow; compare with the table above |
+| The Gateway never gets `Programmed` | the Envoy pods can't reach the kgateway controller (:9977): check `readGateway.controllerNamespace` / `controllerLabels`, and that `observability-read-gateway-xds` exists in that namespace |
+| Ingester pods can't be evicted (node drain hangs) | the API server can't reach the rollout-operator's webhooks: see `network.webhookFromEntities` |
+| Kafka not Ready | `kubectl -n observability get kafka,kafkanodepool,pods -l strimzi.io/cluster=logs`; the PVCs need a default storage class; dropped flows between the Kafka pods (Hubble) |
 | Loki pods Pending | `kubectl -n observability describe pod <pod>`: usually CPU/memory or volumes |
 | No logs at all | the agent: `kubectl -n observability logs ds/otel-agent`; the gateways: `kubectl -n observability logs sts/otel-gateway` |
 | Grafana has no orgs | `kubectl -n observability logs job/grafana-sync-now` (it retries until Grafana and the gateway are up) |
