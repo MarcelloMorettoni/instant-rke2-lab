@@ -1,0 +1,59 @@
+# Step 04: namespace isolation, egress side. Closes the gateway backdoor.
+#
+# After step 03, team-a still has a way into team-b: it asks the gateway.
+#   team-a pod -> kgateway proxy (Host: team-b.poc.lab) -> team-b pod
+# The last hop comes from the proxy, which team-b has to let in. Ingress
+# rules alone can't tell "a user on the internet" from "team-a taking a detour".
+#
+# So each namespace may now only OPEN connections to itself and to DNS.
+# The proxy is out of reach, and team-b is now blocked on both ends.
+# Replies still flow: Cilium tracks connections, and policy only decides who
+# may open one, so traffic arriving through the gateway is unaffected.
+#
+# DNS goes through Cilium's DNS proxy (the `dns` rule), so Hubble also shows
+# every name a pod looks up.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: isolate-egress
+  namespace: team-a
+spec:
+  description: "team-a may call team-a and DNS. Nothing else, not even the gateway."
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - {}
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: isolate-egress
+  namespace: team-b
+spec:
+  description: "team-b may call team-b and DNS. Nothing else, not even the gateway."
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - {}
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"

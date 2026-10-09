@@ -1,0 +1,21 @@
+# Step 00: the two namespaces of the POC.
+#
+# Restricted Pod Security, like the lab's tenants; the workloads comply.
+# The `poc: cilium` label is only there to make cleanup one command.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a
+  labels:
+    poc: cilium
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-b
+  labels:
+    poc: cilium
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

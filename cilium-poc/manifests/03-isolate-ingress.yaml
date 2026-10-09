@@ -1,0 +1,52 @@
+# Step 03: namespace isolation, ingress side. The core of the POC.
+#
+#   team-a pods accept   team-a pods, and the kgateway proxy on 8080
+#   team-b pods accept   team-b pods, and the kgateway proxy on 8080
+#
+# Once a policy selects a pod, everything it doesn't allow is dropped in eBPF,
+# before the packet reaches the pod. team-a -> team-b (and back) times out.
+#
+# In a namespaced policy an empty selector `{}` means "this namespace".
+# The proxy is matched by namespace AND gateway name, so another Gateway's
+# proxy in kgateway-system does not get in.
+#
+# Kubelet probes come from the node and are still allowed.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: isolate-ingress
+  namespace: team-a
+spec:
+  description: "team-a accepts team-a, and the cilium-poc gateway proxy"
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - {}
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: cilium-poc
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: isolate-ingress
+  namespace: team-b
+spec:
+  description: "team-b accepts team-b, and the cilium-poc gateway proxy"
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - {}
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: cilium-poc
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

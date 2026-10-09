@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cilium POC</title>
+<!-- Offline is fine: without these fonts the slides fall back to Arial and Courier New. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Two 1920x1080 slides, scaled to the window.
+     Right/Space/click: next · Left: back · #2 in the URL opens slide 2 · N: speaker notes · F: full screen · Ctrl+P: PDF */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #0B121B; overflow: hidden; }
+  .deck { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .deck > section { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  .deck > section:not(.active) { display: none !important; }
+  .wires { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+  aside { display: none; }
+  #notes { position: fixed; left: 0; right: 0; bottom: 0; max-height: 40%; overflow: auto; display: none;
+           padding: 16px 24px; background: rgba(11,18,27,.95); color: #E6EBF0; white-space: pre-wrap;
+           font: 16px/1.5 Arial, sans-serif; border-top: 1px solid #3A4E66; }
+  #notes.on { display: block; }
+  #count { position: fixed; right: 16px; bottom: 12px; color: #8C96A3; font: 14px Arial, sans-serif; }
+  @page { size: 1920px 1080px; margin: 0; }
+  @media print {
+    html, body { height: auto; overflow: visible; background: none; }
+    .deck { position: static; transform: none !important; width: auto; height: auto; }
+    .deck > section { position: relative; display: flex !important; page-break-after: always; }
+    #notes, #count { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+<section id="components" data-transition="fade" style="background:#F5F3EE;color:#13202F;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:16px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#1F5FAE">Cilium · architecture</p>
+<h2 style="font-size:72px;font-weight:600;line-height:1.1;color:#13202F">The main components</h2>
+<p style="position:absolute;left:128px;top:284px;width:360px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#4A5566">Once per cluster</p>
+<div style="position:absolute;left:128px;top:330px;width:392px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#E6E2D8;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Kubernetes API</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">Holds pods, labels and policies</p>
+</div>
+<div style="position:absolute;left:552px;top:330px;width:392px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#FCFBF8;border:2px solid #D3CDBF;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Cilium Operator</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">IP ranges, CRDs, identity cleanup</p>
+</div>
+<div style="position:absolute;left:976px;top:330px;width:392px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#F5F3EE;border:2px dashed #8C96A3;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">kgateway</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">Not Cilium. Our front door (Gateway API)</p>
+</div>
+<div style="position:absolute;left:1400px;top:330px;width:392px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#FCFBF8;border:2px solid #D3CDBF;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Hubble Relay + UI</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">Flows from every node, one view</p>
+</div>
+<div style="position:absolute;left:128px;top:556px;width:1664px;height:396px;background:#ECE8DF;border:2px dashed #8C96A3;border-radius:24px"></div>
+<p style="position:absolute;left:704px;top:568px;width:360px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#4A5566">On every node</p>
+<div style="position:absolute;left:160px;top:612px;width:520px;height:188px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#13202F;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">Cilium Agent</h3>
+<p style="font-size:24px;line-height:1.4;color:#C9D3DE">DaemonSet. Watches the API, gives every pod an identity, compiles policy into eBPF.</p>
+</div>
+<div style="position:absolute;left:704px;top:612px;width:300px;height:188px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#FCFBF8;border:2px solid #D3CDBF;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">CNI plugin</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">Called by kubelet to wire up each new pod</p>
+</div>
+<div style="position:absolute;left:1028px;top:612px;width:340px;height:188px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#FCFBF8;border:2px solid #D3CDBF;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Cilium Envoy</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">L7 rules: HTTP, gRPC, Kafka. Not our gateway.</p>
+</div>
+<div style="position:absolute;left:1392px;top:612px;width:368px;height:188px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#FCFBF8;border:2px solid #D3CDBF;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Hubble server</h3>
+<p style="font-size:24px;line-height:1.4;color:#4A5566">Built into the agent. Records every flow and verdict.</p>
+</div>
+<div style="position:absolute;left:160px;top:848px;width:1600px;height:84px;display:flex;flex-direction:row;align-items:center;gap:24px;padding:0 28px;background:#F2B630;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#13202F;white-space:nowrap">eBPF datapath</h3>
+<p style="font-size:24px;line-height:1.4;color:#13202F">Linux kernel: routing · Service load-balancing (replaces kube-proxy) · policy · encryption</p>
+</div>
+<svg class="wires" viewBox="0 0 1920 1080" aria-hidden="true"><defs><marker id="m4A5566" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4A5566"/></marker></defs><polyline points="318.0,490.0 318.0,612.0" fill="none" stroke="#4A5566" stroke-width="3" marker-end="url(#m4A5566)"/><polyline points="420.0,800.0 420.0,848.0" fill="none" stroke="#4A5566" stroke-width="3" marker-end="url(#m4A5566)"/><polyline points="1198.0,848.0 1198.0,800.0" fill="none" stroke="#4A5566" stroke-width="3" marker-end="url(#m4A5566)"/><polyline points="1576.0,612.0 1576.0,490.0" fill="none" stroke="#4A5566" stroke-width="3" marker-end="url(#m4A5566)"/></svg>
+<aside>Cilium splits into a small cluster-wide part and a per-node part that does the real work.
+
+Once per cluster: the Cilium Operator (a Deployment) handles cluster-wide chores: handing out pod IP ranges, maintaining Cilium's CRDs, and cleaning up identities nobody uses any more. Hubble Relay and the Hubble UI gather network flows from every node into one view.
+
+kgateway is drawn dashed because it is not part of Cilium. It is our Gateway API implementation and the front door of the demo cluster, with its own Envoy proxies. To Cilium, a kgateway proxy is just another pod with an identity, and we write policy for it like any other.
+
+On every node: the Cilium Agent (a DaemonSet) is the heart. It watches the Kubernetes API for pods, Services and policies, gives each pod a numeric security identity derived from its labels, and compiles all of it into eBPF programs and maps that it loads into the kernel. The CNI plugin is what kubelet calls when a pod starts, to plug it into that datapath. Cilium's own Envoy only gets traffic when an L7 rule needs it (HTTP paths, gRPC methods, Kafka topics). It is not the gateway. The Hubble server lives inside the agent and records every flow with its verdict.
+
+At the bottom, the eBPF datapath does routing, Service load-balancing (so kube-proxy and its iptables rules are gone), network policy and optional transparent encryption, all inside the kernel.</aside>
+</section>
+<section id="in-action" data-transition="fade" style="background:#13202F;color:#F5F3EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:16px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#F2B630">Cilium · in this POC</p>
+<h2 style="font-size:72px;font-weight:600;line-height:1.1;color:#F5F3EE">Why team-a can't reach team-b</h2>
+<div style="position:absolute;left:128px;top:390px;width:240px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 24px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">You</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">outside the cluster</p>
+</div>
+<div style="position:absolute;left:488px;top:380px;width:400px;height:180px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px dashed #8C96A3;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">kgateway proxy</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">kgateway-system · one Gateway, two routes</p>
+</div>
+<p style="position:absolute;left:880px;top:314px;width:210px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;color:#B9C4D0">team-a.poc.lab</p>
+<p style="position:absolute;left:880px;top:592px;width:210px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;color:#B9C4D0">team-b.poc.lab</p>
+<div style="position:absolute;left:1100px;top:300px;width:692px;height:124px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">team-a · app</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Accepts: team-a pods, the kgateway proxy</p>
+</div>
+<div style="position:absolute;left:1100px;top:516px;width:692px;height:124px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">team-b · app</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Accepts: team-b pods, the kgateway proxy</p>
+</div>
+<p style="position:absolute;left:1470px;top:449px;width:152px;padding:4px 14px;text-align:center;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;font-weight:600;color:#13202F;background:#E8603C;border-radius:24px">DROPPED</p>
+<div style="position:absolute;left:128px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">03 · Ingress</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Each namespace accepts traffic only from itself and from the kgateway proxy.</p>
+</div>
+<div style="position:absolute;left:691px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border:2px solid #E8603C;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">The detour</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">team-a can still reach team-b by asking the gateway. The proxy is let in.</p>
+</div>
+<div style="position:absolute;left:1254px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">04 · Egress</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Each namespace may only call itself and DNS. The detour is dropped too.</p>
+</div>
+<svg class="wires" viewBox="0 0 1920 1080" aria-hidden="true"><defs><marker id="mB9C4D0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B9C4D0"/></marker><marker id="mE8603C" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#E8603C"/></marker></defs><polyline points="368.0,470.0 488.0,470.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,430.0 994.0,430.0 994.0,362.0 1100.0,362.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,510.0 994.0,510.0 994.0,578.0 1100.0,578.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="1446.0,424.0 1446.0,516.0" fill="none" stroke="#E8603C" stroke-width="3" stroke-dasharray="12 8" marker-end="url(#mE8603C)" marker-start="url(#mE8603C)"/></svg>
+<aside>The demo, seen through Cilium's eyes. Every pod has a security identity derived from its labels and namespace, and that includes the kgateway proxy. Policy is written against identities, not IP addresses.
+
+North-south: you reach both apps through kgateway. The Gateway sends team-a.poc.lab to team-a and team-b.poc.lab to team-b.
+
+Step 03, ingress: each namespace accepts traffic only from its own pods and from the cilium-poc gateway proxy, on port 8080. When the team-a pod curls app.team-b, the eBPF program in front of team-b's pod sees source identity team-a, finds no rule for it and drops the packet in the kernel. curl times out.
+
+The detour: after step 03, team-a can still ask the gateway for team-b.poc.lab, and the gateway forwards it. Team-b has to let the gateway in, and ingress rules alone can't tell a real user from team-a taking a detour.
+
+Step 04, egress: each namespace may only open connections to itself and to DNS. The detour is closed, and cross-namespace traffic is now blocked on both ends. Traffic that arrives through the gateway still works, because replies are connection-tracked.
+
+matrix.sh shows the full picture after every step, and Hubble lists each drop with its reason: Policy denied.</aside>
+</section>
+</div>
+<div id="notes"></div>
+<div id="count"></div>
+<script>
+  const deck = document.querySelector('.deck');
+  const slides = [...deck.querySelectorAll(':scope > section')];
+  const notes = document.getElementById('notes');
+  const count = document.getElementById('count');
+  let i = 0;
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    const x = (innerWidth - 1920 * s) / 2, y = (innerHeight - 1080 * s) / 2;
+    deck.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  }
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    notes.textContent = slides[i].querySelector('aside')?.textContent.trim() ?? '';
+    count.textContent = `${i + 1} / ${slides.length}`;
+    history.replaceState(null, '', `#${i + 1}`);
+  }
+  addEventListener('resize', fit);
+  addEventListener('click', () => show(i + 1));
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) show(i + 1);
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) show(i - 1);
+    else if (e.key === 'n') notes.classList.toggle('on');
+    else if (e.key === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+  });
+  fit(); show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>
