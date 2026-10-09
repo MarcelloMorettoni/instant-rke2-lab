@@ -1,24 +1,30 @@
-# Step 01: one workload per namespace.
+# Step 01: one workload per namespace, and nothing else.
 #
-#   app   nginx answering "hello from team-x", behind Service `app` (port 80).
-#         The image ships curl, so the same pods are also the test clients.
+#   app   nginx answering "hello from tenant-cilium-x", behind Service `app`
+#         (port 80). The image ships curl, so the same pods are also the
+#         test clients.
+#
+# Under default deny these pods start, but nobody can talk to them and they
+# can talk to nobody, not even DNS. If the cluster also polices traffic from
+# the node itself (Cilium's allow-localhost=policy), they don't even turn
+# Ready: the kubelet's readiness probe is blocked too. Step 02 allows both.
 #
 # Two replicas each: a pod calling its own Service can land on itself, and
 # that never leaves the pod, so no policy would ever see it. With two pods,
-# "same namespace still works" is tested for real.
+# "same namespace works" is tested for real.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-content
-  namespace: team-a
+  namespace: tenant-cilium-a
 data:
-  index.html: "hello from team-a\n"
+  index.html: "hello from tenant-cilium-a\n"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
-  namespace: team-a
+  namespace: tenant-cilium-a
 spec:
   replicas: 2
   selector:
@@ -58,7 +64,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: app
-  namespace: team-a
+  namespace: tenant-cilium-a
 spec:
   selector: {app: app}
   ports:
@@ -69,15 +75,15 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-content
-  namespace: team-b
+  namespace: tenant-cilium-b
 data:
-  index.html: "hello from team-b\n"
+  index.html: "hello from tenant-cilium-b\n"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
-  namespace: team-b
+  namespace: tenant-cilium-b
 spec:
   replicas: 2
   selector:
@@ -117,7 +123,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: app
-  namespace: team-b
+  namespace: tenant-cilium-b
 spec:
   selector: {app: app}
   ports:

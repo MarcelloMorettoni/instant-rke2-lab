@@ -1,0 +1,64 @@
+# Step 02: each namespace may talk to itself. Nothing more.
+#
+#   in    from the node (kubelet readiness probes) on 8080. Needed when the
+#         cluster polices the node's traffic (allow-localhost=policy);
+#         harmless otherwise
+#         from pods in this namespace
+#   out   to pods in this namespace
+#         to CoreDNS (53/UDP, 53/TCP), so Service names resolve
+#
+# The pods turn Ready, and same-namespace calls work. Nothing here mentions
+# the other tenant, so under default deny tenant-cilium-a and tenant-cilium-b
+# still can't reach each other, in either direction.
+#
+# In a namespaced policy, an empty selector `{}` means "this namespace".
+# If pods resolve through NodeLocal DNSCache, also allow its address, e.g.
+#   - toCIDR: ["169.254.20.10/32"]
+#     toPorts: [{ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]}]
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-own-namespace
+  namespace: tenant-cilium-a
+spec:
+  description: "tenant-cilium-a: probes, itself, DNS"
+  endpointSelector: {}
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+    - fromEndpoints:
+        - {}
+  egress:
+    - toEndpoints:
+        - {}
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-own-namespace
+  namespace: tenant-cilium-b
+spec:
+  description: "tenant-cilium-b: probes, itself, DNS"
+  endpointSelector: {}
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+    - fromEndpoints:
+        - {}
+  egress:
+    - toEndpoints:
+        - {}
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]

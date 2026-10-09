@@ -87,50 +87,54 @@ At the bottom, the eBPF datapath does routing, Service load-balancing (so kube-p
 </section>
 <section id="in-action" data-transition="fade" style="background:#13202F;color:#F5F3EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:16px">
 <p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#F2B630">Cilium · in this POC</p>
-<h2 style="font-size:72px;font-weight:600;line-height:1.1;color:#F5F3EE">Why team-a can't reach team-b</h2>
-<div style="position:absolute;left:128px;top:390px;width:240px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 24px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h2 style="font-size:72px;font-weight:600;line-height:1.1;color:#F5F3EE">Closed by default, opened on purpose</h2>
+<div style="position:absolute;left:128px;top:400px;width:240px;height:160px;display:flex;flex-direction:column;gap:8px;padding:20px 24px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
 <h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">You</h3>
 <p style="font-size:24px;line-height:1.4;color:#B9C4D0">outside the cluster</p>
 </div>
-<div style="position:absolute;left:488px;top:380px;width:400px;height:180px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px dashed #8C96A3;border-radius:16px">
+<div style="position:absolute;left:488px;top:390px;width:400px;height:180px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px dashed #8C96A3;border-radius:16px">
 <h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">kgateway proxy</h3>
 <p style="font-size:24px;line-height:1.4;color:#B9C4D0">kgateway-system · one Gateway, two routes</p>
 </div>
-<p style="position:absolute;left:880px;top:314px;width:210px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;color:#B9C4D0">team-a.poc.lab</p>
-<p style="position:absolute;left:880px;top:592px;width:210px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;color:#B9C4D0">team-b.poc.lab</p>
-<div style="position:absolute;left:1100px;top:300px;width:692px;height:124px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
-<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">team-a · app</h3>
-<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Accepts: team-a pods, the kgateway proxy</p>
+<div style="position:absolute;left:1100px;top:296px;width:692px;height:156px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">tenant-cilium-a</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">tenant-cilium-a.poc.lab<br>Accepts its own pods and the kgateway proxy</p>
 </div>
-<div style="position:absolute;left:1100px;top:516px;width:692px;height:124px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
-<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">team-b · app</h3>
-<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Accepts: team-b pods, the kgateway proxy</p>
+<div style="position:absolute;left:1100px;top:528px;width:692px;height:156px;display:flex;flex-direction:column;gap:8px;padding:20px 28px;background:#1F3046;border:2px solid #3A4E66;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">tenant-cilium-b</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">tenant-cilium-b.poc.lab<br>Accepts its own pods and the kgateway proxy</p>
 </div>
-<p style="position:absolute;left:1470px;top:449px;width:152px;padding:4px 14px;text-align:center;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;font-weight:600;color:#13202F;background:#E8603C;border-radius:24px">DROPPED</p>
-<div style="position:absolute;left:128px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
-<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">03 · Ingress</h3>
-<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Each namespace accepts traffic only from itself and from the kgateway proxy.</p>
+<p style="position:absolute;left:1470px;top:469px;width:152px;padding:4px 14px;text-align:center;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;font-weight:600;color:#13202F;background:#E8603C;border-radius:24px">DROPPED</p>
+<div style="position:absolute;left:128px;top:720px;width:398px;height:206px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border:2px dashed #8C96A3;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">Default deny</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">The cluster's starting point: no pod can talk to any other.</p>
 </div>
-<div style="position:absolute;left:691px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border:2px solid #E8603C;border-radius:16px">
-<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F5F3EE">The detour</h3>
-<p style="font-size:24px;line-height:1.4;color:#B9C4D0">team-a can still reach team-b by asking the gateway. The proxy is let in.</p>
+<div style="position:absolute;left:550px;top:720px;width:398px;height:206px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">02 · Own pods</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Probes, its own pods and DNS. Nothing about the other tenant.</p>
 </div>
-<div style="position:absolute;left:1254px;top:712px;width:538px;height:210px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
-<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">04 · Egress</h3>
-<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Each namespace may only call itself and DNS. The detour is dropped too.</p>
+<div style="position:absolute;left:972px;top:720px;width:398px;height:206px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">03 · Front door</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">kgateway reaches both apps. Tenants can't reach kgateway.</p>
 </div>
-<svg class="wires" viewBox="0 0 1920 1080" aria-hidden="true"><defs><marker id="mB9C4D0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B9C4D0"/></marker><marker id="mE8603C" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#E8603C"/></marker></defs><polyline points="368.0,470.0 488.0,470.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,430.0 994.0,430.0 994.0,362.0 1100.0,362.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,510.0 994.0,510.0 994.0,578.0 1100.0,578.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="1446.0,424.0 1446.0,516.0" fill="none" stroke="#E8603C" stroke-width="3" stroke-dasharray="12 8" marker-end="url(#mE8603C)" marker-start="url(#mE8603C)"/></svg>
-<aside>The demo, seen through Cilium's eyes. Every pod has a security identity derived from its labels and namespace, and that includes the kgateway proxy. Policy is written against identities, not IP addresses.
+<div style="position:absolute;left:1394px;top:720px;width:398px;height:206px;display:flex;flex-direction:column;gap:8px;padding:28px;background:#1F3046;border:2px solid #E8603C;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F2B630">05 · Guardrail</h3>
+<p style="font-size:24px;line-height:1.4;color:#B9C4D0">Deny rules beat any allow, even step 04's mistake.</p>
+</div>
+<svg class="wires" viewBox="0 0 1920 1080" aria-hidden="true"><defs><marker id="mB9C4D0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B9C4D0"/></marker><marker id="mE8603C" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#E8603C"/></marker></defs><polyline points="368.0,480.0 488.0,480.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,440.0 994.0,440.0 994.0,374.0 1100.0,374.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="888.0,520.0 994.0,520.0 994.0,606.0 1100.0,606.0" fill="none" stroke="#B9C4D0" stroke-width="3" marker-end="url(#mB9C4D0)"/><polyline points="1446.0,452.0 1446.0,528.0" fill="none" stroke="#E8603C" stroke-width="3" stroke-dasharray="12 8" marker-end="url(#mE8603C)" marker-start="url(#mE8603C)"/></svg>
+<aside>The cluster denies everything by default. Every pod has a security identity derived from its labels and namespace, the kgateway proxy included, and policy is written against those identities, not IP addresses.
 
-North-south: you reach both apps through kgateway. The Gateway sends team-a.poc.lab to team-a and team-b.poc.lab to team-b.
+Default deny: right after step 01, the apps can't talk to anyone, not even DNS. If the cluster also polices traffic from the node, they don't even turn Ready.
 
-Step 03, ingress: each namespace accepts traffic only from its own pods and from the cilium-poc gateway proxy, on port 8080. When the team-a pod curls app.team-b, the eBPF program in front of team-b's pod sees source identity team-a, finds no rule for it and drops the packet in the kernel. curl times out.
+Step 02: each tenant gets probes from its node, its own pods and DNS. The other tenant is never mentioned, so it stays unreachable in both directions.
 
-The detour: after step 03, team-a can still ask the gateway for team-b.poc.lab, and the gateway forwards it. Team-b has to let the gateway in, and ingress rules alone can't tell a real user from team-a taking a detour.
+Step 03, the front door: the proxy may fetch its configuration from the kgateway controller (xDS on 9977) and call both apps on 8080, and each app accepts the proxy. The tenants' outgoing rules don't include the proxy, so neither tenant can take a detour through the gateway to reach the other.
 
-Step 04, egress: each namespace may only open connections to itself and to DNS. The detour is closed, and cross-namespace traffic is now blocked on both ends. Traffic that arrives through the gateway still works, because replies are connection-tracked.
+Step 04 is a deliberate mistake: someone allows tenant a to call tenant b on both ends, and it works. Isolation by default deny alone lasts only until someone adds an allow.
 
-matrix.sh shows the full picture after every step, and Hubble lists each drop with its reason: Policy denied.</aside>
+Step 05, the guardrail: explicit deny rules between the two tenants. In Cilium a deny always beats an allow, so the mistake, still in place, no longer opens anything.
+
+matrix.sh shows the result after every step, and Hubble and cilium-dbg show each drop with its reason and identities.</aside>
 </section>
 </div>
 <div id="notes"></div>

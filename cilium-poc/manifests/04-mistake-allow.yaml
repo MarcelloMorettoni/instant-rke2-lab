@@ -1,0 +1,35 @@
+# Step 04 (demo only): a mistake. Someone opens tenant-cilium-a -> tenant-cilium-b.
+#
+# Under default deny a new path needs an allow on BOTH ends: egress where the
+# connection starts, ingress where it lands. This file is both halves, as if
+# someone had approved "a may call b" without thinking it through.
+#
+# After this, tenant-cilium-a reaches tenant-cilium-b. That is the weak spot of
+# isolation by default deny alone: it lasts only until someone adds an allow.
+# Step 05 closes it for good. Delete this file afterwards:
+#   kubectl delete -f manifests/04-mistake-allow.yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mistake-allow-to-b
+  namespace: tenant-cilium-a
+spec:
+  description: "DEMO MISTAKE: tenant-cilium-a may call tenant-cilium-b"
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-b
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: mistake-allow-from-a
+  namespace: tenant-cilium-b
+spec:
+  description: "DEMO MISTAKE: tenant-cilium-b accepts tenant-cilium-a"
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-a

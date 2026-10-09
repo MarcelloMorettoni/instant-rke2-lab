@@ -1,21 +1,33 @@
 # Step 00: the two namespaces of the POC.
 #
-# Restricted Pod Security, like the lab's tenants; the workloads comply.
-# The `poc: cilium` label is only there to make cleanup one command.
+# The cluster denies all traffic by default (a Cilium policy), so from the
+# moment these exist, nothing in one can reach the other. Every later step
+# only ADDS allows, except step 05, which adds explicit denies.
+#
+# Labels:
+#   pod-security   restricted, so no hostNetwork or privileged pod can step
+#                  around Cilium's per-pod policies
+#   poc: cilium    only there to make cleanup one command
+#   tenant: cilium satisfies the lab's namespace guard
+#                  (../soft-tenancy/01-namespaces/namespace-guard.yaml), which
+#                  requires it on tenant-* namespaces. The POC's policies match
+#                  namespace names, not this label.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: team-a
+  name: tenant-cilium-a
   labels:
     poc: cilium
+    tenant: cilium
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: team-b
+  name: tenant-cilium-b
   labels:
     poc: cilium
+    tenant: cilium
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest

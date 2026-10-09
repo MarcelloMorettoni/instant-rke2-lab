@@ -1,0 +1,183 @@
+# Step 03: kgateway is the front door. One Gateway, one route per tenant,
+# and every allow that path needs under default deny.
+#
+#   you ──► kgateway proxy "cilium-poc" ──► tenant-cilium-a.poc.lab ──► app.tenant-cilium-a
+#           (kgateway-system)           └─► tenant-cilium-b.poc.lab ──► app.tenant-cilium-b
+#           ▲ config (xDS :9977) from the kgateway controller
+#
+# Policies, in the order a request needs them:
+#   cilium-poc-gateway   the proxy: probes in (from the node); out to DNS, the
+#                        controller's xDS, and the two apps on 8080. Nothing else.
+#   cilium-poc-xds       in the controller's namespace: the controller accepts
+#                        this proxy on 9977. Adds an allow; changes nothing else.
+#   from-gateway         each tenant accepts the proxy on 8080
+#
+# What stays closed: the tenants' egress (step 02) doesn't include the proxy,
+# so tenant-cilium-a can't detour through the gateway to reach tenant-cilium-b.
+#
+# The proxy is matched by namespace AND gateway name. kgateway labels its
+# proxy pods gateway.networking.k8s.io/gateway-name=<Gateway>, and only the
+# platform can create pods in kgateway-system, so that label can be trusted.
+# The controller is matched by `kgateway: kgateway`, the label kgateway v2.4
+# puts on it; adjust if yours differs.
+#
+# The proxy Service is ClusterIP: nothing is exposed outside the cluster.
+# Reach it with kubectl port-forward, which goes through the kubelet, not the
+# pod network. For a LoadBalancer or NodePort instead, change the type below
+# and add `- fromEntities: [world]` to the proxy's ingress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cilium-poc-gateway
+  namespace: kgateway-system
+spec:
+  description: "cilium-poc proxy: probes; DNS, controller xDS, the two tenant apps"
+  endpointSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: cilium-poc
+  ingress:
+    - fromEntities: [host]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            kgateway: kgateway
+      toPorts:
+        - ports: [{port: "9977", protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-a
+            app: app
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-b
+            app: app
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cilium-poc-xds
+  namespace: kgateway-system
+spec:
+  description: "kgateway controller: serve config (xDS) to the cilium-poc proxy"
+  endpointSelector:
+    matchLabels:
+      kgateway: kgateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: cilium-poc
+      toPorts:
+        - ports: [{port: "9977", protocol: TCP}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: from-gateway
+  namespace: tenant-cilium-a
+spec:
+  description: "tenant-cilium-a: accept the cilium-poc gateway proxy"
+  endpointSelector:
+    matchLabels: {app: app}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: cilium-poc
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: from-gateway
+  namespace: tenant-cilium-b
+spec:
+  description: "tenant-cilium-b: accept the cilium-poc gateway proxy"
+  endpointSelector:
+    matchLabels: {app: app}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kgateway-system
+            gateway.networking.k8s.io/gateway-name: cilium-poc
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: cilium-poc
+  namespace: kgateway-system
+spec:
+  kube:
+    service:
+      type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cilium-poc
+  namespace: kgateway-system
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: cilium-poc
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      hostname: "*.poc.lab"
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [tenant-cilium-a, tenant-cilium-b]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app
+  namespace: tenant-cilium-a
+spec:
+  parentRefs:
+    - name: cilium-poc
+      namespace: kgateway-system
+  hostnames:
+    - tenant-cilium-a.poc.lab
+  rules:
+    - backendRefs:
+        - name: app
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app
+  namespace: tenant-cilium-b
+spec:
+  parentRefs:
+    - name: cilium-poc
+      namespace: kgateway-system
+  hostnames:
+    - tenant-cilium-b.poc.lab
+  rules:
+    - backendRefs:
+        - name: app
+          port: 80

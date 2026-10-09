@@ -1,0 +1,43 @@
+# Step 05: the guardrail. tenant-cilium-a and tenant-cilium-b are blocked from
+# each other explicitly, in both directions, on both ends.
+#
+# In Cilium a deny rule always wins over an allow, whoever wrote the allow.
+# With this in place, step 04's mistake (or any later one) opens nothing.
+# Default deny says "closed unless someone allows it"; this says "closed,
+# full stop".
+#
+# The gateway path is untouched: its traffic comes from kgateway-system, not
+# from the other tenant.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: deny-other-tenant
+  namespace: tenant-cilium-a
+spec:
+  description: "tenant-cilium-a <-> tenant-cilium-b: denied, whatever else allows it"
+  endpointSelector: {}
+  ingressDeny:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-b
+  egressDeny:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-b
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: deny-other-tenant
+  namespace: tenant-cilium-b
+spec:
+  description: "tenant-cilium-b <-> tenant-cilium-a: denied, whatever else allows it"
+  endpointSelector: {}
+  ingressDeny:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-a
+  egressDeny:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tenant-cilium-a
