@@ -7,10 +7,10 @@ set -euo pipefail
 RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
 BLUE=$'\033[0;34m'; CYAN=$'\033[0;36m'; NC=$'\033[0m'
 
-log()  { printf '%s[slinky]%s %s\n' "$BLUE"   "$NC" "$*" >&2; }
-ok()   { printf '%s[slinky]%s %s\n' "$GREEN"  "$NC" "$*" >&2; }
-warn() { printf '%s[slinky]%s %s\n' "$YELLOW" "$NC" "$*" >&2; }
-err()  { printf '%s[slinky]%s %s\n' "$RED"    "$NC" "$*" >&2; }
+log()  { printf '%s[rke2-lab]%s %s\n' "$BLUE"   "$NC" "$*" >&2; }
+ok()   { printf '%s[rke2-lab]%s %s\n' "$GREEN"  "$NC" "$*" >&2; }
+warn() { printf '%s[rke2-lab]%s %s\n' "$YELLOW" "$NC" "$*" >&2; }
+err()  { printf '%s[rke2-lab]%s %s\n' "$RED"    "$NC" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
 # Locate repo root and load config

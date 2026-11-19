@@ -27,7 +27,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib.sh
 source "${HERE}/../lib.sh"
-command -v jq >/dev/null || die "jq is required"
+command -v jq >/dev/null || die "jq is required. Run 'make extras' in the lab root"
 ensure_credentials
 
 GATEWAY="${GATEWAY:-http://obs-gateway.${OBS_NS}.svc.cluster.local:8080}"

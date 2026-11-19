@@ -20,10 +20,7 @@ command -v kubectl >/dev/null || die "kubectl not installed — run 'make prereq
 ###############################################################################
 # helm
 ###############################################################################
-if ! command -v helm >/dev/null 2>&1; then
-  log "Installing helm"
-  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-fi
+command -v helm >/dev/null 2>&1 || die "helm not installed — run 'make extras' in the lab root"
 helm version --short
 
 ###############################################################################

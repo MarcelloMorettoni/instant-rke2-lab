@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${HERE}/lib.sh"
 require_cluster
 ensure_credentials
-command -v jq >/dev/null || die "jq is required"
+command -v jq >/dev/null || die "jq is required. Run 'make extras' in the lab root"
 
 G="http://127.0.0.1:33000"
 GW="http://127.0.0.1:48080"           # obs-gateway :8080; every path starts with a view
