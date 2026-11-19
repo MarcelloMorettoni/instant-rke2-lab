@@ -187,8 +187,9 @@ fast NVMe), set `VM_DIR` in `config.env` before running `make all`.
 make status              # libvirt + node status
 make ssh-cp1             # ssh into the control plane
 make ssh-w1 / ssh-w2     # ssh into a worker
-make destroy             # rip the lab down (keeps libvirt/kubectl/groups)
-make all                 # rebuild from scratch
+make destroy             # delete the VMs, disks, kubeconfig, node-token
+make clean               # destroy + storage pool, images/, vms/, .state/ (asks first)
+make all                 # rebuild
 ```
 
 To reach the API server from another machine on your LAN, expose
@@ -228,6 +229,9 @@ reconcile and sets:
 - `kubeProxyReplacement: true`
 - `bpf.masquerade: true`
 - `ipam.mode: kubernetes`
+- `socketLB.hostNamespaceOnly: true`, `cni.exclusive: false` — required for
+  Istio sidecars (e.g. Kubeflow) next to kube-proxy replacement; see
+  [Cilium's Istio guide](https://docs.cilium.io/en/latest/network/servicemesh/istio/)
 - Hubble + Hubble UI on
 
 The control plane writes its node-token; the bootstrap script reads it and
@@ -258,7 +262,8 @@ Each VM gets a NoCloud seed ISO with:
 │   ├── 30-bootstrap-rke2.sh
 │   ├── 40-fetch-kubeconfig.sh
 │   ├── 50-verify.sh
-│   └── 99-destroy.sh
+│   ├── 99-destroy.sh
+│   └── 99-clean.sh         # destroy + pool, images/, vms/, .state/
 ├── manifests/
 │   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
 ├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
@@ -302,11 +307,19 @@ image pulls can take a few minutes on a first run. SSH in (`make ssh-cp1`)
 and tail `sudo journalctl -fu rke2-server`. The "D-Bus connection terminated"
 warning during `systemctl enable --now rke2-server` is cosmetic.
 
+**Which teardown?**
+
+| Command        | Removes                                                                 | Keeps                                   | Next `make all` |
+| -------------- | ----------------------------------------------------------------------- | --------------------------------------- | --------------- |
+| `make destroy` | VMs + disks, `.state/kubeconfig`, `.state/node-token`                    | cloud image, SSH key, storage pool, host setup | skips the image download |
+| `make clean`   | all of the above + storage pool `rke2-lab`, `images/`, `vms/`, `.state/` (SSH key, soft-tenancy credentials) | host packages, groups, libvirt network, ACLs | starts from nothing |
+
+`make clean` asks for confirmation; `make clean YES=1` skips the prompt.
+
 **Tear down completely**, including packages and groups:
 
 ```bash
-make destroy
-sudo virsh pool-destroy rke2-lab && sudo virsh pool-undefine rke2-lab
+make clean YES=1
 sudo apt purge qemu-system-x86 libvirt-daemon-system libvirt-clients libvirt-daemon-config-network virtinst cloud-image-utils kubectl
 sudo rm -f /etc/apt/sources.list.d/kubernetes.list
 sudo rm -f /usr/local/bin/helm            # only if you ran `make extras`

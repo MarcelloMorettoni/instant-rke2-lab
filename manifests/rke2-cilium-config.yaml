@@ -18,6 +18,15 @@ spec:
       mode: kubernetes
     operator:
       replicas: 1
+    # Istio compatibility (Kubeflow, any sidecar mesh). With kubeProxyReplacement
+    # Cilium would load-balance services inside the pod at connect(), so the
+    # sidecar never sees the service address; keep socket LB on the host only,
+    # and let istio-cni chain onto Cilium's CNI config.
+    # https://docs.cilium.io/en/latest/network/servicemesh/istio/
+    socketLB:
+      hostNamespaceOnly: true
+    cni:
+      exclusive: false
     hubble:
       enabled: true
       relay:
