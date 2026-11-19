@@ -1,6 +1,36 @@
+# Lab state: SSH keypair, node-token, kubeconfig, generated credentials
 .state/
+# Downloaded cloud image (and partial downloads) and VM disks
 /images/
 /vms/
+*.part
+
+# Host binaries / release tarballs downloaded into the repo by hand
+# (make prereqs / make extras install these system-wide instead)
+/kubectl
+/helm
+/cilium
+/hubble
+/linux-amd64/
+/linux-arm64/
+/*.tar.gz
+/*.sha256sum
+
+# Kubeconfigs copied out of the cluster
+*.kubeconfig
+kubeconfig.yaml
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors / OS
 *.swp
+*~
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code
 .claude
 CLAUDE.md
