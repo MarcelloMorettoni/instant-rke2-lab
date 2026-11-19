@@ -18,7 +18,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${HERE}/lib.sh"
 require_cluster
 require_helm
-command -v jq >/dev/null || die "jq is required"
+command -v jq >/dev/null || die "jq is required. Run 'make extras' in the lab root"
 cd "${HERE}"
 
 FROM="${1:-00}"

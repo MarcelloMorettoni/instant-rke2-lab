@@ -39,7 +39,7 @@ require_cluster() {
 }
 
 require_helm() {
-  command -v helm >/dev/null || die "helm not installed. See https://helm.sh/docs/intro/install/"
+  command -v helm >/dev/null || die "helm not installed. Run 'make extras' in the lab root"
   helm repo add grafana https://grafana.github.io/helm-charts --force-update >/dev/null
   helm repo add grafana-community https://grafana-community.github.io/helm-charts --force-update >/dev/null
   helm repo update grafana grafana-community >/dev/null
@@ -85,7 +85,7 @@ ensure_credentials() {
 # observability backends (step 07) and the tenant ingress (step 12).
 # Idempotent: step 12 calls it again and it only re-applies.
 install_kgateway() {
-  command -v helm >/dev/null || die "helm not installed. See https://helm.sh/docs/intro/install/"
+  command -v helm >/dev/null || die "helm not installed. Run 'make extras' in the lab root"
   # Gateway API CRDs. Some distributions (or another ingress, such as a bundled
   # Traefik) install them already. Never overwrite CRDs someone else manages.
   if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then

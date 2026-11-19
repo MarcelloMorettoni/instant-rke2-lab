@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 S := scripts
 
-.PHONY: help all prereqs image vms cluster kubeconfig verify destroy status \
+.PHONY: help all prereqs extras image vms cluster kubeconfig verify destroy clean status \
         ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean \
         generic-render generic-validate generic-pipeline-test
 
@@ -15,7 +15,8 @@ help:
 	@echo "  make cluster     Bootstrap RKE2 server, agents, and Cilium"
 	@echo "  make kubeconfig  Pull kubeconfig to .state/kubeconfig and print it"
 	@echo "  make verify      kubectl get nodes / pods / cilium"
-	@echo "  make destroy     Tear down VMs, disks, and lab state"
+	@echo "  make destroy     Tear down VMs, disks, kubeconfig (keeps image + SSH key for a fast rebuild)"
+	@echo "  make clean       destroy + storage pool, images/, vms/, .state/ (asks; YES=1 skips)"
 	@echo "  make status      Show libvirt + node status"
 	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2   SSH to a VM"
 	@echo
@@ -29,12 +30,18 @@ help:
 	@echo "  make generic-validate      Offline checks: charts, Loki/OTel configs, CRD schemas, alerts, Terraform"
 	@echo "  make generic-pipeline-test OTel agent → gateway → Loki in Docker (tenancy, masking, spoofing)"
 	@echo
+	@echo "  make extras               helm + jq on the host, for the optional labs below (not in 'make all')"
+	@echo
 	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
 all: prereqs image vms cluster kubeconfig verify
 
 prereqs:
 	$(S)/00-host-prep.sh
+
+# Optional: tools for soft-tenancy/, slinky/, generic/. Not part of `all`.
+extras:
+	$(S)/05-extras.sh
 
 image:
 	$(S)/10-fetch-image.sh
@@ -53,6 +60,9 @@ verify:
 
 destroy:
 	$(S)/99-destroy.sh
+
+clean:
+	$(S)/99-clean.sh
 
 status:
 	@sudo virsh list --all

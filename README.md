@@ -25,7 +25,8 @@ to a working `kubectl get nodes`.
 
 ## What you get
 
-- **RKE2** (Rancher's hardened upstream Kubernetes) on the `stable` channel
+- **RKE2** (Rancher's hardened upstream Kubernetes) from the `stable` channel,
+  pinned to one exact version for every node
 - **Cilium** as the CNI with `kubeProxyReplacement: true` — kube-proxy is
   replaced by Cilium's eBPF datapath
 - **Hubble** + Hubble UI for flow visibility
@@ -35,10 +36,69 @@ to a working `kubectl get nodes`.
 
 ## Requirements
 
-- A Linux host (developed on Ubuntu 24.04, kernel 6.x)
+- A Linux host running Ubuntu 24.04 or 26.04 (the host-prep script uses `apt`)
 - CPU with hardware virtualization (`vmx` / `svm`) and `/dev/kvm` present
 - ~50 GiB free disk, ~40 GiB free RAM at the default sizing
 - `sudo` access — `make prereqs` installs packages and configures libvirt
+
+### What `make prereqs` installs
+
+Only what the raw cluster needs. The optional labs' tools are in
+`make extras` (below) and are never installed by `make all`.
+
+| Package / tool                  | Source                    | Used by                                             |
+| ------------------------------- | ------------------------- | --------------------------------------------------- |
+| `curl`, `ca-certificates`, `gnupg` | apt                    | image download, kubectl apt repo key                |
+| `gettext-base` (`envsubst`)     | apt                       | Cilium manifest rendering (`make cluster`)          |
+| `openssh-client`                | apt                       | `ssh-keygen`, `ssh`/`scp` to the VMs                |
+| `acl` (`setfacl`)               | apt                       | lets QEMU reach `vms/` under a `0750` home          |
+| `qemu-system-x86`               | apt                       | the KVM hypervisor                                  |
+| `qemu-utils` (`qemu-img`)       | apt                       | backing-file qcow2 disks (`make vms`)               |
+| `libvirt-daemon-system`, `libvirt-clients` | apt            | `libvirtd`, `virsh`                                 |
+| `libvirt-daemon-config-network` | apt                       | the default NAT network (`virbr0`)                  |
+| `virtinst` (`virt-install`)     | apt                       | creating the VMs                                    |
+| `cloud-image-utils` (`cloud-localds`), `genisoimage` | apt  | cloud-init seed ISOs                                |
+| `kubectl`                       | pkgs.k8s.io (`KUBECTL_REPO_CHANNEL`) | `make verify`, `make status`              |
+
+### Optional: `make extras` (soft-tenancy, slinky, generic)
+
+Not part of `make all`. Run it only if you want the optional labs:
+
+| Package / tool | Source                                       | Used by                     |
+| -------------- | -------------------------------------------- | --------------------------- |
+| `jq`           | apt                                          | soft-tenancy, generic       |
+| `helm`         | get.helm.sh, sha256-checked (`HELM_VERSION`) | soft-tenancy, slinky, generic |
+
+The generic lab also needs `python3` and `docker`; install those yourself.
+
+Before installing anything, the script checks that apt has every package
+name, so a missing name stops it with a clear error instead of leaving a
+half-prepared host.
+
+### What was missing or wrong before (fixed Nov 2026)
+
+- **`qemu-kvm` no longer exists on Ubuntu 26.04.** It was in the same
+  `apt-get install` as everything else, so that one name failed the whole
+  install: `virt-install`, `cloud-localds`, libvirt and `kubectl` were never
+  installed. Replaced by `qemu-system-x86`.
+- **`qemu-utils` was not listed.** `qemu-img` came in only as a side
+  dependency. It's now installed explicitly.
+- **`libvirt-daemon-config-network` was not listed.** The script's fallback
+  for a missing `default` network only printed "install
+  libvirt-daemon-config-network". It's now installed up front.
+- **`openssh-client` was not listed.** `ssh-keygen`, `ssh` and `scp` were
+  assumed to be on the host already.
+- **`helm` was never installed.** soft-tenancy and generic stopped with
+  "helm not installed", and slinky piped an unpinned script from the helm
+  `main` branch into bash. The opt-in `make extras` now installs a pinned,
+  checksummed release, and all three labs point to it. `jq` moved there too,
+  since only the optional labs use it on the host.
+- **QEMU couldn't read the VM disks under `$HOME`.** Ubuntu creates home
+  directories as `0750`, so `libvirt-qemu` couldn't reach `vms/` in a repo
+  cloned there. `make prereqs` now grants search-only ACLs (`acl` package)
+  on the parent directories.
+- **`bridge-utils` was removed.** Nothing in the lab uses `brctl`; the
+  network is libvirt's NAT bridge.
 
 ## Quickstart
 
@@ -52,7 +112,7 @@ That runs, in order:
 
 | Step              | What it does                                              | Touches                         |
 | ----------------- | --------------------------------------------------------- | ------------------------------- |
-| `make prereqs`    | Install KVM/libvirt/kubectl, libvirt storage pool, ssh key | host (apt + groups + libvirtd) |
+| `make prereqs`    | Install KVM/libvirt/kubectl, libvirt storage pool, ssh key | host (apt + groups + libvirtd + ACLs) |
 | `make image`      | Download the Ubuntu 24.04 cloud image                      | `images/`                       |
 | `make vms`        | Create + boot 3 VMs via cloud-init, wait for SSH           | libvirt domains                 |
 | `make cluster`    | Install RKE2 server + Cilium, then 2 RKE2 agents           | VMs only                        |
@@ -111,7 +171,7 @@ VM_LIST=(
 )
 
 # Pin a specific RKE2 version instead of "stable"
-RKE2_VERSION="v1.35.4+rke2r1"
+RKE2_VERSION="v1.35.10+rke2r1"
 
 # Match kubectl's apt channel to your cluster's minor
 KUBECTL_REPO_CHANNEL="v1.35"
@@ -127,8 +187,9 @@ fast NVMe), set `VM_DIR` in `config.env` before running `make all`.
 make status              # libvirt + node status
 make ssh-cp1             # ssh into the control plane
 make ssh-w1 / ssh-w2     # ssh into a worker
-make destroy             # rip the lab down (keeps libvirt/kubectl/groups)
-make all                 # rebuild from scratch
+make destroy             # delete the VMs, disks, kubeconfig, node-token
+make clean               # destroy + storage pool, images/, vms/, .state/ (asks first)
+make all                 # rebuild
 ```
 
 To reach the API server from another machine on your LAN, expose
@@ -168,6 +229,9 @@ reconcile and sets:
 - `kubeProxyReplacement: true`
 - `bpf.masquerade: true`
 - `ipam.mode: kubernetes`
+- `socketLB.hostNamespaceOnly: true`, `cni.exclusive: false` — required for
+  Istio sidecars (e.g. Kubeflow) next to kube-proxy replacement; see
+  [Cilium's Istio guide](https://docs.cilium.io/en/latest/network/servicemesh/istio/)
 - Hubble + Hubble UI on
 
 The control plane writes its node-token; the bootstrap script reads it and
@@ -192,12 +256,14 @@ Each VM gets a NoCloud seed ISO with:
 ├── scripts/
 │   ├── lib.sh              # logging, ssh wrappers, sudo detection
 │   ├── 00-host-prep.sh
+│   ├── 05-extras.sh        # optional: helm + jq for the add-on labs
 │   ├── 10-fetch-image.sh
 │   ├── 20-create-vms.sh
 │   ├── 30-bootstrap-rke2.sh
 │   ├── 40-fetch-kubeconfig.sh
 │   ├── 50-verify.sh
-│   └── 99-destroy.sh
+│   ├── 99-destroy.sh
+│   └── 99-clean.sh         # destroy + pool, images/, vms/, .state/
 ├── manifests/
 │   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
 ├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
@@ -208,6 +274,25 @@ Each VM gets a NoCloud seed ISO with:
 ## Troubleshooting
 
 **`/dev/kvm` not present.** Enable AMD-V / Intel VT-x in BIOS.
+
+**`make prereqs` fails with "No apt candidate for: …".** A package name
+doesn't exist on your Ubuntu release (or `universe` is disabled). The script
+checks every name before installing so nothing is half-installed.
+
+**VM fails to start: `Could not open '…/disk.qcow2': Permission denied`.**
+QEMU runs as `libvirt-qemu` and can't traverse a `0750` home directory.
+`make prereqs` grants it search-only access (`setfacl -m u:libvirt-qemu:x`)
+on each parent of `vms/` and `images/`; re-run it if you moved the repo.
+
+**`make cluster` fails with `curl: (22) … 404` after "using stable as
+release".** RKE2's installer looks the channel up at `update.rke2.io`; when
+that service answers 404 it silently treats the word `stable` as a version
+and asks GitHub for `/download/stable/…`. `make cluster` now resolves the
+version on the host first and, if `update.rke2.io` doesn't answer, takes the
+newest GitHub release of the `KUBECTL_REPO_CHANNEL` minor (e.g. `v1.35`). The
+same exact version goes to the server and every agent. To skip the lookup,
+set `RKE2_VERSION` in `config.env`. Re-running `make cluster` after this
+error is safe.
 
 **`virt-install` permission denied** — you're not yet in the `libvirt` group.
 Either re-login after `make prereqs` or let the script keep falling back to
@@ -222,12 +307,22 @@ image pulls can take a few minutes on a first run. SSH in (`make ssh-cp1`)
 and tail `sudo journalctl -fu rke2-server`. The "D-Bus connection terminated"
 warning during `systemctl enable --now rke2-server` is cosmetic.
 
+**Which teardown?**
+
+| Command        | Removes                                                                 | Keeps                                   | Next `make all` |
+| -------------- | ----------------------------------------------------------------------- | --------------------------------------- | --------------- |
+| `make destroy` | VMs + disks, `.state/kubeconfig`, `.state/node-token`                    | cloud image, SSH key, storage pool, host setup | skips the image download |
+| `make clean`   | all of the above + storage pool `rke2-lab`, `images/`, `vms/`, `.state/` (SSH key, soft-tenancy credentials) | host packages, groups, libvirt network, ACLs | starts from nothing |
+
+`make clean` asks for confirmation; `make clean YES=1` skips the prompt.
+
 **Tear down completely**, including packages and groups:
 
 ```bash
-make destroy
-sudo virsh pool-destroy rke2-lab && sudo virsh pool-undefine rke2-lab
-sudo apt purge qemu-kvm libvirt-daemon-system libvirt-clients virtinst cloud-image-utils
+make clean YES=1
+sudo apt purge qemu-system-x86 libvirt-daemon-system libvirt-clients libvirt-daemon-config-network virtinst cloud-image-utils kubectl
+sudo rm -f /etc/apt/sources.list.d/kubernetes.list
+sudo rm -f /usr/local/bin/helm            # only if you ran `make extras`
 sudo deluser $USER libvirt && sudo deluser $USER kvm
 ```
 
@@ -240,6 +335,7 @@ and MPI job examples targeting the two worker nodes.
 It is **not part of `make all`**. Once your cluster is up, install it manually:
 
 ```bash
+make extras           # helm + jq on the host (once)
 cd slinky
 ./install.sh          # deploys slurm-operator + a 2-node SLURM cluster
 ./scripts/submit.sh examples/01-hello.sbatch
@@ -260,6 +356,7 @@ what happens when someone makes a mistake.
 Like Slinky, it's **not part of `make all`**:
 
 ```bash
+make extras                   # helm + jq on the host (once)
 cd soft-tenancy
 ./00-cilium-dns/apply.sh      # then follow README.md, steps 01 → 11
 ```

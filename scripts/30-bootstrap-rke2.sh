@@ -21,8 +21,38 @@ log "Control plane: ${CP_NAME} @ ${CP_IP}"
 log "Agents:        ${AGENT_NAMES[*]}"
 log "Host LAN IP:   ${HOST_IP:-<unknown>}"
 
-RKE2_ENV="INSTALL_RKE2_CHANNEL=${RKE2_CHANNEL}"
-[[ -n "${RKE2_VERSION}" ]] && RKE2_ENV+=" INSTALL_RKE2_VERSION=${RKE2_VERSION}"
+# Resolve the exact RKE2 version here, on the host, and pin it for the server
+# and every agent. The installer's own channel lookup (update.rke2.io) has
+# been seen returning 404 for every channel; it then silently uses the channel
+# name as a version and fails on a 404 for ".../download/stable/...".
+resolve_rke2_version() {
+  local v minor
+  v="$(curl -sL -o /dev/null -w '%{url_effective}' \
+        "https://update.rke2.io/v1-release/channels/${RKE2_CHANNEL}" 2>/dev/null \
+        | sed -e 's|.*/||')" || true
+  if [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\+rke2r[0-9]+$ ]]; then
+    echo "$v"; return 0
+  fi
+  # Fallback: newest GitHub release (no -rc) of the minor. A channel such as
+  # "v1.35" names the minor itself; otherwise follow kubectl's apt channel.
+  if [[ "${RKE2_CHANNEL}" =~ ^v[0-9]+\.[0-9]+$ ]]; then
+    minor="${RKE2_CHANNEL}"
+  else
+    minor="${KUBECTL_REPO_CHANNEL}"
+  fi
+  warn "update.rke2.io didn't resolve channel '${RKE2_CHANNEL}' — using the newest ${minor} release from GitHub"
+  curl -fsSL "https://api.github.com/repos/rancher/rke2/releases?per_page=100" \
+    | grep -oE "\"tag_name\": *\"${minor//./\\.}\.[0-9]+\+rke2r[0-9]+\"" \
+    | grep -oE 'v[0-9][^"]*' | sort -V | tail -1
+}
+
+if [[ -z "${RKE2_VERSION}" ]]; then
+  RKE2_VERSION="$(resolve_rke2_version)"
+  [[ -n "${RKE2_VERSION}" ]] \
+    || die "Couldn't resolve an RKE2 version — set RKE2_VERSION in config.env (e.g. v1.35.10+rke2r1)"
+fi
+log "RKE2 version:  ${RKE2_VERSION}"
+RKE2_ENV="INSTALL_RKE2_VERSION=${RKE2_VERSION}"
 
 ###############################################################################
 # Control plane

@@ -9,14 +9,34 @@ log "Host pre-flight"
 [[ -e /dev/kvm ]] || die "/dev/kvm missing — enable virtualization in BIOS"
 grep -qE '(vmx|svm)' /proc/cpuinfo || die "No CPU virt extensions (vmx/svm)"
 
+# Raw cluster only: the optional labs' tools (helm, jq) are in 05-extras.sh.
+# Package names are checked against apt before installing: one missing name
+# (qemu-kvm was dropped after Ubuntu 24.04) would otherwise abort the whole
+# install and leave the host with nothing.
 PKGS=(
-  qemu-kvm libvirt-daemon-system libvirt-clients
-  bridge-utils virtinst cloud-image-utils genisoimage
-  curl jq gettext-base ca-certificates gnupg
+  # base tools (kubectl repo setup, envsubst for the Cilium manifest, ssh)
+  curl ca-certificates gnupg gettext-base openssh-client acl
+  # QEMU/KVM: qemu-system-x86 replaces the old qemu-kvm metapackage,
+  # qemu-utils provides qemu-img (20-create-vms.sh)
+  qemu-system-x86 qemu-utils
+  # libvirt daemon + virsh + the default NAT network (virbr0)
+  libvirt-daemon-system libvirt-clients libvirt-daemon-config-network
+  # virt-install, cloud-localds (+ genisoimage, which it calls)
+  virtinst cloud-image-utils genisoimage
 )
 
-log "Installing virtualization packages"
+log "Refreshing apt package lists"
 sudo apt-get update -qq
+
+MISSING=()
+for p in "${PKGS[@]}"; do
+  cand="$(apt-cache policy "$p" 2>/dev/null | awk '/Candidate:/ {print $2}')"
+  [[ -n "$cand" && "$cand" != "(none)" ]] || MISSING+=("$p")
+done
+(( ${#MISSING[@]} == 0 )) \
+  || die "No apt candidate for: ${MISSING[*]} (check your Ubuntu release / enabled components)"
+
+log "Installing virtualization packages"
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PKGS[@]}"
 
 if ! command -v kubectl >/dev/null 2>&1; then
@@ -28,7 +48,7 @@ if ! command -v kubectl >/dev/null 2>&1; then
   echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${K8S_REPO}/deb/ /" \
     | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
   sudo apt-get update -qq
-  sudo apt-get install -y -qq kubectl
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq kubectl
 fi
 
 ME="$(id -un)"
@@ -62,9 +82,27 @@ else
   sudo virsh net-autostart default
 fi
 
-# Storage pool on /data
+# Storage pool (VM_DIR, inside the repo by default)
 mkdir -p "${VM_DIR}" "${IMAGE_DIR}" "${STATE_DIR}"
-chmod 755 "${VM_DIR}"
+chmod 755 "${VM_DIR}" "${IMAGE_DIR}"
+
+# QEMU runs as libvirt-qemu and must be able to walk down to the disks. Ubuntu
+# creates home directories as 0750, so a repo cloned under $HOME is unreachable
+# and VMs fail to start with "Permission denied". Grant search (x) only, via
+# ACL, on each parent that isn't already world-searchable.
+QEMU_USER="libvirt-qemu"
+if getent passwd "${QEMU_USER}" >/dev/null; then
+  for target in "${VM_DIR}" "${IMAGE_DIR}"; do
+    d="$(dirname "$(realpath "${target}")")"
+    while [[ "$d" != "/" ]]; do
+      if ! sudo -u "${QEMU_USER}" test -x "$d"; then
+        log "Granting ${QEMU_USER} search access on ${d}"
+        sudo setfacl -m "u:${QEMU_USER}:x" "$d"
+      fi
+      d="$(dirname "$d")"
+    done
+  done
+fi
 if ! sudo virsh pool-info "${POOL_NAME}" >/dev/null 2>&1; then
   log "Creating libvirt storage pool '${POOL_NAME}' at ${VM_DIR}"
   sudo virsh pool-define-as "${POOL_NAME}" dir --target "${VM_DIR}" >/dev/null
@@ -80,7 +118,7 @@ fi
 # SSH key for the lab
 if [[ ! -f "${SSH_KEY}" ]]; then
   log "Generating SSH keypair at ${SSH_KEY}"
-  ssh-keygen -t ed25519 -N '' -f "${SSH_KEY}" -C "slinky-lab" >/dev/null
+  ssh-keygen -t ed25519 -N '' -f "${SSH_KEY}" -C "instant-rke2-lab" >/dev/null
 fi
 chmod 600 "${SSH_KEY}"
 
