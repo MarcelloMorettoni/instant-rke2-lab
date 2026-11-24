@@ -10,6 +10,19 @@ BASE_IMG="${IMAGE_DIR}/${IMAGE_FILE}"
 
 PUBKEY="$(cat "${SSH_KEY}.pub")"
 
+# GPU passthrough: the whole IOMMU group goes to GPU_VM, already on vfio-pci.
+GPU_ARGS=()
+if [[ -n "${GPU_PCI}" ]]; then
+  mapfile -t GPU_DEVS < <(gpu_group_devices)
+  (( ${#GPU_DEVS[@]} > 0 )) || die "GPU_PCI=${GPU_PCI}: no passthrough devices found — run 'make gpu-host' first"
+  for dev in "${GPU_DEVS[@]}"; do
+    [[ "$(pci_driver "${dev}")" == "vfio-pci" ]] \
+      || die "${dev} is on '$(pci_driver "${dev}")', not vfio-pci — run 'make gpu-host' first"
+    GPU_ARGS+=(--host-device "${dev}")
+  done
+  log "GPU passthrough: ${GPU_DEVS[*]} → ${GPU_VM}"
+fi
+
 create_vm() {
   local name=$1 vcpus=$2 mem=$3 disk_gb=$4 ip=$5
   local vm_dir="${VM_DIR}/${name}"
@@ -53,6 +66,7 @@ packages:
   - jq
   - iproute2
   - apparmor-utils
+  - pciutils
 write_files:
   - path: /etc/modules-load.d/k8s.conf
     content: |
@@ -63,6 +77,10 @@ write_files:
       net.bridge.bridge-nf-call-iptables = 1
       net.bridge.bridge-nf-call-ip6tables = 1
       net.ipv4.ip_forward = 1
+      # Many watchers (GPU Operator validators, Kubeflow): RKE2's recommended
+      # minimum, and Kubeflow's watch count.
+      fs.inotify.max_user_instances = 8192
+      fs.inotify.max_user_watches = 1255360
 runcmd:
   - swapoff -a
   - sed -i.bak '/\sswap\s/ s/^/#/' /etc/fstab
@@ -88,6 +106,12 @@ EOF
 
   cloud-localds -N "${net_config}" "${seed}" "${user_data}" "${meta_data}"
 
+  # PCIe passthrough wants a q35 machine; only the GPU VM gets the devices.
+  local extra=()
+  if [[ "${name}" == "${GPU_VM}" && ${#GPU_ARGS[@]} -gt 0 ]]; then
+    extra=(--machine q35 "${GPU_ARGS[@]}")
+  fi
+
   VIRT_INSTALL \
     --connect qemu:///system \
     --name "${name}" \
@@ -101,8 +125,14 @@ EOF
     --graphics none \
     --noautoconsole \
     --import \
+    "${extra[@]}" \
     --quiet
 }
+
+if [[ -n "${GPU_PCI}" ]]; then
+  printf '%s\n' "${VM_LIST[@]}" | awk '{print $1}' | grep -qx "${GPU_VM}" \
+    || die "GPU_VM=${GPU_VM} isn't in VM_LIST"
+fi
 
 for entry in "${VM_LIST[@]}"; do
   read -r name vcpus mem disk ip role <<<"$entry"

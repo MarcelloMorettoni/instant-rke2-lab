@@ -1,0 +1,23 @@
+# NVIDIA GPU Operator, installed by RKE2's own Helm controller (no helm CLI).
+# Rendered by scripts/60-gpu-operator.sh; ${GPU_OPERATOR_VERSION} comes from
+# config.env. Follows https://docs.rke2.io/add-ons/gpu_operators (v26.7.x):
+# the VMs run Ubuntu 24.04, an NVIDIA-supported OS, so the operator's driver
+# container builds and loads the NVIDIA driver inside the GPU VM — nothing is
+# installed on the VM image beforehand. RKE2's containerd 2.x supports CDI, so
+# pods only need `resources.limits: {nvidia.com/gpu: 1}` (no runtimeClassName).
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: gpu-operator
+  namespace: kube-system
+spec:
+  repo: https://helm.ngc.nvidia.com/nvidia
+  chart: gpu-operator
+  version: ${GPU_OPERATOR_VERSION}
+  targetNamespace: gpu-operator
+  createNamespace: true
+  valuesContent: |-
+    toolkit:
+      env:
+      - name: CONTAINERD_SOCKET
+        value: /run/k3s/containerd/containerd.sock

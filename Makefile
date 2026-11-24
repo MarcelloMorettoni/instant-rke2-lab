@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 S := scripts
 
 .PHONY: help all prereqs extras image vms cluster kubeconfig verify destroy clean status \
+        gpu-host gpu-host-undo gpu remote-bundle \
         ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean \
         generic-render generic-validate generic-pipeline-test
 
@@ -9,6 +10,7 @@ help:
 	@echo "instant-rke2-lab — RKE2 + Cilium on libvirt/KVM"
 	@echo
 	@echo "  make all         End-to-end: prereqs → image → vms → cluster → kubeconfig → verify"
+	@echo "                   (with GPU_PCI set: also gpu-host before vms, gpu at the end)"
 	@echo "  make prereqs     Install KVM/libvirt/kubectl, set up storage pool & SSH key"
 	@echo "  make image       Download Ubuntu 24.04 cloud image"
 	@echo "  make vms         Create + boot 3 VMs via cloud-init"
@@ -20,6 +22,11 @@ help:
 	@echo "  make status      Show libvirt + node status"
 	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2   SSH to a VM"
 	@echo
+	@echo
+	@echo "  make gpu-host      GPU passthrough host prep: IOMMU, GPU → vfio-pci (GPU_PCI in config.env)"
+	@echo "  make gpu           NVIDIA GPU Operator in the cluster + CUDA smoke test"
+	@echo "  make gpu-host-undo Give the GPU back to the host (after make destroy)"
+	@echo "  make remote-bundle kubeconfig + ssh config for using a lab on this server from another machine"
 	@echo
 	@echo "  make soft-tenancy         Soft multi-tenancy lab: tenants a, b, c; Cilium isolation (a -> c only),"
 	@echo "                            Grafana stack per tenant, kgateway. Grafana logins: password test-tenant"
@@ -34,10 +41,25 @@ help:
 	@echo
 	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
-all: prereqs image vms cluster kubeconfig verify
+all: prereqs
+	$(S)/15-gpu-host.sh --if-enabled
+	$(MAKE) image vms cluster kubeconfig verify
+	$(S)/60-gpu-operator.sh --if-enabled
 
 prereqs:
 	$(S)/00-host-prep.sh
+
+gpu-host:
+	$(S)/15-gpu-host.sh
+
+gpu-host-undo:
+	$(S)/15-gpu-host.sh --undo
+
+gpu:
+	$(S)/60-gpu-operator.sh
+
+remote-bundle:
+	$(S)/45-remote-bundle.sh
 
 # Optional: tools for soft-tenancy/, slinky/, generic/. Not part of `all`.
 extras:

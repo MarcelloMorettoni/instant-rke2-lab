@@ -89,3 +89,32 @@ host_lan_ip() {
     | awk '{print $4}' | cut -d/ -f1 \
     | grep -v '^192\.168\.122\.' | head -1
 }
+
+# --- GPU passthrough ---------------------------------------------------------
+
+# GPU_PCI with the PCI domain prefix ("01:00.0" -> "0000:01:00.0").
+gpu_pci_full() {
+  local a="${GPU_PCI}"
+  [[ "$a" =~ ^[0-9a-fA-F]{4}: ]] || a="0000:${a}"
+  echo "${a,,}"
+}
+
+# Every endpoint in GPU_PCI's IOMMU group (bridges excluded) — all of them must
+# go to the VM together. Fails if IOMMU is off or the device doesn't exist.
+gpu_group_devices() {
+  local gpu dev class
+  gpu="$(gpu_pci_full)"
+  [[ -e "/sys/bus/pci/devices/${gpu}" ]] || { err "No PCI device ${gpu}"; return 1; }
+  [[ -e "/sys/bus/pci/devices/${gpu}/iommu_group" ]] || { err "${gpu} has no IOMMU group (IOMMU off?)"; return 1; }
+  for dev in /sys/bus/pci/devices/"${gpu}"/iommu_group/devices/*; do
+    dev="$(basename "$dev")"
+    class="$(cat "/sys/bus/pci/devices/${dev}/class")"
+    [[ "${class}" == 0x0604* ]] && continue   # PCI bridge: stays on the host
+    echo "${dev}"
+  done
+}
+
+pci_driver() {
+  local link="/sys/bus/pci/devices/$1/driver"
+  [[ -e "$link" ]] && basename "$(readlink -f "$link")" || echo "none"
+}

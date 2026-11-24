@@ -192,10 +192,102 @@ make clean               # destroy + storage pool, images/, vms/, .state/ (asks 
 make all                 # rebuild
 ```
 
-To reach the API server from another machine on your LAN, expose
-`192.168.122.11:6443` via your host with an iptables/nftables DNAT, or switch
-`LIBVIRT_NETWORK` to a bridge. The lab ships NAT-only by default so it doesn't
-collide with your home/office network.
+## Running the lab on a server
+
+Clone the repo on the server and run `make all` there. The VMs stay on the
+server's private `virbr0` network; other machines on the LAN reach them
+**through the server's SSH**, nothing else is opened:
+
+```bash
+# on the server, after make all
+make remote-bundle
+```
+
+That writes `.state/remote/` and prints the exact commands for the other
+machine (laptop):
+
+| File         | What it is                                                              |
+| ------------ | ----------------------------------------------------------------------- |
+| `kubeconfig` | context `rke2-lab`, API server at `https://127.0.0.1:6443` (RKE2's certificate already covers 127.0.0.1) |
+| `ssh_config` | `rke2-lab` = SSH to the server with `LocalForward 6443 → cp1:6443`; `cp1`/`worker1`/`worker2` via `ProxyJump rke2-lab` |
+| `ssh_key`    | the lab's VM key                                                         |
+
+On the laptop:
+
+```bash
+mkdir -p ~/.rke2-lab && chmod 700 ~/.rke2-lab
+scp '<user>@<server>:~/instant-rke2-lab/.state/remote/*' ~/.rke2-lab/
+ssh -F ~/.rke2-lab/ssh_config -fN rke2-lab      # API tunnel, in the background
+export KUBECONFIG=~/.rke2-lab/kubeconfig
+kubectl get nodes
+ssh -F ~/.rke2-lab/ssh_config worker1            # a node, jumping through the server
+```
+
+UIs (Kubeflow, Hubble) work from the laptop with plain `kubectl port-forward`
+through that tunnel. Re-copy the bundle after rebuilding the cluster (new
+certificates, new key after `make clean`). The server address is detected from
+its first LAN interface; set `REMOTE_HOST` in `config.env` if it picks the
+wrong one.
+
+Scripts that SSH into the VMs (`make cluster`, Kubeflow's `make prep`) still
+run on the server.
+
+## GPU passthrough
+
+On a host with an NVIDIA GPU, one worker VM can own the GPU through VFIO PCI
+passthrough; NVIDIA's GPU Operator then installs the driver inside that VM
+and advertises `nvidia.com/gpu` to Kubernetes.
+
+1. Find the GPU's address and set it in `config.env`:
+
+   ```bash
+   lspci -nn | grep -iE 'vga|3d' | grep -i nvidia     # e.g. 01:00.0 VGA ... [10de:2684]
+   ```
+
+   ```bash
+   GPU_PCI="01:00.0"
+   GPU_VM="worker1"          # the VM that gets it; size its RAM/disk in VM_LIST
+   ```
+
+2. `make all`. With `GPU_PCI` set it adds two steps:
+   - **`make gpu-host`** (before `make vms`): turns IOMMU on if needed
+     (`intel_iommu=on iommu=pt` or `amd_iommu=on iommu=pt` via
+     `/etc/default/grub.d/90-instant-rke2-lab-iommu.cfg`, then **asks for a
+     reboot** — run `make all` again afterwards), checks the GPU's IOMMU
+     group holds only the GPU's own functions (GPU + its HDMI audio), and
+     binds them all to `vfio-pci` with `driverctl` so it survives reboots.
+   - **`make gpu`** (after the cluster is up): installs GPU Operator
+     `GPU_OPERATOR_VERSION` as an RKE2 `HelmChart`
+     ([`manifests/gpu-operator.yaml`](./manifests/gpu-operator.yaml), per
+     [RKE2's docs](https://docs.rke2.io/add-ons/gpu_operators)), waits for
+     `nvidia.com/gpu` on `GPU_VM` (the driver build takes several minutes),
+     and runs NVIDIA's CUDA vector-add sample as a pod.
+
+   `make vms` gives `GPU_VM` a `q35` machine and every device from the
+   group (`virt-install --host-device`). Pods then ask for the GPU with:
+
+   ```yaml
+   resources:
+     limits:
+       nvidia.com/gpu: 1
+   ```
+
+3. Kubeflow: `make pipeline-gpu` in `~/kubeflow` runs a one-step PyTorch
+   pipeline that must see CUDA.
+
+Things to know:
+
+- **The host loses the GPU** while it's bound to `vfio-pci` — no
+  `nvidia-smi`, no display on it. If it's the boot display GPU, `make gpu-host`
+  stops unless you pass `FORCE=1`; use the server over SSH.
+- **BIOS**: VT-d (Intel) or AMD-Vi/IOMMU must be enabled. If IOMMU stays off
+  after the reboot, that's the cause.
+- **IOMMU groups**: if the GPU shares its group with unrelated devices (some
+  consumer boards), passthrough would take those too; `make gpu-host` refuses.
+  Another PCIe slot often has a clean group.
+- **Memory**: QEMU pins all of `GPU_VM`'s RAM while a device is passed through.
+- `make destroy` keeps the `vfio-pci` binding (the next `make vms` reuses it);
+  **`make gpu-host-undo`** (after `make destroy`) gives the GPU back to the host.
 
 ## How it works
 
@@ -218,7 +310,8 @@ The control plane is configured with:
 
 - `cni: cilium` — RKE2 ships the bundled Cilium chart
 - `disable-kube-proxy: true` — kube-proxy is replaced by Cilium's eBPF
-- `tls-san` includes the host LAN IP so external `kubectl` can be wired up
+- `tls-san` includes the host LAN IP (and RKE2 always covers 127.0.0.1, which
+  the `make remote-bundle` tunnel uses)
 
 The Cilium chart is customized via a `HelmChartConfig`
 ([`manifests/rke2-cilium-config.yaml`](./manifests/rke2-cilium-config.yaml))
@@ -245,6 +338,8 @@ Each VM gets a NoCloud seed ISO with:
 - Hostname, the `ubuntu` user with the lab's generated SSH pubkey
 - Static IP via `network-config v2` matched against `en*`
 - `swapoff`, `br_netfilter`, `ip_forward` — Kubernetes preconditions
+- inotify limits (`max_user_instances=8192`, `max_user_watches=1255360`) for
+  watcher-heavy workloads such as the GPU Operator and Kubeflow
 - Password auth disabled
 
 ## Repository layout
@@ -258,20 +353,34 @@ Each VM gets a NoCloud seed ISO with:
 │   ├── 00-host-prep.sh
 │   ├── 05-extras.sh        # optional: helm + jq for the add-on labs
 │   ├── 10-fetch-image.sh
+│   ├── 15-gpu-host.sh      # GPU passthrough host prep (IOMMU, vfio-pci); --undo
 │   ├── 20-create-vms.sh
 │   ├── 30-bootstrap-rke2.sh
 │   ├── 40-fetch-kubeconfig.sh
+│   ├── 45-remote-bundle.sh # kubeconfig + ssh config for another machine
 │   ├── 50-verify.sh
+│   ├── 60-gpu-operator.sh  # NVIDIA GPU Operator + CUDA smoke test
 │   ├── 99-destroy.sh
 │   └── 99-clean.sh         # destroy + pool, images/, vms/, .state/
 ├── manifests/
-│   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
+│   ├── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
+│   └── gpu-operator.yaml         # NVIDIA GPU Operator HelmChart template
 ├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
 ├── soft-tenancy/                 # optional: two isolated tenants + per-tenant logs (step by step)
 └── .state/                       # generated, gitignored: ssh_key, kubeconfig, node-token
 ```
 
 ## Troubleshooting
+
+**`make gpu-host` exits asking for a reboot.** Expected the first time: it
+added the IOMMU kernel flags. Reboot and run `make all` (or `make gpu-host`)
+again.
+
+**`make gpu` times out waiting for `nvidia.com/gpu`.** Look at
+`kubectl -n gpu-operator get pods`; the `nvidia-driver-daemonset` logs show
+whether the driver built. `lspci -d 10de:` inside the GPU VM
+(`make ssh-w1`) must list the card — if not, the VM was created before
+`make gpu-host`: `make destroy && make all`.
 
 **`/dev/kvm` not present.** Enable AMD-V / Intel VT-x in BIOS.
 
