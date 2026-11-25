@@ -140,7 +140,7 @@ control plane and runs every workload:
 |                 | `make all` (multi)                    | `make solo`                     |
 | --------------- | ------------------------------------- | ------------------------------- |
 | VMs             | cp1 .11, worker1 .12, worker2 .13     | solo `192.168.122.10`           |
-| Size            | 4+6+6 vCPU, 8+16+16 GiB, 60+80+80 GB  | 16 vCPU, 40 GiB, 200 GB         |
+| Size            | 4+6+6 vCPU, 8+16+16 GiB, 60+80+80 GB  | up to 16 vCPU / 40 GiB, 200 GB (sized to the host, below) |
 | Pods per node   | 110 (kubelet default)                 | 200 (`KUBELET_MAX_PODS`)        |
 | API server      | `https://192.168.122.11:6443`         | `https://192.168.122.10:6443`   |
 | SSH             | `make ssh-cp1`, `ssh-w1`, `ssh-w2`    | `make ssh-solo` (or `make ssh`) |
@@ -151,9 +151,25 @@ now carries the whole cluster (the full Kubeflow platform is ~50 deployments,
 plus jobs and pipeline steps);
 200 stays inside the /24 Cilium gives each node.
 
+**Size.** The solo VM is as big as the multi lab's total, but never bigger
+than the host: vCPUs = the host's CPU count (max 16), RAM = host RAM minus
+8 GiB for the host itself (max 40 GiB). A 14-CPU / 30 GiB laptop gets
+14 vCPU / ~22 GiB, which is enough for the full Kubeflow platform (~12 GiB).
+Override either for one build:
+
+```bash
+SOLO_VCPUS=8 SOLO_MEM_MIB=16384 make solo
+```
+
+Why not just 40 GiB everywhere: QEMU reserves guest RAM up front, and Linux
+refuses a single allocation larger than RAM + swap — the VM fails to start
+with `cannot set up guest memory 'pc.ram': Cannot allocate memory`. The
+three multi VMs don't hit this because each one is 16 GiB or less.
+`make vms` now checks this before calling virt-install.
+
 No branch or separate config is needed: `TOPOLOGY` in
 [`config.env`](./config.env) picks the VM list, and `make solo` just runs
-`TOPOLOGY=solo make all`. Resize the solo VM by editing its line there.
+`TOPOLOGY=solo make all`.
 
 **The choice is remembered.** `make vms` writes it to `.state/topology`; every
 later step reads it, so `make cluster`, `verify`, `status`, `ssh`, `destroy`

@@ -33,6 +33,17 @@ create_vm() {
     return 0
   fi
 
+  # QEMU allocates guest RAM up front and the kernel refuses more than
+  # RAM + swap in one go ("cannot set up guest memory 'pc.ram'"). Say so here.
+  local host_mib swap_mib
+  host_mib="$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo)"
+  swap_mib="$(awk '/^SwapTotal:/ {print int($2/1024)}' /proc/meminfo)"
+  (( mem >= 2048 )) || die "${name} gets only ${mem} MiB — the host is too small; set SOLO_MEM_MIB or edit VM_LIST"
+  (( mem < host_mib + swap_mib )) \
+    || die "${name} wants ${mem} MiB but the host has ${host_mib} MiB RAM + ${swap_mib} MiB swap — lower it in config.env"
+  (( vcpus <= $(nproc) )) \
+    || warn "${name} has ${vcpus} vCPUs, the host only $(nproc) — it will run, but overcommitted"
+
   log "Creating ${name}: ${vcpus} vCPU / ${mem} MiB / ${disk_gb} G / ${ip}"
   mkdir -p "${vm_dir}"
 
