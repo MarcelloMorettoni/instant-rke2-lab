@@ -6,7 +6,8 @@ your LAN.
 
 One control-plane node, two workers, a NAT'd `virbr0` so the cluster is
 invisible to the rest of your network, and a single `make all` from cold metal
-to a working `kubectl get nodes`.
+to a working `kubectl get nodes`. Prefer one VM? `make solo` builds the same
+cluster as a single node — see [Single VM: `make solo`](#single-vm-make-solo).
 
 ```
                 ┌──────────────────────────────────────────────┐
@@ -127,6 +128,52 @@ kubectl get nodes -o wide
 kubectl -n kube-system get pods
 ```
 
+## Single VM: `make solo`
+
+```bash
+make solo
+```
+
+Same steps as `make all`, same RKE2 + Cilium setup, but **one VM** that is the
+control plane and runs every workload:
+
+|                 | `make all` (multi)                    | `make solo`                     |
+| --------------- | ------------------------------------- | ------------------------------- |
+| VMs             | cp1 .11, worker1 .12, worker2 .13     | solo `192.168.122.10`           |
+| Size            | 4+6+6 vCPU, 8+16+16 GiB, 60+80+80 GB  | 16 vCPU, 40 GiB, 200 GB         |
+| Pods per node   | 110 (kubelet default)                 | 200 (`KUBELET_MAX_PODS`)        |
+| API server      | `https://192.168.122.11:6443`         | `https://192.168.122.10:6443`   |
+| SSH             | `make ssh-cp1`, `ssh-w1`, `ssh-w2`    | `make ssh-solo` (or `make ssh`) |
+
+RKE2 servers take workloads by default, so nothing is tainted. Cilium's
+operator already runs one replica. The pod limit is raised because one node
+now carries the whole cluster (the full Kubeflow platform is ~50 deployments,
+plus jobs and pipeline steps);
+200 stays inside the /24 Cilium gives each node.
+
+No branch or separate config is needed: `TOPOLOGY` in
+[`config.env`](./config.env) picks the VM list, and `make solo` just runs
+`TOPOLOGY=solo make all`. Resize the solo VM by editing its line there.
+
+**The choice is remembered.** `make vms` writes it to `.state/topology`; every
+later step reads it, so `make cluster`, `verify`, `status`, `ssh`, `destroy`
+and even a plain `make all` act on the solo VM without being told. Asking for
+the other topology while one is built stops with an error — switch with:
+
+```bash
+make destroy && make all     # solo → multi
+make destroy && make solo    # multi → solo
+```
+
+`make destroy` always removes what is actually built and clears
+`.state/topology`.
+
+The add-ons run unchanged. `slinky/` spreads its two slurmd pods across
+nodes only as a preference, so on solo both land on the one VM (the
+multi-node examples still run, just not across machines). `soft-tenancy/` and
+Kubeflow (`~/kubeflow`, which reads the lab's VM list) don't depend on the
+node count.
+
 ## SSH keys
 
 The lab uses a **dedicated SSH keypair** that lives only on your machine — it
@@ -185,15 +232,17 @@ fast NVMe), set `VM_DIR` in `config.env` before running `make all`.
 
 ```bash
 make status              # libvirt + node status
+make ssh                 # ssh into the control plane (cp1, or solo); NODE=worker1 for another
 make ssh-cp1             # ssh into the control plane
 make ssh-w1 / ssh-w2     # ssh into a worker
+make ssh-solo            # ssh into the solo VM
 make destroy             # delete the VMs, disks, kubeconfig, node-token
 make clean               # destroy + storage pool, images/, vms/, .state/ (asks first)
 make all                 # rebuild
 ```
 
 To reach the API server from another machine on your LAN, expose
-`192.168.122.11:6443` via your host with an iptables/nftables DNAT, or switch
+`192.168.122.11:6443` (`.10` for solo) via your host with an iptables/nftables DNAT, or switch
 `LIBVIRT_NETWORK` to a bridge. The lab ships NAT-only by default so it doesn't
 collide with your home/office network.
 
@@ -252,7 +301,7 @@ Each VM gets a NoCloud seed ISO with:
 ```
 .
 ├── Makefile                # all the entry points
-├── config.env              # tunables (sizes, IPs, RKE2 channel, Cilium flags)
+├── config.env              # tunables (TOPOLOGY, sizes, IPs, RKE2 channel, Cilium flags)
 ├── scripts/
 │   ├── lib.sh              # logging, ssh wrappers, sudo detection
 │   ├── 00-host-prep.sh
@@ -263,12 +312,13 @@ Each VM gets a NoCloud seed ISO with:
 │   ├── 40-fetch-kubeconfig.sh
 │   ├── 50-verify.sh
 │   ├── 99-destroy.sh
-│   └── 99-clean.sh         # destroy + pool, images/, vms/, .state/
+│   ├── 99-clean.sh         # destroy + pool, images/, vms/, .state/
+│   └── ssh-node.sh         # interactive ssh to a VM by name (make ssh*)
 ├── manifests/
 │   └── rke2-cilium-config.yaml   # Cilium HelmChartConfig template
 ├── slinky/                       # optional: SLURM-on-Kubernetes examples (run manually)
 ├── soft-tenancy/                 # optional: two isolated tenants + per-tenant logs (step by step)
-└── .state/                       # generated, gitignored: ssh_key, kubeconfig, node-token
+└── .state/                       # generated, gitignored: ssh_key, kubeconfig, node-token, topology
 ```
 
 ## Troubleshooting
@@ -330,7 +380,8 @@ sudo deluser $USER libvirt && sudo deluser $USER kvm
 
 The `./slinky/` folder contains a self-contained [Slinky](https://github.com/SlinkyProject/slurm-operator)
 installation — SchedMD's SLURM operator for Kubernetes — along with scheduling
-and MPI job examples targeting the two worker nodes.
+and MPI job examples targeting the two worker nodes (on `make solo` both
+slurmd pods share the one VM).
 
 It is **not part of `make all`**. Once your cluster is up, install it manually:
 

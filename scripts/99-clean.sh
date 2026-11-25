@@ -13,6 +13,7 @@
 # that `make prereqs` would just redo. See README "Tear down completely".
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LAB_USE_RECORDED_TOPOLOGY=1
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 

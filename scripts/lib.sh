@@ -16,7 +16,23 @@ die()  { err "$*"; exit 1; }
 # Locate repo root and load config
 __LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAB_ROOT_DETECTED="$(cd "${__LIB_DIR}/.." && pwd)"
+
+# Topology recorded by 20-create-vms.sh. It wins over the default, so a solo
+# lab is found by every later step; asking for the other one is an error
+# until the lab is destroyed. Teardown scripts set LAB_USE_RECORDED_TOPOLOGY=1
+# to always act on what is actually built.
+TOPOLOGY_FILE="${LAB_ROOT_DETECTED}/.state/topology"
+if [[ -s "${TOPOLOGY_FILE}" ]]; then
+  __recorded="$(<"${TOPOLOGY_FILE}")"
+  if [[ -n "${TOPOLOGY:-}" && "${TOPOLOGY}" != "${__recorded}" && -z "${LAB_USE_RECORDED_TOPOLOGY:-}" ]]; then
+    die "The lab is built as '${__recorded}', not '${TOPOLOGY}'. Run 'make destroy' first to switch."
+  fi
+  TOPOLOGY="${__recorded}"
+fi
+
 source "${LAB_ROOT_DETECTED}/config.env"
+[[ "${TOPOLOGY}" == "multi" || "${TOPOLOGY}" == "solo" ]] \
+  || die "TOPOLOGY must be 'multi' or 'solo' (got '${TOPOLOGY}')"
 
 # Use sudo for libvirt iff user isn't in the libvirt group yet
 if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx libvirt; then
@@ -88,4 +104,14 @@ host_lan_ip() {
   ip -4 -o addr show scope global 2>/dev/null \
     | awk '{print $4}' | cut -d/ -f1 \
     | grep -v '^192\.168\.122\.' | head -1
+}
+
+# IP of a VM by name (non-zero exit if it is not in VM_LIST)
+vm_ip() {
+  local want=$1 name vcpus mem disk ip role
+  for entry in "${VM_LIST[@]}"; do
+    read -r name vcpus mem disk ip role <<<"$entry"
+    [[ "$name" == "$want" ]] && { echo "$ip"; return 0; }
+  done
+  return 1
 }

@@ -1,24 +1,26 @@
 SHELL := /usr/bin/env bash
 S := scripts
 
-.PHONY: help all prereqs extras image vms cluster kubeconfig verify destroy clean status \
-        ssh-cp1 ssh-w1 ssh-w2 soft-tenancy soft-tenancy-verify soft-tenancy-clean \
+.PHONY: help all solo prereqs extras image vms cluster kubeconfig verify destroy clean status \
+        ssh ssh-cp1 ssh-w1 ssh-w2 ssh-solo soft-tenancy soft-tenancy-verify soft-tenancy-clean \
         generic-render generic-validate generic-pipeline-test
 
 help:
 	@echo "instant-rke2-lab — RKE2 + Cilium on libvirt/KVM"
 	@echo
 	@echo "  make all         End-to-end: prereqs → image → vms → cluster → kubeconfig → verify"
+	@echo "  make solo        The same with ONE VM (control plane + workloads) instead of three"
 	@echo "  make prereqs     Install KVM/libvirt/kubectl, set up storage pool & SSH key"
 	@echo "  make image       Download Ubuntu 24.04 cloud image"
-	@echo "  make vms         Create + boot 3 VMs via cloud-init"
+	@echo "  make vms         Create + boot the VMs via cloud-init (3, or 1 for solo)"
 	@echo "  make cluster     Bootstrap RKE2 server, agents, and Cilium"
 	@echo "  make kubeconfig  Pull kubeconfig to .state/kubeconfig and print it"
 	@echo "  make verify      kubectl get nodes / pods / cilium"
 	@echo "  make destroy     Tear down VMs, disks, kubeconfig (keeps image + SSH key for a fast rebuild)"
 	@echo "  make clean       destroy + storage pool, images/, vms/, .state/ (asks; YES=1 skips)"
 	@echo "  make status      Show libvirt + node status"
-	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2   SSH to a VM"
+	@echo "  make ssh         SSH to the control plane (NODE=worker1 for another VM)"
+	@echo "  make ssh-cp1 / ssh-w1 / ssh-w2 / ssh-solo   SSH to a VM by name"
 	@echo
 	@echo
 	@echo "  make soft-tenancy         Soft multi-tenancy lab: tenants a, b, c; Cilium isolation (a -> c only),"
@@ -35,6 +37,12 @@ help:
 	@echo "  Optional extras: see ./slinky/ for SLURM-on-Kubernetes examples (run manually)"
 
 all: prereqs image vms cluster kubeconfig verify
+
+# One VM (control plane + workloads) instead of three. Same steps as `all`;
+# the topology is saved in .state/topology, so destroy/verify/status/ssh and
+# a later `make all` follow it.
+solo:
+	TOPOLOGY=solo $(MAKE) all
 
 prereqs:
 	$(S)/00-host-prep.sh
@@ -73,14 +81,20 @@ status:
 	  echo '(no kubeconfig yet — run "make kubeconfig")'; \
 	fi
 
+ssh:
+	@$(S)/ssh-node.sh $(NODE)
+
 ssh-cp1:
-	@ssh -i .state/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@192.168.122.11
+	@$(S)/ssh-node.sh cp1
 
 ssh-w1:
-	@ssh -i .state/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@192.168.122.12
+	@$(S)/ssh-node.sh worker1
 
 ssh-w2:
-	@ssh -i .state/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@192.168.122.13
+	@$(S)/ssh-node.sh worker2
+
+ssh-solo:
+	@$(S)/ssh-node.sh solo
 
 # Soft multi-tenancy lab (soft-tenancy/). Needs the cluster from `make all`.
 soft-tenancy:

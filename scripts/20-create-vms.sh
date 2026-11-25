@@ -10,6 +10,15 @@ BASE_IMG="${IMAGE_DIR}/${IMAGE_FILE}"
 
 PUBKEY="$(cat "${SSH_KEY}.pub")"
 
+# A lab built before .state/topology existed is a multi lab; don't start a
+# solo VM next to it (they'd compete for the host's CPU and RAM).
+if [[ ! -s "${TOPOLOGY_FILE}" && "${TOPOLOGY}" == "solo" ]] && VIRSH dominfo cp1 >/dev/null 2>&1; then
+  die "A multi-node lab (cp1) is already defined. Run 'make destroy' first, then 'make solo'."
+fi
+mkdir -p "${STATE_DIR}"
+printf '%s\n' "${TOPOLOGY}" > "${TOPOLOGY_FILE}"
+log "Topology: ${TOPOLOGY} (${#VM_LIST[@]} VM$( (( ${#VM_LIST[@]} > 1 )) && echo s))"
+
 create_vm() {
   local name=$1 vcpus=$2 mem=$3 disk_gb=$4 ip=$5
   local vm_dir="${VM_DIR}/${name}"

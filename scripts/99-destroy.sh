@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Tear down what is built (.state/topology), whatever TOPOLOGY says.
+export LAB_USE_RECORDED_TOPOLOGY=1
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
@@ -19,6 +21,6 @@ for entry in "${VM_LIST[@]}"; do
     || true
 done
 
-rm -f "${STATE_DIR}/node-token" "${STATE_DIR}/kubeconfig"
+rm -f "${STATE_DIR}/node-token" "${STATE_DIR}/kubeconfig" "${TOPOLOGY_FILE}"
 ok "Lab destroyed"
 VIRSH list --all || true

@@ -18,7 +18,7 @@ done
 
 HOST_IP="$(host_lan_ip)"
 log "Control plane: ${CP_NAME} @ ${CP_IP}"
-log "Agents:        ${AGENT_NAMES[*]}"
+log "Agents:        ${AGENT_NAMES[*]:-none (solo: the control plane runs all workloads)}"
 log "Host LAN IP:   ${HOST_IP:-<unknown>}"
 
 # Resolve the exact RKE2 version here, on the host, and pin it for the server
@@ -70,6 +70,7 @@ disable-kube-proxy: true
 cluster-cidr: ${CLUSTER_CIDR}
 service-cidr: ${SERVICE_CIDR}
 node-ip: ${CP_IP}
+$( [[ -n "${KUBELET_MAX_PODS}" ]] && printf 'kubelet-arg:\n  - max-pods=%s\n' "${KUBELET_MAX_PODS}" )
 YAML
 
 log "Installing Cilium HelmChartConfig"
@@ -125,6 +126,7 @@ for i in "${!AGENT_NAMES[@]}"; do
 server: https://${CP_IP}:9345
 token: ${TOKEN}
 node-ip: ${AG_IP}
+$( [[ -n "${KUBELET_MAX_PODS}" ]] && printf 'kubelet-arg:\n  - max-pods=%s\n' "${KUBELET_MAX_PODS}" )
 YAML
 
   log "Running RKE2 agent installer on ${AG_NAME}"
