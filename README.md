@@ -186,11 +186,41 @@ make destroy && make solo    # multi → solo
 `make destroy` always removes what is actually built and clears
 `.state/topology`.
 
-The add-ons run unchanged. `slinky/` spreads its two slurmd pods across
-nodes only as a preference, so on solo both land on the one VM (the
-multi-node examples still run, just not across machines). `soft-tenancy/` and
-Kubeflow (`~/kubeflow`, which reads the lab's VM list) don't depend on the
-node count.
+### Pause the lab, rebuild it later
+
+A solo lab is cheap to throw away and quick to bring back, so when you're not
+using it, free the laptop's CPU and RAM:
+
+```bash
+make destroy      # stop and delete the VM and its disk
+```
+
+| Kept (on the host) | Gone (it lived on the VM's disk) |
+| --- | --- |
+| The Ubuntu cloud image in `images/`: no re-download | The cluster: everything deployed on it |
+| The lab SSH key in `.state/` | Data inside the cluster: persistent volumes, databases, uploaded files |
+| Your repos and any add-on folders on the host | Images built on the node itself |
+
+To bring it back:
+
+```bash
+make solo         # ~10 minutes: VM, RKE2 + Cilium, kubeconfig, verify
+export KUBECONFIG=$PWD/.state/kubeconfig
+```
+
+Then redeploy whatever you run on top, from its own folder, for example
+`cd ~/kubeflow && make all`, or the add-ons below. Anything you need to
+survive a destroy belongs in a repo or on the host, not only inside the
+cluster.
+
+`make clean` goes further and also removes the image, the SSH key and the
+storage pool; see **Which teardown?** under [Troubleshooting](#troubleshooting).
+
+The add-ons run unchanged, with one exception. The current Slinky operator
+(1.3.0) always allows **one slurmd pod per Kubernetes node**, so on solo
+`slinky/` gets one Slurm worker: set its NodeSet to 1 replica, or the
+second slurmd stays `Pending`. `soft-tenancy/` and Kubeflow (`~/kubeflow`,
+which reads the lab's VM list) don't depend on the node count.
 
 ## SSH keys
 
@@ -398,8 +428,9 @@ sudo deluser $USER libvirt && sudo deluser $USER kvm
 
 The `./slinky/` folder contains a self-contained [Slinky](https://github.com/SlinkyProject/slurm-operator)
 installation — SchedMD's SLURM operator for Kubernetes — along with scheduling
-and MPI job examples targeting the two worker nodes (on `make solo` both
-slurmd pods share the one VM).
+and MPI job examples targeting the two worker nodes. On `make solo` there is
+one Kubernetes node, and Slinky allows one slurmd pod per node: set the
+NodeSet to 1 replica in `slinky/values/slurm.yaml`.
 
 It is **not part of `make all`**. Once your cluster is up, install it manually:
 
