@@ -152,9 +152,11 @@ plus jobs and pipeline steps);
 200 stays inside the /24 Cilium gives each node.
 
 **Size.** The solo VM is as big as the multi lab's total, but never bigger
-than the host: vCPUs = the host's CPU count (max 16), RAM = host RAM minus
-8 GiB for the host itself (max 40 GiB). A 14-CPU / 30 GiB laptop gets
-14 vCPU / ~22 GiB, which is enough for the full Kubeflow platform (~12 GiB).
+than the host: vCPUs = the host's CPU count (max 16), RAM = half the host's
+RAM (max 40 GiB). A 14-CPU / 30 GiB laptop gets 14 vCPU / 15 GiB, enough for
+the full Kubeflow platform (~12 GiB). An earlier rule (host RAM minus 8 GiB,
+22 GiB here) got the VM killed by the host's OOM killer once the desktop and
+browsers grew; on a dedicated server, raise it with `SOLO_MEM_MIB`.
 Override either for one build:
 
 ```bash
