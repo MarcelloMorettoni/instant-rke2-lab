@@ -1,0 +1,45 @@
+# The endpoint. The pipeline's deploy step applies this file with the
+# workflow name in place of DEPLOYED_BY, which makes Ray Serve reload the champion
+# model in place (no restart, no new cluster).
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: my-model
+spec:
+  serveConfigV2: |
+    applications:
+    - name: my-model
+      import_path: serve:app
+      route_prefix: /
+      runtime_env:
+        pip: ["mlflow==3.18.0", "scikit-learn==1.6.1", "boto3==1.35.99"]
+      deployments:
+      - name: MyModel
+        num_replicas: 1
+        user_config:
+          deployed_by: "DEPLOYED_BY"
+  rayClusterConfig:
+    rayVersion: "2.60.1"
+    headGroupSpec:
+      rayStartParams: {}
+      template:
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.60.1-py311-cpu
+            resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}
+            env:
+            - {name: PYTHONPATH, value: "/code:/testkit"}
+            - {name: GIT_PYTHON_REFRESH, value: quiet}
+            envFrom: [{secretRef: {name: mlflow-client}}]
+            volumeMounts:
+            - {name: testkit, mountPath: /testkit}
+            - {name: code, mountPath: /code}
+          volumes:
+          - {name: testkit, configMap: {name: testkit}}
+          - {name: code, configMap: {name: my-training}}

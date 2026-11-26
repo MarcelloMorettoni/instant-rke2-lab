@@ -29,6 +29,8 @@ Recommendation: adopt lakeFS-style versioning in the pilot for either candidate,
 
 Evidence: [lakefs/01-install.log](../evidence/lakefs/01-install.log), [lakefs/03-branch-rollback-footprint.log](../evidence/lakefs/03-branch-rollback-footprint.log), [datahub/01-install.log](../evidence/datahub/01-install.log), [datahub/02-footprint.txt](../evidence/datahub/02-footprint.txt).
 
+Found later, while preparing the training (26 Nov): the lakeFS web console refuses to show its login page until a form with name, e-mail and country is filled in (it is sent to the vendor). Setting `email_subscription.enabled: false` removes it ([lakefs/values.yaml](../lakefs/values.yaml)). The POC had only used the API and the command line, so this went unnoticed.
+
 ## How W3 uses lakeFS
 
 The change is in the shared test kit, not in the pipelines' shape: `testkit/dataset.py` hides the store, `testkit/lakefs.py` talks to lakeFS. A project switches by getting one Secret (`lakefs/project.sh`).

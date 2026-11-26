@@ -94,6 +94,7 @@ Deviations from the documentation:
 - MLflow 3.18 with its default four workers was OOM-killed at a 2 GiB limit. Runs with two workers and 3 GiB.
 - The JupyterHub chart's hub NetworkPolicy allows the Kubernetes API by IP range, which Cilium does not match, so spawning times out. Added a CiliumNetworkPolicy (`mlflow-ray/jupyterhub-cilium.yaml`).
 - Found later, while preparing the training (26 Nov): the same chart's notebook NetworkPolicy blocks every cluster-internal address, so a JupyterHub notebook could not reach MLflow. Added a NetworkPolicy for MLflow and its object store to the same file. The POC had only tested tracking from a Kubeflow notebook.
+- Added for the training (26 Nov), not part of the tested POC: the Argo Workflows console (argo-server, no login, reached through a local port-forward only), a git server with CI (Gitea, [mlops/gitea](../gitea/)) and a NetworkPolicy so JupyterHub notebooks reach it. With these a push from a notebook starts the pipeline, and each model version carries the git commit and the lakeFS commit. The same trigger was built for Kubeflow; neither candidate has a git or data trigger of its own.
 - The project NetworkPolicy must let the KubeRay operator reach each Ray head on port 8265, or RayJobs never report status.
 
 ## 3. Reference workloads

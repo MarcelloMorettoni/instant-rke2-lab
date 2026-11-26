@@ -1,0 +1,77 @@
+# CI runner for an MLflow + Ray project. Gitea Actions jobs with
+# `runs-on: mlflow-ray` run inside this pod, as plain shell steps (no Docker).
+# Its ServiceAccount may publish the pipeline (ConfigMap, WorkflowTemplate,
+# CronWorkflow) and start Workflows in this namespace, nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: ci-runner}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: ci-runner}
+rules:
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get, list, create, update, patch]
+- apiGroups: [argoproj.io]
+  resources: [workflowtemplates, cronworkflows, workflows]
+  verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: ci-runner}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ci-runner}
+subjects: [{kind: ServiceAccount, name: ci-runner}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ci-runner, labels: {app: ci-runner}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: ci-runner}}
+  template:
+    metadata: {labels: {app: ci-runner}}
+    spec:
+      serviceAccountName: ci-runner
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+      initContainers:
+      - name: runner-binary
+        image: gitea/act_runner:0.6.1
+        command: ["cp", "/usr/local/bin/act_runner", "/tools/act_runner"]
+        volumeMounts: [{name: tools, mountPath: /tools}]
+      - name: kubectl-binary
+        image: alpine/k8s:1.32.3
+        command: ["sh", "-c", "cp $(which kubectl) /tools/kubectl"]
+        volumeMounts: [{name: tools, mountPath: /tools}]
+      containers:
+      - name: runner
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -e
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates >/dev/null
+          ln -s /tools/kubectl /usr/local/bin/kubectl
+          cd /runner
+          /tools/act_runner register --no-interactive --instance "$GITEA_URL" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABEL:host"
+          touch /tmp/ready
+          exec /tools/act_runner daemon
+        readinessProbe: {exec: {command: ["test", "-f", "/tmp/ready"]}, periodSeconds: 5}
+        env:
+        - {name: GITEA_URL, value: "http://gitea.gitea.svc.cluster.local:3000"}
+        - {name: RUNNER_NAME, value: mlflow-ray}
+        - {name: RUNNER_LABEL, value: mlflow-ray}
+        - name: RUNNER_TOKEN
+          valueFrom: {secretKeyRef: {name: gitea-runner, key: token}}
+        resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+        volumeMounts:
+        - {name: tools, mountPath: /tools}
+        - {name: work, mountPath: /runner}
+      volumes:
+      - {name: tools, emptyDir: {}}
+      - {name: work, emptyDir: {}}

@@ -29,3 +29,15 @@ spec:
     - namespaceSelector:
         matchLabels: {kubernetes.io/metadata.name: mlflow}
     ports: [{port: 5000}, {port: 8333}]
+---
+# Notebooks clone and push the lesson repositories on the lab's git server
+# (mlops/gitea). Same reason as above: the chart blocks cluster-internal addresses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: singleuser-to-gitea, namespace: jhub}
+spec:
+  podSelector: {matchLabels: {app: jupyterhub, component: singleuser-server}}
+  policyTypes: [Egress]
+  egress:
+  - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gitea}}}]
+    ports: [{port: 3000, protocol: TCP}]

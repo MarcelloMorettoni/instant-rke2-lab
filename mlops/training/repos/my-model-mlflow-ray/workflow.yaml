@@ -1,0 +1,194 @@
+# my-model on MLflow + Ray: the continuous-training pipeline, run by Argo Workflows.
+#
+#   detect change -> validate -> RayJob: train.py (search, train, evaluate, gate, register)
+#                 -> deploy (Ray Serve reloads the champion) -> verify the endpoint
+#
+# The code (steps.py, train.py, serve.py, rayservice.yaml) is mounted from the
+# ConfigMap my-training. CI publishes the code and this file on every push
+# (ci/deploy.sh) and writes the git commit in place of GIT_COMMIT_PLACEHOLDER.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: my-ct
+  labels: {workflows.argoproj.io/controller-instanceid: mlflow-ray}
+spec:
+  serviceAccountName: workload
+  entrypoint: main
+  podGC: {strategy: OnWorkflowCompletion}
+  ttlStrategy: {secondsAfterCompletion: 86400}
+  # Pipeline parameters. A run can override them; CI starts its run with retrain=yes.
+  arguments:
+    parameters:
+    - {name: repository, value: mr-my-data}
+    - {name: model, value: my-model}
+    - {name: accuracy_gate, value: "0.80"}
+    - {name: retrain, value: "no"}     # yes: train even when the data did not change
+    - {name: git_commit, value: "GIT_COMMIT_PLACEHOLDER"}
+  templates:
+  - name: main
+    steps:
+    - - name: detect
+        template: step
+        arguments: {parameters: [{name: cmd, value: detect}]}
+    - - name: validate
+        template: step
+        when: "'{{steps.detect.outputs.parameters.version}}' != ''"
+        arguments: {parameters: [{name: cmd, value: validate}, {name: version, value: "{{steps.detect.outputs.parameters.version}}"}]}
+    - - name: train
+        template: rayjob
+        when: "'{{steps.detect.outputs.parameters.version}}' != ''"
+        arguments: {parameters: [{name: version, value: "{{steps.detect.outputs.parameters.version}}"}]}
+    - - name: deploy
+        template: deploy
+        when: "'{{steps.detect.outputs.parameters.version}}' != ''"
+    - - name: verify
+        template: verify
+        when: "'{{steps.detect.outputs.parameters.version}}' != ''"
+
+  # Light steps: a plain container.
+  - name: step
+    inputs: {parameters: [{name: cmd}, {name: version, default: ""}]}
+    outputs:
+      parameters:
+      - {name: version, valueFrom: {path: /tmp/version, default: ""}}
+    container:
+      image: python:3.11-slim
+      command: ["bash", "-c"]
+      args: ["pip install --quiet --no-cache-dir boto3==1.35.99 pandas==2.2.3 scikit-learn==1.6.1 && python /code/steps.py {{inputs.parameters.cmd}}"]
+      env:
+      - {name: PYTHONPATH, value: /testkit}
+      - {name: DATA_REPO, value: "{{workflow.parameters.repository}}"}
+      - {name: MODEL_NAME, value: "{{workflow.parameters.model}}"}
+      - {name: RETRAIN, value: "{{workflow.parameters.retrain}}"}
+      - {name: DATA_VERSION, value: "{{inputs.parameters.version}}"}
+      envFrom: [{secretRef: {name: s3-client}}, {secretRef: {name: data-store}}]
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+      volumeMounts:
+      - {name: testkit, mountPath: /testkit}
+      - {name: code, mountPath: /code}
+    volumes: &code-volumes
+    - {name: testkit, configMap: {name: testkit}}
+    - {name: code, configMap: {name: my-training}}
+
+  # Heavy step: Argo creates a RayJob (a throw-away Ray cluster) and waits for it.
+  - name: rayjob
+    inputs: {parameters: [{name: version}]}
+    resource:
+      action: create
+      setOwnerReference: true
+      successCondition: status.jobStatus == SUCCEEDED
+      failureCondition: status.jobStatus == FAILED
+      manifest: |
+        apiVersion: ray.io/v1
+        kind: RayJob
+        metadata:
+          generateName: my-train-
+        spec:
+          entrypoint: python /code/train.py
+          shutdownAfterJobFinishes: true
+          ttlSecondsAfterFinished: 60
+          submitterPodTemplate:
+            spec:
+              restartPolicy: Never
+              containers:
+              - name: ray-job-submitter
+                image: rayproject/ray:2.60.1-py311-cpu
+                resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+          runtimeEnvYAML: |
+            pip: ["mlflow==3.18.0", "scikit-learn==1.6.1", "boto3==1.35.99", "pandas==2.2.3"]
+            env_vars:
+              PYTHONPATH: /testkit
+              GIT_PYTHON_REFRESH: quiet
+              DATA_REPO: "{{workflow.parameters.repository}}"
+              DATA_VERSION: "{{inputs.parameters.version}}"
+              MODEL_NAME: "{{workflow.parameters.model}}"
+              ACCURACY_GATE: "{{workflow.parameters.accuracy_gate}}"
+              GIT_COMMIT: "{{workflow.parameters.git_commit}}"
+              PIPELINE_RUN: "{{workflow.name}}"
+          rayClusterSpec:
+            rayVersion: "2.60.1"
+            headGroupSpec:
+              rayStartParams: {num-cpus: "0"}
+              template:
+                spec:
+                  affinity: &workers-only
+                    nodeAffinity:
+                      requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                        - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+                  containers:
+                  - name: ray-head
+                    image: rayproject/ray:2.60.1-py311-cpu
+                    resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: "2", memory: 3Gi}}
+                    envFrom: &job-env [{secretRef: {name: mlflow-client}}, {secretRef: {name: s3-client}}, {secretRef: {name: data-store}}]
+                    volumeMounts: &job-mounts
+                    - {name: testkit, mountPath: /testkit}
+                    - {name: code, mountPath: /code}
+                  volumes: &job-volumes
+                  - {name: testkit, configMap: {name: testkit}}
+                  - {name: code, configMap: {name: my-training}}
+            workerGroupSpecs:
+            - groupName: cpu
+              replicas: 2
+              minReplicas: 2
+              maxReplicas: 2
+              rayStartParams: {}
+              template:
+                spec:
+                  affinity: *workers-only
+                  containers:
+                  - name: ray-worker
+                    image: rayproject/ray:2.60.1-py311-cpu
+                    resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: "2", memory: 3Gi}}
+                    envFrom: *job-env
+                    volumeMounts: *job-mounts
+                  volumes: *job-volumes
+
+  # Deploy: apply the RayService with this workflow's name in user_config -> Ray Serve reloads the champion.
+  - name: deploy
+    container:
+      image: alpine/k8s:1.32.3
+      command: ["sh", "-c"]
+      args:
+      - sed "s/DEPLOYED_BY/{{workflow.name}}/" /code/rayservice.yaml | kubectl apply -f -
+      resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+      volumeMounts: [{name: code, mountPath: /code}]
+    volumes: *code-volumes
+
+  # Verify: the endpoint must answer with the champion version.
+  - name: verify
+    retryStrategy: {limit: 60, backoff: {duration: "15s"}}
+    container:
+      image: python:3.11-slim
+      command: ["bash", "-c"]
+      args:
+      - |
+        pip install --quiet --no-cache-dir requests mlflow-skinny==3.18.0 && python - <<'PY'
+        import mlflow, requests, sys
+        model = "{{workflow.parameters.model}}"
+        want = mlflow.MlflowClient().get_model_version_by_alias(model, "champion").version
+        r = requests.post(f"http://{model}-serve-svc:8000/", json={"instances": [[0.1, -0.2, 0.3, 0.4]]}, timeout=20)
+        print(r.status_code, r.text[:200], "champion:", want)
+        sys.exit(0 if r.ok and str(r.json()["model_version"]) == str(want) else 1)
+        PY
+      env: [{name: GIT_PYTHON_REFRESH, value: quiet}]
+      envFrom: [{secretRef: {name: mlflow-client}}]
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+---
+# The schedule: every 2 minutes, a run that trains only when lakeFS has a commit
+# no model was trained on. It always uses the latest published pipeline.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: my-ct-every-2min
+  labels: {workflows.argoproj.io/controller-instanceid: mlflow-ray}
+spec:
+  schedules: ["*/2 * * * *"]
+  suspend: false
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  workflowMetadata:
+    labels: {workflows.argoproj.io/controller-instanceid: mlflow-ray}
+  workflowSpec:
+    workflowTemplateRef: {name: my-ct}

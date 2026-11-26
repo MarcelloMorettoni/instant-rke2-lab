@@ -1,0 +1,19 @@
+# CI for my-model on MLflow + Ray: every push to main publishes the pipeline and starts a training run.
+# The job runs in the CI runner pod of the project (label "mlflow-ray").
+name: train
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish-and-run:
+    runs-on: mlflow-ray
+    steps:
+    - name: Get the code
+      run: |
+        git clone --quiet "${{ github.server_url }}/${{ github.repository }}.git" src
+        git -C src checkout --quiet "${{ github.sha }}"
+        git -C src log -1 --oneline
+    - name: Publish code and pipeline, start a run
+      run: cd src && ci/deploy.sh "${{ github.sha }}"

@@ -13,6 +13,14 @@ export MR=mr-alpha                      # the MLflow + Ray project used in the t
 kf-kit() { kubectl -n "${KF}" exec -i deploy/kit -c kit -- python -W ignore "$@"; }
 mr-kit() { kubectl -n "${MR}" exec -i deploy/kit -c kit -- python -W ignore "$@"; }
 
+# Compiles a Kubeflow pipeline file in the Kubeflow workstation pod: kf-compile path/to/name.py -> /tmp/name.yaml there.
+# (The pod's environment says the data lives in lakeFS, so the compiled pipeline reads from lakeFS.)
+kf-compile() {
+  local name; name="$(basename "$1" .py)"
+  kubectl -n "${KF}" exec -i deploy/kit -c kit -- sh -c 'cat > /tmp/w3_pipeline.py' < "${_lab_root}/mlops/kubeflow/workloads/w3_pipeline.py" &&
+  kubectl -n "${KF}" exec -i deploy/kit -c kit -- sh -c "cat > /tmp/${name}.py && cd /tmp && python -W ignore ${name}.py /tmp/${name}.yaml && echo compiled /tmp/${name}.yaml" < "$1"
+}
+
 # The lakeFS command line, run inside the lakeFS pod with the admin key.
 lakectl() {
   ( source "${_lab_root}/.state/mlops-lakefs.env"

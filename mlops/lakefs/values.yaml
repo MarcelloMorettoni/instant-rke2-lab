@@ -33,3 +33,7 @@ extraEnvVars:
     valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_ACCESS_KEY}}
   - name: LAKEFS_INSTALLATION_SECRET_ACCESS_KEY
     valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_SECRET_KEY}}
+  # Without this the web console opens on a form that asks for a name and e-mail
+  # address (sent to the vendor) before it lets you log in.
+  - name: LAKEFS_EMAIL_SUBSCRIPTION_ENABLED
+    value: "false"

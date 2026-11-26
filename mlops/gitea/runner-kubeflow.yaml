@@ -1,0 +1,59 @@
+# CI runner for the Kubeflow project. Gitea Actions jobs with `runs-on: kubeflow`
+# run inside this pod, as plain shell steps (no Docker). It talks to Kubeflow
+# Pipelines the way a notebook does: project ServiceAccount + a projected token.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ci-runner, labels: {app: ci-runner}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: ci-runner}}
+  template:
+    metadata: {labels: {app: ci-runner}}
+    spec:
+      serviceAccountName: default-editor
+      affinity: &workers-only
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+      initContainers:
+      - name: runner-binary
+        image: gitea/act_runner:0.6.1
+        command: ["cp", "/usr/local/bin/act_runner", "/tools/act_runner"]
+        volumeMounts: [{name: tools, mountPath: /tools}]
+      containers:
+      - name: runner
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -e
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates >/dev/null
+          pip install --quiet --no-cache-dir kfp==2.15.0 kfp-kubernetes==2.15.0
+          cd /runner
+          /tools/act_runner register --no-interactive --instance "$GITEA_URL" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABEL:host"
+          touch /tmp/ready
+          exec /tools/act_runner daemon
+        readinessProbe: {exec: {command: ["test", "-f", "/tmp/ready"]}, periodSeconds: 5}
+        env:
+        - {name: GITEA_URL, value: "http://gitea.gitea.svc.cluster.local:3000"}
+        - {name: RUNNER_NAME, value: kubeflow}
+        - {name: RUNNER_LABEL, value: kubeflow}
+        - name: RUNNER_TOKEN
+          valueFrom: {secretKeyRef: {name: gitea-runner, key: token}}
+        - {name: KF_PIPELINES_SA_TOKEN_PATH, value: /var/run/secrets/kubeflow/pipelines/token}
+        # Project setting: the training data lives in lakeFS (read when a pipeline is compiled).
+        - {name: DATA_STORE, value: lakefs}
+        resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+        volumeMounts:
+        - {name: tools, mountPath: /tools}
+        - {name: work, mountPath: /runner}
+        - {name: kfp-token, mountPath: /var/run/secrets/kubeflow/pipelines, readOnly: true}
+      volumes:
+      - {name: tools, emptyDir: {}}
+      - {name: work, emptyDir: {}}
+      - name: kfp-token
+        projected:
+          sources:
+          - serviceAccountToken: {path: token, expirationSeconds: 7200, audience: pipelines.kubeflow.org}

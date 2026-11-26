@@ -1,0 +1,19 @@
+# CI for my-model on Kubeflow: every push to main publishes the pipeline and starts a training run.
+# The job runs in the CI runner pod of the Kubeflow project (label "kubeflow").
+name: train
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish-and-run:
+    runs-on: kubeflow
+    steps:
+    - name: Get the code
+      run: |
+        git clone --quiet "${{ github.server_url }}/${{ github.repository }}.git" src
+        git -C src checkout --quiet "${{ github.sha }}"
+        git -C src log -1 --oneline
+    - name: Compile, upload, schedule, run
+      run: cd src && python -W ignore ci/deploy.py "${{ github.sha }}"

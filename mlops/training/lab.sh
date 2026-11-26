@@ -20,6 +20,8 @@ FORWARDS=(
   "mlflow|5001|mlflow|mlflow|5000|/health"
   "jupyterhub|8081|jhub|proxy-public|80|/hub/login"
   "lakefs|8000|lakefs|lakefs|80|/api/v1/healthcheck"
+  "gitea|3000|gitea|gitea|3000|/api/healthz"
+  "argo|2746|argo|argo-workflows-server|2746|/"
   "datahub|9002|datahub|datahub-datahub-frontend|9002|/admin"
   "ray-dashboard|8265|mr-alpha|sensor-fault-head-svc|8265|/"
 )
@@ -66,7 +68,7 @@ status() {
 
 logins() {
   # shellcheck disable=SC1090
-  for f in mlflow users lakefs; do source "${LAB_ROOT}/.state/mlops-${f}.env"; done
+  for f in mlflow users lakefs gitea; do source "${LAB_ROOT}/.state/mlops-${f}.env"; done
   cat <<EOF
 Kubeflow       http://localhost:8080
                  user@example.com / 12341234           project kubeflow-user-example-com (used in the training)
@@ -80,6 +82,9 @@ JupyterHub     http://localhost:8081                   sign up with any name and
 lakeFS         http://localhost:8000
                  Access Key ID      ${LAKEFS_ACCESS_KEY}
                  Secret Access Key  ${LAKEFS_SECRET_KEY}
+Gitea          http://localhost:3000
+                 ${GITEA_USER} / ${GITEA_PASSWORD}     also for git clone and git push in a notebook
+Argo Workflows http://localhost:2746                   no login (pipelines of the MLflow + Ray projects; namespace mr-alpha)
 DataHub        http://localhost:9002                   datahub / datahub
 Ray dashboard  http://localhost:8265                   no login (cluster of the sensor-fault endpoint)
 EOF
@@ -88,13 +93,55 @@ EOF
 reset() {
   # shellcheck disable=SC1090
   source "${LAB_ROOT}/.state/mlops-lakefs.env"
-  kubectl -n kubeflow-user-example-com delete experiment.kubeflow.org training-hpo --ignore-not-found
-  kubectl -n kubeflow-user-example-com delete trainjob training-finetune --ignore-not-found
-  kubectl -n mr-alpha delete rayjob training-finetune --ignore-not-found
-  kubectl -n lakefs exec deploy/lakefs -- env LAKECTL_SERVER_ENDPOINT_URL=http://localhost:8000 \
-    LAKECTL_CREDENTIALS_ACCESS_KEY_ID="${LAKEFS_ACCESS_KEY}" LAKECTL_CREDENTIALS_SECRET_ACCESS_KEY="${LAKEFS_SECRET_KEY}" \
-    lakectl repo delete lakefs://training --yes 2>&1 | tail -1 || true
-  echo "Notebook servers, MLflow runs and model versions are left in place: delete them in their UIs if you want."
+  local kf=kubeflow-user-example-com mr=mr-alpha
+  # Parts 1-3
+  kubectl -n "${kf}" delete experiment.kubeflow.org training-hpo --ignore-not-found
+  kubectl -n "${kf}" delete trainjob training-finetune --ignore-not-found
+  kubectl -n "${mr}" delete rayjob training-finetune --ignore-not-found
+  # Lesson 5: schedule, pipeline, endpoint
+  kubectl -n "${kf}" exec -i deploy/kit -c kit -- python -W ignore - <<'PY' || true
+import kfp
+c = kfp.Client()
+ns = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
+e = c.create_experiment("my-model", namespace=ns)
+for j in c.list_recurring_runs(experiment_id=e.experiment_id, page_size=100).recurring_runs or []:
+    if j.status == "ENABLED":
+        c.disable_recurring_run(j.recurring_run_id)
+for r in c.list_runs(experiment_id=e.experiment_id, page_size=50, sort_by="created_at desc").runs or []:
+    if r.state in ("RUNNING", "PENDING"):
+        try:
+            c.terminate_run(r.run_id); print("run stopped:", r.display_name)
+        except Exception:
+            pass
+for j in c.list_recurring_runs(experiment_id=e.experiment_id, page_size=100).recurring_runs or []:
+    c.delete_recurring_run(j.recurring_run_id); print("schedule deleted:", j.display_name)
+for pid in [p.pipeline_id for p in c.list_pipelines(namespace=ns, page_size=100).pipelines or [] if p.display_name == "my-model-training"]:
+    for v in c.list_pipeline_versions(pid, page_size=100).pipeline_versions or []:
+        c.delete_pipeline_version(pid, v.pipeline_version_id)
+    c.delete_pipeline(pid); print("pipeline my-model-training deleted")
+PY
+  kubectl -n "${kf}" delete inferenceservice my-model --ignore-not-found
+  # Lesson 6: schedule, pipeline, endpoint, code, and the model in MLflow
+  kubectl -n "${mr}" delete cronworkflow my-ct-every-2min --ignore-not-found
+  kubectl -n "${mr}" get workflows -o name | grep -E '/(commit-|my-ct-every-2min-)' | xargs -r kubectl -n "${mr}" delete >/dev/null || true
+  kubectl -n "${mr}" delete workflowtemplate my-ct --ignore-not-found
+  kubectl -n "${mr}" delete rayservice my-model --ignore-not-found
+  kubectl -n "${mr}" delete configmap my-training --ignore-not-found
+  kubectl -n "${mr}" exec deploy/kit -c kit -- python -W ignore -c "
+import mlflow
+try:
+    mlflow.MlflowClient().delete_registered_model('my-model'); print('MLflow model my-model deleted')
+except Exception:
+    pass" || true
+  # Lessons 5 and 6: the git repositories go back to their starting point
+  "${MLOPS_ROOT}/gitea/seed-repos.sh" || true
+  # lakeFS repositories of the exercises
+  for repo in training kf-my-data mr-my-data; do
+    kubectl -n lakefs exec deploy/lakefs -- env LAKECTL_SERVER_ENDPOINT_URL=http://localhost:8000 \
+      LAKECTL_CREDENTIALS_ACCESS_KEY_ID="${LAKEFS_ACCESS_KEY}" LAKECTL_CREDENTIALS_SECRET_ACCESS_KEY="${LAKEFS_SECRET_KEY}" \
+      lakectl repo delete "lakefs://${repo}" --yes 2>&1 | grep -i "deleted" || true
+  done
+  echo "Notebook servers, MLflow runs and Kubeflow model versions are left in place."
 }
 
 pause-datahub() {
