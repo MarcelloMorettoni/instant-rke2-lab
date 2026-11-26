@@ -8,16 +8,16 @@ import time
 
 import mlflow
 import requests
-import s3
+import dataset
 import tabular
 
-BUCKET, PREFIX, seed = os.environ["S3_BUCKET"], "datasets/w3", int(sys.argv[1])
+seed, ds = int(sys.argv[1]), dataset.Dataset()
 now = lambda: datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
 client = mlflow.MlflowClient()
 
-s3.put_bytes(BUCKET, f"{PREFIX}/batch-{seed:03d}.csv", tabular.to_csv_bytes(tabular.gen_batch(seed, drift=1.5)))
-target, t0, registered = s3.fingerprint(BUCKET, PREFIX), time.time(), None
-print(now(), f"uploaded batch-{seed:03d}.csv, dataset fingerprint {target}", flush=True)
+t0, registered = time.time(), None
+target = ds.add_batch(f"batch-{seed:03d}.csv", tabular.to_csv_bytes(tabular.gen_batch(seed, drift=1.5)))
+print(now(), f"uploaded batch-{seed:03d}.csv, dataset version {ds.uri(target)}", flush=True)
 while time.time() - t0 < 1500:
     if registered is None:
         for mv in client.search_model_versions("name='sensor-fault'"):

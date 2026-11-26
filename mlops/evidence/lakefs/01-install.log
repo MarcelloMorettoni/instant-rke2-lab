@@ -1,0 +1,38 @@
+host free space: 47G
+
+[1;34m==> Namespace, secret, PostgreSQL[0m
+namespace/lakefs unchanged
+secret/lakefs-credentials unchanged
+persistentvolumeclaim/postgres-data unchanged
+deployment.apps/postgres unchanged
+service/postgres unchanged
+deployment "postgres" successfully rolled out
+
+[1;34m==> Backing bucket and identity on the S3 store[0m
+
+[1;34m==> lakeFS (chart 1.16.1)[0m
+Release "lakefs" has been upgraded. Happy Helming!
+NAME: lakefs
+LAST DEPLOYED: Thu Nov 26 08:24:05 2026
+NAMESPACE: lakefs
+STATUS: deployed
+REVISION: 2
+DESCRIPTION: Upgrade complete
+TEST SUITE: None
+NOTES:
+Thank you for installing lakeFS!
+
+1. Run the following to get a url to start setting up lakeFS:
+  export POD_NAME=$(kubectl get pods --namespace lakefs -l "app.kubernetes.io/instance=lakefs" -o jsonpath="{.items[0].metadata.name}")
+  kubectl wait --for=condition=ready pod $POD_NAME
+  echo "Visit http://127.0.0.1:8000/setup to use your application"
+  kubectl port-forward $POD_NAME 8000:8000 --namespace lakefs
+
+2. See the docs on how to create your first repository: https://docs.lakefs.io/quickstart/repository.html
+NAME                        READY   STATUS    RESTARTS   AGE
+lakefs-8d445f5d-s7njp       1/1     Running   0          25s
+postgres-7794fd74c4-w5d5k   1/1     Running   0          64s
+
+real	0m26.126s
+user	0m1.144s
+sys	0m0.313s

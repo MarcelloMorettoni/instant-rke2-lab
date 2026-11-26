@@ -2,14 +2,16 @@
 
 Run in the kit pod while a recurring W3 run is scheduled. Uploads one drifted
 batch, then polls Model Registry until a version trained on the new dataset
-fingerprint appears.
+version appears.
+
+  w3_ct_measure.py <prefix> <seed> [bucket-or-lakefs-repo]
 """
 import datetime
 import sys
 import time
 
 import requests
-import s3
+import dataset
 import tabular
 
 prefix, seed = sys.argv[1], int(sys.argv[2])
@@ -25,9 +27,10 @@ def versions():
     return out
 
 
-s3.put_bytes("mlpipeline", f"{prefix}/batch-{seed:03d}.csv", tabular.to_csv_bytes(tabular.gen_batch(seed, drift=1.5)))
-target, t0 = s3.fingerprint("mlpipeline", prefix), time.time()
-print(now(), f"uploaded batch-{seed:03d}.csv, dataset fingerprint {target}", flush=True)
+ds = dataset.Dataset(sys.argv[3] if len(sys.argv) > 3 else "mlpipeline", prefix)
+t0 = time.time()
+target = ds.add_batch(f"batch-{seed:03d}.csv", tabular.to_csv_bytes(tabular.gen_batch(seed, drift=1.5)))
+print(now(), f"uploaded batch-{seed:03d}.csv, dataset version {ds.uri(target)}", flush=True)
 while time.time() - t0 < 1500:
     found = versions().get(target)
     if found:

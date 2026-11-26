@@ -1,0 +1,38 @@
+host free space: 43G
+
+[1;34m==> Namespace and secrets[0m
+namespace/datahub unchanged
+secret/mysql-secrets unchanged
+
+[1;34m==> Prerequisites (chart 0.3.1): MySQL, OpenSearch, Kafka[0m
+Release "prerequisites" does not exist. Installing it now.
+NAME: prerequisites
+LAST DEPLOYED: Thu Nov 26 08:49:31 2026
+NAMESPACE: datahub
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+
+[1;34m==> DataHub (chart 1.1.12)[0m
+Release "datahub" does not exist. Installing it now.
+NAME: datahub
+LAST DEPLOYED: Thu Nov 26 08:51:27 2026
+NAMESPACE: datahub
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NAME                                             READY   STATUS      RESTARTS   AGE
+datahub-acryl-datahub-actions-75d77d96dd-zs6jc   1/1     Running     0          6m22s
+datahub-datahub-frontend-d49c865f7-szctr         1/1     Running     0          6m22s
+datahub-datahub-gms-84cc779d9c-vx7lg             1/1     Running     0          6m22s
+datahub-system-update-hz7vx                      0/1     Completed   0          8m27s
+datahub-system-update-nonblk-pqb2m               0/1     Completed   0          59s
+opensearch-cluster-master-0                      1/1     Running     0          10m
+prerequisites-kafka-controller-0                 1/1     Running     0          10m
+prerequisites-mysql-0                            1/1     Running     0          10m
+
+real	10m25.330s
+user	0m2.395s
+sys	0m0.439s

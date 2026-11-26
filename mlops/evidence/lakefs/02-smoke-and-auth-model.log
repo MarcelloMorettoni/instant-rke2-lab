@@ -1,0 +1,36 @@
+Repository: lakefs://smoke
+Repository 'smoke' created:
+storage namespace: s3://lakefs/smoke
+default branch: main
+timestamp: 1795677895
+Path: h.txt
+Modified Time: 2026-11-26 07:24:55 +0000 UTC
+Size: 6 bytes
+Human Size: 6 B
+Physical Address: s3://lakefs/smoke/data/ft3i8nfb8lqs73ft7qo0/dc3tthvb8lqs73ft7qpg,fX3nIWy46hTIxNtvnKkpsde21VAIS7OY-tDgIXfKdao
+Checksum: b1946ac92492d2347c6235b4d2611184
+Content-Type: application/octet-stream
+Branch: lakefs://smoke/main
+Commit for branch "main" completed.
+
+ID: 954bca6072ee9156a657b6932e842b9cd9d8ed9bd35871a580687b94adcf8380
+Message: smoke
+Timestamp: 2026-11-26 07:24:56 +0000 UTC
+Parents: 7ae25618fe0da172105fced8c1f93ff0d0d56b8790d78d5bd8f77c37dcb8a14c
+
+hello
+--- users
+admin	admin	2026-11-26 07:24:54 +0000 UTC
+
+--- groups
+Not Implemented
+501 Not Implemented
+command terminated with exit code 1
+--- policies
+Not Implemented
+501 Not Implemented
+command terminated with exit code 1
+--- create second user
+Already exists
+409 Conflict
+command terminated with exit code 1

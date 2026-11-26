@@ -1,0 +1,15 @@
+host free space: 43G
+
+[1;34m==> Namespace and secrets[0m
+namespace/datahub created
+secret/mysql-secrets created
+
+[1;34m==> Prerequisites (chart 0.3.1): MySQL, OpenSearch, Kafka[0m
+Release "prerequisites" does not exist. Installing it now.
+Error: datahub-prerequisites/charts/opensearch/templates/serviceMonitor.yaml:1:14
+  executing "datahub-prerequisites/charts/opensearch/templates/serviceMonitor.yaml" at <.Values.serviceMonitor.enabled>:
+    nil pointer evaluating interface {}.enabled
+
+real	0m0.382s
+user	0m0.461s
+sys	0m0.151s

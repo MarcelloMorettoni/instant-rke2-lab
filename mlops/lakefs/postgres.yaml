@@ -1,0 +1,35 @@
+# PostgreSQL for lakeFS metadata (branches, commits, staging area, users).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: postgres-data, namespace: lakefs}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 5Gi}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: postgres, namespace: lakefs}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:17-alpine
+        env:
+        - {name: POSTGRES_USER, value: lakefs}
+        - {name: POSTGRES_DB, value: lakefs}
+        - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+        - name: POSTGRES_PASSWORD
+          valueFrom: {secretKeyRef: {name: lakefs-credentials, key: POSTGRES_PASSWORD}}
+        ports: [{containerPort: 5432}]
+        readinessProbe: {exec: {command: [pg_isready, -U, lakefs]}, periodSeconds: 5}
+        resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+        volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+      volumes: [{name: data, persistentVolumeClaim: {claimName: postgres-data}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres, namespace: lakefs}
+spec: {selector: {app: postgres}, ports: [{port: 5432}]}

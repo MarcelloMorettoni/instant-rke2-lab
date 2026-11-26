@@ -119,7 +119,7 @@ Notes per workload:
 
 | Stage | Hypothesis (comparison page) | Observed | Changed? | What we used | Evidence |
 |---|---|---|---|---|---|
-| 1 Data | Partial | Partial | No | MLflow dataset tracking records name, digest, schema and source on a run; it does not store or version data. Ray Data was not exercised. Our own fingerprint and validation code did the work | [09-dataset-tracking.log](../evidence/mlflow-ray/09-dataset-tracking.log) |
+| 1 Data | Partial | Partial | No | MLflow dataset tracking records name, digest, schema and source on a run; it does not store or version data. Ray Data was not exercised. Our own fingerprint and validation code did the work. Versioning added in a follow-up test with lakeFS: see [the add-on page](data-versioning-and-catalog.md) | [09-dataset-tracking.log](../evidence/mlflow-ray/09-dataset-tracking.log), [mlflow-ray-w3.log](../evidence/lakefs/mlflow-ray-w3.log) |
 | 2 Develop | Gap | Gap | No | JupyterHub add-on | [w1-first-login.log](../evidence/mlflow-ray/w1-first-login.log) |
 | 3 Tracking | Native | Native | No | MLflow Tracking from Ray Train, Ray Tune and (in the Kubeflow test) notebooks | [w2-rayjob.log](../evidence/mlflow-ray/w2-rayjob.log) |
 | 4 Tune & train | Native | Native | No | Ray Train (2-node PyTorch), Ray Tune (grid search) | [w2-rayjob.log](../evidence/mlflow-ray/w2-rayjob.log), [w3-scenarios.log](../evidence/mlflow-ray/w3-scenarios.log) |
@@ -142,6 +142,7 @@ Notes per workload:
 | `tenant.sh`: namespace, quota, default limits, NetworkPolicy, RBAC, MLflow user, S3 identity | complex | 9 | Yes | 1 h, plus two bugs in our object-store handling | Our own tenancy model: every new component must be added to it |
 | MLflow deployment: image extras, auth config, PostgreSQL, S3 | light | 3, 6 | No, new | 0.5 h | No official Helm chart was used; a custom image is the clean fix |
 | Data validation and fingerprinting code | light | 1 | Yes | shared with Kubeflow | It is our code, not a data-versioning tool |
+| lakeFS for data versioning, with an adapter in the test kit (follow-up test) | light | 1 | Yes | 0.5 h, shared with Kubeflow | Open-source lakeFS has a single user: no isolation between projects |
 | Single sign-on across JupyterHub, MLflow, Ray dashboard (not built, required) | complex | 9 | Yes | not estimated | The largest open item |
 | Image build pipeline for Ray jobs and services (not built, required) | light | 4, 7 | No, new | not estimated | Without it every start installs packages |
 | Prometheus + Grafana (not built) | complex | 8 | Yes | not estimated | Separate stack to run |

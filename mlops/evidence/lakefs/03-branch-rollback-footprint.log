@@ -1,0 +1,20 @@
+== bad data on a branch, then roll back (repo smoke)
+created branch 'incoming' 954bca6072ee9156a657b6932e842b9cd9d8ed9bd35871a580687b94adcf8380
+Path: bad.csv
+ID: 04e173bb2146641671d835762e36d764045e2da365b8c4afd2853f1a643fe453
+-- main is untouched while the batch sits on its branch:
+object          2026-11-26 07:24:55 +0000 UTC    6 B             h.txt
+-- merge, then revert the merge on main:
+Destination: lakefs://smoke/main
+Merged "incoming" into "main" to get "e008ee2f105f4b1ddb2a26dcba6e088b74723b12ac761c2fd120923d6a2f316f".
+object          2026-11-26 07:40:25 +0000 UTC    7 B             bad.csv
+object          2026-11-26 07:24:55 +0000 UTC    6 B             h.txt
+commit e008ee2f105f4b1ddb2a26dcba6e088b74723b12ac761c2fd120923d6a2f316f successfully reverted
+object          2026-11-26 07:24:55 +0000 UTC    6 B             h.txt
+== footprint
+NAME                        CPU(cores)   MEMORY(bytes)   
+lakefs-8d445f5d-s7njp       1m           65Mi            
+postgres-7794fd74c4-w5d5k   4m           67Mi            
+NAME                        CPU_REQ   MEM_REQ   IMAGE
+lakefs-8d445f5d-s7njp       100m      256Mi     treeverse/lakefs:1.88.0
+postgres-7794fd74c4-w5d5k   100m      256Mi     postgres:17-alpine

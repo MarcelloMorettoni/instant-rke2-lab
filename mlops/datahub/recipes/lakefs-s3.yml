@@ -1,0 +1,19 @@
+# lakeFS has no DataHub source. Its S3 gateway is close enough for the generic
+# S3 source: the repository is the bucket, the branch is the first path element.
+source:
+  type: s3
+  config:
+    platform: s3
+    path_specs:
+    - include: "s3://mr-sensor-data/main/datasets/{table}/*.csv"
+    - include: "s3://kf-sensor-data/main/datasets/{table}/*.csv"
+    aws_config:
+      aws_access_key_id: ${LAKEFS_ACCESS_KEY_ID}
+      aws_secret_access_key: ${LAKEFS_SECRET_ACCESS_KEY}
+      aws_endpoint_url: ${LAKEFS_ENDPOINT}
+      aws_region: us-east-1
+    env: PROD
+    profiling: {enabled: false}
+sink:
+  type: datahub-rest
+  config: {server: "${DATAHUB_GMS_URL}", token: "${DATAHUB_TOKEN}"}

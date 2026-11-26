@@ -1,0 +1,38 @@
+== DATASET: 4
+    urn:li:dataset:(urn:li:dataPlatform:mlflow,w3-batch-001,PROD)
+    urn:li:dataset:(urn:li:dataPlatform:s3,kf-sensor-data/main/datasets/w3,PROD)
+    urn:li:dataset:(urn:li:dataPlatform:s3,mr-sensor-data/main/datasets/w3,PROD)
+    urn:li:dataset:(urn:li:dataPlatform:s3,w3-batch-001,PROD)
+== MLMODEL: 6
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_1,PROD)
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_2,PROD)
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_3,PROD)
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_4,PROD)
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_5,PROD)
+    urn:li:mlModel:(urn:li:dataPlatform:mlflow,smollm2-135m-shakespeare_1,PROD)
+== MLMODEL_GROUP: 2
+    urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,sensor-fault,PROD)
+    urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,smollm2-135m-shakespeare,PROD)
+== DATA_PROCESS_INSTANCE: 27
+    urn:li:dataProcessInstance:02b8d2e009e0485b9fd5a41dc640fdcc
+    urn:li:dataProcessInstance:1db04e7072701673cb67584f164e0d4d
+    urn:li:dataProcessInstance:1e6b0fcc23c840a13af10c43a1f950d7
+    urn:li:dataProcessInstance:209fe54400f93c73337a711d75cf6780
+    urn:li:dataProcessInstance:274390cc5ffd1e98b38f2e3629b42c0d
+    urn:li:dataProcessInstance:301ed73c22bfe0d82d05a127ad77930d
+    urn:li:dataProcessInstance:43d69c13482b3871215d2f4307e88d32
+    urn:li:dataProcessInstance:53dd17f63c1ace696c600d0130bc6d3f
+== CONTAINER: 9
+    urn:li:container:234b83b3abc6c932d58d4b212cc7a40b
+    urn:li:container:51363c5414011229afb9dfc57813efa9
+    urn:li:container:55b1be84fe2ae143d9f00c2628d5636d
+    urn:li:container:5a9dee59d477ab9e088d80689cc08170
+    urn:li:container:a6c9bf766674fe5879d6c3f781e371eb
+    urn:li:container:c6f6d08c561a1175e953a6fd49a9ae54
+    urn:li:container:dcd034c8bb354656c117201fcd8420f6
+    urn:li:container:f9e50b7fa338175a4783d2a2d696ad9d
+== upstream of urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_4,PROD) -> 1
+    degree 1 urn:li:dataProcessInstance:f8717a013debe58939a3b9610daff3db
+== upstream of urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_5,PROD) -> 1
+    degree 1 urn:li:dataProcessInstance:c473c019099fefbf207b1474937df083
+== properties of latest: {"mlModel": {"name": "sensor-fault_5", "properties": {"customProperties": [{"key": "data_uri", "value": "lakefs://mr-sensor-data/5ff0dc3128e904d40f1882cdce4d53c7fb85c35a0f226ff40af2109cab15d40e/datasets/w3/"}, {"key": "accuracy", "value": "0.8907"}, {"key": "data_fingerprint", "value": "5ff0dc3128e904d40f1882cdce4d53c7fb85c35a0f226ff40af2109cab15d40e"}]}}}

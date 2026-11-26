@@ -122,7 +122,7 @@ Notes per workload:
 
 | Stage | Hypothesis (comparison page) | Observed | Changed? | What we used | Evidence |
 |---|---|---|---|---|---|
-| 1 Data | Gap | Gap | No | Object-store prefix per project, our own fingerprint and validation code in a pipeline step. Pipelines records dataset artifacts per run, but nothing versions data | [w3-run-1.log](../evidence/kubeflow/w3-run-1.log) |
+| 1 Data | Gap | Gap | No | Object-store prefix per project, our own fingerprint and validation code in a pipeline step. Pipelines records dataset artifacts per run, but nothing versions data. Closed in a follow-up test by adding lakeFS: see [the add-on page](data-versioning-and-catalog.md) | [w3-run-1.log](../evidence/kubeflow/w3-run-1.log), [kubeflow-w3-ct-loop.log](../evidence/lakefs/kubeflow-w3-ct-loop.log) |
 | 2 Develop | Native | Native | No | Kubeflow Notebooks through the dashboard | [w1-first-login.log](../evidence/kubeflow/w1-first-login.log) |
 | 3 Tracking | Partial | Partial | No | Pipeline run metrics inside Pipelines; MLflow for the training job and notebooks | [w2-trainjob.log](../evidence/kubeflow/w2-trainjob.log), [08-mlflow-from-notebook.log](../evidence/kubeflow/08-mlflow-from-notebook.log) |
 | 4 Tune & train | Native | Native | No | Katib (grid search), Trainer v2 (2-node PyTorch). Multi-node needed the sidecar workaround | [katib-hpo.log](../evidence/kubeflow/katib-hpo.log), [w2-trainjob.log](../evidence/kubeflow/w2-trainjob.log) |
@@ -140,6 +140,7 @@ Notes per workload:
 | MLflow for tracking, with a secret per project | light | 3 | Yes | 0.5 h for the server, minutes per project | No per-Profile wiring; a second login and a second permission model |
 | "Detect new data" pipeline step + recurring run | light | 5 | No, new | 0.5 h | Polling; time to retrain is bounded by the schedule |
 | Data validation and fingerprinting code | light | 1 | Yes (gap) | 0.5 h | It is our code, not a data-versioning tool |
+| lakeFS for data versioning, with an adapter in the test kit (follow-up test) | light | 1 | Yes (gap) | 0.5 h, shared with MLflow + Ray | Open-source lakeFS has a single user: no isolation between projects |
 | KServe storage ServiceAccount + Secret per project | light | 7 | No, new | 10 min | Must be created for every Profile |
 | Sidecar opt-out on TrainJob pods | light | 4 | No, new | 15 min to diagnose | Every multi-node job needs it; it also removes those pods from mesh protection |
 | LimitRange per Profile (not built, required) | light | 9 | No, new | est. 0.5 h | Profiles do not create it; needs a Profile plugin or a policy engine |
@@ -232,6 +233,8 @@ The comparison page I was given has stage ratings but no per-criterion ratings, 
 - Model Registry per project: footprint and effort, or wait for upstream tenancy? [owner]
 - A real upgrade test: install v1.10.2, load it, upgrade to v1.11.0. [owner]
 - Worker-node failure on replicated storage. [owner]
+- Data versioning: lakeFS worked in a follow-up test, but its open-source edition has one user. One instance per project, the paid edition, or another tool? [owner]
+- A data catalog (DataHub) has no Kubeflow source; is an emitter for Model Registry worth building? [owner]
 - Would a trimmed install (no Spark operator, no Katib UI and so on) change the footprint enough to matter? [owner]
 
 ## Evidence

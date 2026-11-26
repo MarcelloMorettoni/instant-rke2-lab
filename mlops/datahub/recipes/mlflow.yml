@@ -1,0 +1,11 @@
+# MLflow -> DataHub: experiments, runs, registered models and versions.
+source:
+  type: mlflow
+  config:
+    tracking_uri: ${MLFLOW_TRACKING_URI}
+    username: ${MLFLOW_TRACKING_USERNAME}
+    password: ${MLFLOW_TRACKING_PASSWORD}
+    materialize_dataset_inputs: true
+sink:
+  type: datahub-rest
+  config: {server: "${DATAHUB_GMS_URL}", token: "${DATAHUB_TOKEN}"}

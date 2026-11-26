@@ -16,6 +16,8 @@ data for both.
 | `testkit/` | Shared workload code: tabular model (W3), language-model fine-tune (W2), object-store helpers, LLM load client (W4) |
 | `kubeflow/` | Install scripts and workloads for Kubeflow |
 | `mlflow-ray/` | Install scripts, tenancy script and workloads for MLflow + Ray |
+| `lakefs/` | Add-on test: lakeFS install and the per-project script that switches W3 to versioned data |
+| `datahub/` | Add-on test: DataHub install, ingestion pod and recipes |
 | `lib.sh` | Pinned versions and shared helpers |
 
 ## Reproduce

@@ -1,0 +1,28 @@
+# Workstation pod for DataHub ingestion tests: the `datahub` CLI with the
+# MLflow and S3 sources. Source credentials come from the Secret `ingest-sources`.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ingest, namespace: datahub, labels: {app: ingest}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ingest}}
+  template:
+    metadata: {labels: {app: ingest}}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+      containers:
+      - name: ingest
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args: ["pip install --quiet --no-cache-dir 'acryl-datahub[mlflow,s3,datahub-rest]' && touch /tmp/ready && sleep infinity"]
+        readinessProbe: {exec: {command: ["test", "-f", "/tmp/ready"]}, periodSeconds: 5}
+        env:
+        - {name: DATAHUB_GMS_URL, value: "http://datahub-datahub-gms:8080"}
+        - {name: MLFLOW_TRACKING_URI, value: "http://mlflow.mlflow.svc.cluster.local:5000"}
+        - {name: LAKEFS_ENDPOINT, value: "http://lakefs.lakefs.svc.cluster.local"}
+        envFrom: [{secretRef: {name: ingest-sources}}]
+        resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {cpu: "2", memory: 3Gi}}

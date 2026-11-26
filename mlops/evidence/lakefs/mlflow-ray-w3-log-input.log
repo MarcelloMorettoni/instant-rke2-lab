@@ -1,0 +1,7 @@
+workflow w3-lakefs-run-3-log-input phase=Succeeded wall=237s
+  detect Succeeded 08:03:35-08:03:53 
+  validate Succeeded 08:04:05-08:04:26 
+  train Succeeded 08:04:36-08:06:24 
+  deploy Succeeded 08:06:33-08:06:43 
+  verify(0) Succeeded 08:06:53-08:07:18 
+  verify Succeeded 08:06:53-08:07:28 

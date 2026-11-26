@@ -34,6 +34,9 @@ spec:
           valueFrom: {secretKeyRef: {name: mlpipeline-minio-artifact, key: accesskey}}
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom: {secretKeyRef: {name: mlpipeline-minio-artifact, key: secretkey}}
+        # Optional: when the project has it, W3 reads its data from lakeFS.
+        envFrom:
+        - secretRef: {name: data-store, optional: true}
         resources:
           requests: {cpu: 100m, memory: 256Mi}
           limits: {cpu: "1", memory: 1Gi}

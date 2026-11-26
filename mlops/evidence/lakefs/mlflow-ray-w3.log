@@ -1,0 +1,26 @@
+== 07:40:15 W3 on MLflow + Ray, data from lakeFS repo mr-sensor-data (2 batches, 2 commits)
+workflow w3-lakefs-run-1 phase=Succeeded wall=211s
+  detect Succeeded 07:40:15-07:40:35 
+  validate Succeeded 07:40:46-07:41:05 
+  train Succeeded 07:41:16-07:43:03 
+  deploy Succeeded 07:43:12-07:43:16 
+  verify(0) Succeeded 07:43:22-07:43:36 
+  verify Succeeded 07:43:22-07:43:42 
+== registry and lakeFS after run 1
+latest version 4 [] {'data_fingerprint': '0b25eadc198407b0014166f9dc34ad0720358e611f8479439414fe89d6a44894', 'data_uri': 'lakefs://mr-sensor-data/0b25eadc198407b0014166f9dc34ad0720358e611f8479439414fe89d6a44894/datasets/w3/', 'accuracy': '0.8840'}
+lakeFS tags {'trained-sensor-fault-v4': '0b25eadc198407b0014166f9dc34ad0720358e611f8479439414fe89d6a44894'}
+== 07:43:48 run again without new data
+workflow w3-lakefs-run-2-no-new-data phase=Succeeded wall=31s
+  detect Succeeded 07:43:48-07:44:09 
+  deploy Skipped 07:44:18-07:44:18 when ''' != ''' evaluated false
+  verify Skipped 07:44:18-07:44:18 when ''' != ''' evaluated false
+  validate Skipped 07:44:18-07:44:18 when ''' != ''' evaluated false
+  train Skipped 07:44:18-07:44:18 when ''' != ''' evaluated false
+== 07:44:19 cron every 2 min, then add a drifted batch and commit
+07:44:20 uploaded batch-003.csv, dataset version lakefs://mr-sensor-data/5ff0dc3128e904d40f1882cdce4d53c7fb85c35a0f226ff40af2109cab15d40e/datasets/w3/
+07:48:29 model version 5 registered 249s after the data arrived: {'data_fingerprint': '5ff0dc3128e904d40f1882cdce4d53c7fb85c35a0f226ff40af2109cab15d40e', 'data_uri': 'lakefs://mr-sensor-data/5ff0dc3128e904d40f1882cdce4d53c7fb85c35a0f226ff40af2109cab15d40e/datasets/w3/', 'accuracy': '0.8907'}
+07:48:50 version 5 served 271s after the data arrived
+== reproducibility: read the dataset as it was for each trained model
+trained-sensor-fault-v4 0b25eadc1984 1000 rows ['batch-001.csv', 'batch-002.csv']
+trained-sensor-fault-v5 5ff0dc3128e9 1500 rows ['batch-001.csv', 'batch-002.csv', 'batch-003.csv']
+head 5ff0dc3128e9

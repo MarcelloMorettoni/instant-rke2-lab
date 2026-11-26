@@ -12,18 +12,17 @@ import pandas as pd
 import ray
 from ray import tune
 
-import s3
+import dataset
 import tabular
 
-BUCKET, PREFIX = os.environ["S3_BUCKET"], os.environ.get("DATA_PREFIX", "datasets/w3")
+ds = dataset.Dataset()
 MODEL_NAME, EXPERIMENT = "sensor-fault", "w3-continuous-training"
-FINGERPRINT = os.environ.get("DATA_FINGERPRINT") or s3.fingerprint(BUCKET, PREFIX)
+FINGERPRINT = os.environ.get("DATA_FINGERPRINT") or ds.version()
 GATE = float(os.environ.get("ACCURACY_GATE", tabular.ACCURACY_GATE))
 
 
 def load() -> pd.DataFrame:
-    keys = [o["Key"] for o in s3.list_keys(BUCKET, PREFIX)]
-    return pd.concat([tabular.from_csv_bytes(s3.get_bytes(BUCKET, k)) for k in keys], ignore_index=True)
+    return ds.load(FINGERPRINT)[0]
 
 
 def trial(config):
@@ -34,7 +33,11 @@ def trial(config):
     with mlflow.start_run(run_name=f"trial-n{config['n_estimators']}-d{config['max_depth']}") as run:
         mlflow.log_params({"n_estimators": config["n_estimators"], "max_depth": config["max_depth"]})
         mlflow.log_metrics(scores)
-        mlflow.set_tags({"data_fingerprint": FINGERPRINT, "pipeline": os.environ.get("PIPELINE_RUN", "manual")})
+        mlflow.set_tags({"data_fingerprint": FINGERPRINT, "data_uri": ds.uri(FINGERPRINT), "pipeline": os.environ.get("PIPELINE_RUN", "manual")})
+        # Dataset as a first-class MLflow input: this is what a catalog (DataHub)
+        # turns into lineage dataset -> run -> model version.
+        name, source = ds.catalog(FINGERPRINT)
+        mlflow.log_input(mlflow.data.from_pandas(train_df, source=source, name=name, digest=FINGERPRINT[:16]), context="training")
         # MLflow 3.18 saves sklearn models with skops and refuses types it does not
         # know; tree ensembles need this one declared explicitly.
         mlflow.sklearn.log_model(
@@ -61,9 +64,9 @@ if __name__ == "__main__":
     if accuracy < GATE:
         print(f"quality gate FAILED: {accuracy:.4f} < {GATE}; nothing registered")
         sys.exit(2)
-    version = mlflow.register_model(f"runs:/{run_id}/model", MODEL_NAME, tags={"data_fingerprint": FINGERPRINT, "accuracy": f"{accuracy:.4f}"})
+    version = mlflow.register_model(f"runs:/{run_id}/model", MODEL_NAME, tags={"data_fingerprint": FINGERPRINT, "data_uri": ds.uri(FINGERPRINT), "accuracy": f"{accuracy:.4f}"})
     mlflow.MlflowClient().set_registered_model_alias(MODEL_NAME, "champion", version.version)
-    s3.put_bytes(BUCKET, f"{PREFIX}/_trained_fingerprint", FINGERPRINT.encode())
+    ds.mark_trained(MODEL_NAME, FINGERPRINT, f"v{version.version}")
     print(f"registered {MODEL_NAME} version {version.version} as champion (fingerprint {FINGERPRINT})")
     with open("/tmp/model_version", "w") as f:
         f.write(str(version.version))

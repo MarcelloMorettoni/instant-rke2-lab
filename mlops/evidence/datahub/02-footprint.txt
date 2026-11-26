@@ -1,0 +1,18 @@
+NAME                                             CPU_REQ   MEM_REQ   MEM_LIM   IMAGE
+datahub-acryl-datahub-actions-75d77d96dd-zs6jc   300m      256Mi     512Mi     docker.io/acryldata/datahub-actions:v1.9.0
+datahub-datahub-frontend-d49c865f7-szctr         100m      512Mi     1400Mi    docker.io/acryldata/datahub-frontend-react:v1.9.0
+datahub-datahub-gms-84cc779d9c-vx7lg             100m      1Gi       2Gi       docker.io/acryldata/datahub-gms:v1.9.0
+opensearch-cluster-master-0                      1         100Mi     <none>    opensearchproject/opensearch:2.19.5
+prerequisites-kafka-controller-0                 <none>    <none>    <none>    docker.io/bitnamilegacy/kafka:3.6.1-debian-12-r12
+prerequisites-mysql-0                            100m      512Mi     2Gi       docker.io/bitnamilegacy/mysql:8.0.40-debian-12-r5
+NAME                                             CPU(cores)   MEMORY(bytes)   
+datahub-acryl-datahub-actions-75d77d96dd-zs6jc   183m         461Mi           
+datahub-datahub-frontend-d49c865f7-szctr         4m           415Mi           
+datahub-datahub-gms-84cc779d9c-vx7lg             21m          1032Mi          
+opensearch-cluster-master-0                      220m         935Mi           
+prerequisites-kafka-controller-0                 17m          431Mi           
+prerequisites-mysql-0                            18m          375Mi           
+data-prerequisites-kafka-controller-0 8Gi
+data-prerequisites-mysql-0 8Gi
+opensearch-cluster-master-opensearch-cluster-master-0 8Gi
+0

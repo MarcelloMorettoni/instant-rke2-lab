@@ -1,0 +1,35 @@
+# lakeFS open-source edition. Secrets come from the Secret `lakefs-credentials`
+# (install.sh); the LAKEFS_INSTALLATION_* variables create the admin user on
+# first start, so no setup wizard is needed.
+image:
+  community:
+    tag: "1.88.0"
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: "1", memory: 1Gi}
+lakefsConfig: |
+  database:
+    type: postgres
+  blockstore:
+    type: s3
+    s3:
+      endpoint: http://s3.mlflow.svc.cluster.local:8333
+      force_path_style: true
+      discover_bucket_region: false
+      region: us-east-1
+  installation:
+    user_name: admin
+# Without existingSecret the chart falls back to a fixed, published encryption key.
+existingSecret: lakefs-credentials
+secretKeys:
+  authEncryptSecretKey: AUTH_ENCRYPT_SECRET_KEY
+  databaseConnectionString: DATABASE_URL
+extraEnvVars:
+  - name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_ACCESS_KEY_ID
+    valueFrom: {secretKeyRef: {name: lakefs-credentials, key: BLOCKSTORE_ACCESS_KEY}}
+  - name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_SECRET_ACCESS_KEY
+    valueFrom: {secretKeyRef: {name: lakefs-credentials, key: BLOCKSTORE_SECRET_KEY}}
+  - name: LAKEFS_INSTALLATION_ACCESS_KEY_ID
+    valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_ACCESS_KEY}}
+  - name: LAKEFS_INSTALLATION_SECRET_ACCESS_KEY
+    valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_SECRET_KEY}}

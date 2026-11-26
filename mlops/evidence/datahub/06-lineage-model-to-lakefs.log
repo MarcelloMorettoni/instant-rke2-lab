@@ -1,0 +1,15 @@
+== upstream of sensor-fault version 5: 1
+    degree 1 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:c473c019099fefbf207b1474937df083
+== upstream of sensor-fault version 6: 3
+    degree 1 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:797314470316df26d68413dcf617b7ac
+    degree 2 DATASET urn:li:dataset:(urn:li:dataPlatform:mlflow,mr-sensor-data/main/datasets/w3,PROD)
+    degree 3 DATASET urn:li:dataset:(urn:li:dataPlatform:s3,mr-sensor-data/main/datasets/w3,PROD)
+== downstream of lakeFS dataset mr-sensor-data/main/datasets/w3: 7
+    degree 3 MLMODEL urn:li:mlModel:(urn:li:dataPlatform:mlflow,sensor-fault_6,PROD)
+    degree 2 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:5e01c7143c0b25f03ed0e2c6122b6e8c
+    degree 2 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:797314470316df26d68413dcf617b7ac
+    degree 2 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:dcfb045fab165042fee1ff5f60aa0927
+    degree 2 DATA_PROCESS_INSTANCE urn:li:dataProcessInstance:e5955b87b733e773789f5e0a7970a49b
+    degree 1 DATASET urn:li:dataset:(urn:li:dataPlatform:mlflow,mr-sensor-data/main/datasets/w3,PROD)
+    degree 4 MLMODEL_GROUP urn:li:mlModelGroup:(urn:li:dataPlatform:mlflow,sensor-fault,PROD)
+== schema inferred through the lakeFS gateway: [('temperature', 'number'), ('vibration', 'number'), ('pressure', 'number'), ('current', 'number'), ('fault', 'integer')]

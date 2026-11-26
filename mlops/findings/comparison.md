@@ -1,7 +1,7 @@
 # POC comparison: Kubeflow (upstream) vs MLflow + Ray
 
 > Status: DRAFT · Last updated: 26 Nov 2026
-> Companion to the two findings pages: [Kubeflow](kubeflow.md) and [MLflow + Ray](mlflow-ray.md). Every number here comes from those pages and their evidence.
+> Companion to the two findings pages: [Kubeflow](kubeflow.md) and [MLflow + Ray](mlflow-ray.md), and the add-on test [lakeFS + DataHub](data-versioning-and-catalog.md). Every number here comes from those pages and their evidence.
 
 ## Bottom line
 
@@ -65,6 +65,21 @@ Reading the timings:
 | Count | 5 / 3 / 1 → 4 / 4 / 1 | 4 / 3 / 2 → 4 / 3 / 2 |
 
 The comparison page's hypotheses held up almost entirely. The one change is Kubeflow's tenancy: built in, but not safe as installed.
+
+## Follow-up: closing the Data stage with lakeFS and DataHub
+
+Tested after the main POC; details and evidence on [the add-on page](data-versioning-and-catalog.md).
+
+| | Kubeflow | MLflow + Ray |
+|---|---|---|
+| W3 retraining from a lakeFS commit | Works. New commit → new version in 331 s | Works. New commit → new version in 249 s, served in 271 s |
+| Exact dataset of an older model readable | Yes | Yes |
+| DataHub sees models and runs | No source for Kubeflow; needs our own emitter (not tested) | Yes, through the MLflow source |
+| Lineage model → dataset in the catalog | Not tested | Works after logging the dataset as an MLflow input |
+
+- lakeFS removes Stage 1 as a difference between the candidates. Its cost is small (2 pods); its condition is that the open-source edition has a single user, so it does not isolate projects.
+- DataHub favours MLflow + Ray, but it is a platform in itself (6 pods, about 3.7 GiB at idle) and optional.
+- The stage ratings above are unchanged: they describe the candidates as shipped.
 
 ## Evaluation criteria
 
@@ -135,8 +150,9 @@ A hybrid is also possible and worth a look in the pilot: Kubeflow lists a KubeRa
 2. GPUs: multi-GPU Ray Train, Ray Serve with vLLM and its cold start with a pre-built image; KServe with the vLLM backend for comparison.
 3. Ray on Slurm with MLflow tracking (the repository's `slinky/` lab can host it).
 4. A tenancy layer we are willing to own: harden `tenant.sh` or adopt an existing operator.
-5. Monitoring, usage and energy per project (Prometheus, OpenCost, Kepler or similar): needed for either candidate.
-6. For Kubeflow, if it stays in play: a real v1.10 → v1.11 upgrade and the three tenancy fixes as a Profile plugin or policy.
+5. Data versioning with project isolation: one lakeFS per project, its paid edition, or an alternative.
+6. Monitoring, usage and energy per project (Prometheus, OpenCost, Kepler or similar): needed for either candidate.
+7. For Kubeflow, if it stays in play: a real v1.10 → v1.11 upgrade and the three tenancy fixes as a Profile plugin or policy.
 
 ## Limits of this POC
 

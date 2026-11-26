@@ -9,42 +9,49 @@ compares the dataset fingerprint with the one the last model was trained on.
 The shared test kit is mounted from a ConfigMap at /testkit (the lab has no
 image registry; a real setup would bake it into an image in CI).
 """
+import os
+
 from kfp import compiler, dsl, kubernetes
 
 BASE_IMAGE = "python:3.11-slim"
 # KFP only accepts literal env values, so the endpoint cannot be a pipeline parameter.
 S3_ENDPOINT = "http://minio-service.kubeflow.svc.cluster.local:9000"
+# Data store, fixed at compile time for the same reason: "s3" (the pipeline bucket)
+# or "lakefs" (versioned; `bucket` is then the repository name). See testkit/dataset.py.
+DATA_STORE = os.environ.get("DATA_STORE", "s3")
+LAKEFS_ENDPOINT = "http://lakefs.lakefs.svc.cluster.local"
 PACKAGES = ["pandas==2.2.3", "scikit-learn==1.6.1", "boto3==1.35.99", "joblib==1.4.2"]
 
 
 @dsl.component(base_image=BASE_IMAGE, packages_to_install=PACKAGES)
-def detect_new_data(bucket: str, prefix: str) -> str:
-    """Returns the dataset fingerprint, or "" when it was already trained on."""
+def detect_new_data(bucket: str, prefix: str, model_name: str) -> str:
+    """Returns the dataset version, or "" when it was already trained on."""
     import sys
 
     sys.path.insert(0, "/testkit")
-    import s3
+    import dataset
 
-    current = s3.fingerprint(bucket, prefix)
-    trained = s3.get_text(bucket, f"{prefix}/_trained_fingerprint")
-    print(f"dataset fingerprint={current} last trained={trained or '(never)'}")
-    return "" if current == trained else current
+    ds = dataset.Dataset(bucket, prefix)
+    current = ds.version()
+    done = ds.is_trained(model_name, current)
+    print(f"dataset {ds.uri(current)} already trained={done}")
+    return "" if done else current
 
 
 @dsl.component(base_image=BASE_IMAGE, packages_to_install=PACKAGES)
-def validate_data(bucket: str, prefix: str, dataset: dsl.Output[dsl.Dataset], stats: dsl.Output[dsl.Metrics]):
+def validate_data(bucket: str, prefix: str, version: str, dataset: dsl.Output[dsl.Dataset], stats: dsl.Output[dsl.Metrics]):
     import sys
 
     sys.path.insert(0, "/testkit")
-    import pandas as pd
-    import s3
+    import dataset as store
     import tabular
 
-    keys = [o["Key"] for o in s3.list_keys(bucket, prefix)]
-    df = pd.concat([tabular.from_csv_bytes(s3.get_bytes(bucket, k)) for k in keys], ignore_index=True)
+    ds = store.Dataset(bucket, prefix)
+    df, keys = ds.load(version)
     result = tabular.validate(df)  # raises -> step fails -> pipeline stops
     df.to_csv(dataset.path, index=False)
     dataset.metadata["batches"] = keys
+    dataset.metadata["source"] = ds.uri(version)
     for k, v in result.items():
         stats.log_metric(k, v)
 
@@ -104,7 +111,7 @@ def register_model(
     import sys
 
     sys.path.insert(0, "/testkit")
-    import s3
+    import dataset
     from model_registry import ModelRegistry
 
     registry = ModelRegistry(server_address=registry_host, port=8080, author="w3-pipeline", is_secure=False)
@@ -113,6 +120,7 @@ def register_model(
     except Exception:
         existing = []
     version = f"v{len(existing) + 1}"
+    ds = dataset.Dataset(bucket, prefix)
     registry.register_model(
         model_name,
         model.uri,
@@ -120,9 +128,9 @@ def register_model(
         model_format_name="sklearn",
         model_format_version="1.6.1",
         description="W3 continuous-training pipeline",
-        metadata={"data_fingerprint": fingerprint, "accuracy": accuracy, "kfp_run_id": run_id},
+        metadata={"data_fingerprint": fingerprint, "data_uri": ds.uri(fingerprint), "accuracy": accuracy, "kfp_run_id": run_id},
     )
-    s3.put_bytes(bucket, f"{prefix}/_trained_fingerprint", fingerprint.encode())
+    ds.mark_trained(model_name, fingerprint, version)
     print(f"registered {model_name} {version} -> {model.uri}")
     return version
 
@@ -174,6 +182,14 @@ def _wire(task, secret: str = "mlpipeline-minio-artifact"):
         task, secret_name=secret, secret_key_to_env={"accesskey": "AWS_ACCESS_KEY_ID", "secretkey": "AWS_SECRET_ACCESS_KEY"}
     )
     task.set_env_variable("S3_ENDPOINT", S3_ENDPOINT)
+    task.set_env_variable("DATA_STORE", DATA_STORE)
+    if DATA_STORE == "lakefs":
+        task.set_env_variable("LAKEFS_ENDPOINT", LAKEFS_ENDPOINT)
+        kubernetes.use_secret_as_env(
+            task,
+            secret_name="data-store",
+            secret_key_to_env={"LAKEFS_ACCESS_KEY_ID": "LAKEFS_ACCESS_KEY_ID", "LAKEFS_SECRET_ACCESS_KEY": "LAKEFS_SECRET_ACCESS_KEY"},
+        )
     return task
 
 
@@ -188,9 +204,9 @@ def w3_pipeline(
     registry_host: str = "http://model-registry-service.kubeflow.svc.cluster.local",
     serving_service_account: str = "kserve-s3",
 ):
-    detect = _wire(detect_new_data(bucket=bucket, prefix=prefix))
+    detect = _wire(detect_new_data(bucket=bucket, prefix=prefix, model_name=model_name))
     with dsl.If(detect.output != "", name="new-data"):
-        data = _wire(validate_data(bucket=bucket, prefix=prefix))
+        data = _wire(validate_data(bucket=bucket, prefix=prefix, version=detect.output))
         trained = _wire(
             train_model(dataset=data.outputs["dataset"], n_estimators=n_estimators, max_depth=max_depth))
         scored = _wire(

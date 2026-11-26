@@ -1,0 +1,27 @@
+DataHub CLI version: 1.9.0.1
+Models: bundled
+Python version: 3.11.18 (main, Nov 24 2026, 05:00:19) [GCC 14.2.0]
+== plugins matching our stack
+dbt                      (disabled)
+dbt-cloud                (disabled)
+delta-lake               (disabled)
+iceberg                  (disabled)
+kafka                    (disabled)
+kafka-connect            (disabled)
+mlflow
+s3
+sagemaker
+vertexai                 (disabled)
+== default login datahub/datahub
+login 200
+token created, length 309
+env | The environment that all assets produced by this connector belong to
+stateful_ingestion | 
+tracking_uri | Tracking server URI. If not set, an MLflow default tracking_uri is used (local `mlruns/` directory or `MLFLOW_TRACKING_URI` environment variable)
+registry_uri | Registry server URI. If not set, an MLflow default registry_uri is used (value of tracking_uri or `MLFLOW_REGISTRY_URI` environment variable)
+model_name_separator | A string which separates model name from its version (e.g. model_1 or model-1)
+base_external_url | Base URL to use when constructing external URLs to MLflow. If not set, tracking_uri is used if it's an HTTP URL. If neither is set, external URLs are 
+materialize_dataset_inputs | Whether to materialize dataset inputs for each run
+source_mapping_to_platform | Mapping of source type to datahub platform
+username | Username for MLflow authentication
+password | Password for MLflow authentication

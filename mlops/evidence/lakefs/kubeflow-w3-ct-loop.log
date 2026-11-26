@@ -1,0 +1,12 @@
+== registry and lakeFS after run 1
+4 versions; latest v4 {'accuracy': 0.864, 'data_fingerprint': '2d59035d7b51c12f4ca3b61bee02819adc5ca626f257a148bb449943f90df587', 'data_uri': 'lakefs://kf-sensor-data/2d59035d7b51c12f4ca3b61bee02819adc5ca626f257a148bb449943f90df587/datasets/w3/', 'kfp_run_id': '64151fbc-f4aa-4502-883d-26f11ce5f056'}
+lakeFS tags {'trained-sensor-fault-v4': '2d59035d7b51c12f4ca3b61bee02819adc5ca626f257a148bb449943f90df587'}
+== 07:33:19 run again without new data
+run d305cc60-b2bb-42fd-acfc-a8faa9a8cb3b state=SUCCEEDED wall=65s
+  detect-new-data              SUCCEEDED
+  w3-continuous-training-76s4s SUCCEEDED
+== 07:34:25 schedule every 2 min, then add a drifted batch and commit
+recurring_run_id 8fe84c61-b383-4821-86d1-0696494ea6e4
+07:34:26 uploaded batch-003.csv, dataset version lakefs://kf-sensor-data/0eef8717306c7c157a908f0eb710a9d735dd31bd3539aee65a86895879bc0e9b/datasets/w3/
+07:39:57 model v5 registered 331s after the data arrived: {'accuracy': 0.8906666666666667, 'data_fingerprint': '0eef8717306c7c157a908f0eb710a9d735dd31bd3539aee65a86895879bc0e9b', 'data_uri': 'lakefs://kf-sensor-data/0eef8717306c7c157a908f0eb710a9d735dd31bd3539aee65a86895879bc0e9b/datasets/w3/', 'kfp_run_id': '37414dc0-0411-4571-a1bf-3f68e0907c27'}
+deleted w3-lakefs-ct-every-2min

@@ -1,0 +1,4 @@
+== reproducibility: read the dataset as it was for each trained model
+trained-sensor-fault-v4 2d59035d7b51 1000 rows ['batch-001.csv', 'batch-002.csv']
+trained-sensor-fault-v5 0eef8717306c 1500 rows ['batch-001.csv', 'batch-002.csv', 'batch-003.csv']
+head 0eef8717306c

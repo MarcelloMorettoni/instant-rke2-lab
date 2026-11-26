@@ -25,6 +25,7 @@ spec:
         envFrom:
         - secretRef: {name: mlflow-client}
         - secretRef: {name: s3-client}
+        - secretRef: {name: data-store, optional: true}
         resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
         volumeMounts: [{name: testkit, mountPath: /testkit}]
       volumes: [{name: testkit, configMap: {name: testkit}}]
