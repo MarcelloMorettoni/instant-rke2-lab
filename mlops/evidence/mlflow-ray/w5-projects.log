@@ -1,0 +1,41 @@
+# W5 on MLflow + Ray: second project via tenant.sh 2026-11-26T00:33:36Z
+  namespace/mr-beta configured
+  resourcequota/tenant-quota created
+  limitrange/tenant-defaults created
+  networkpolicy.networking.k8s.io/same-tenant-only created
+  serviceaccount/workload created
+  role.rbac.authorization.k8s.io/workload created
+  rolebinding.rbac.authorization.k8s.io/workload created
+  mlflow user: 200
+  secret/mlflow-client created
+  0
+  secret/s3-client created
+  configmap/testkit created
+project mr-beta usable after 1.176650273s (script: namespace, quota, limits, network policy, RBAC, MLflow user, S3 identity+bucket, test kit)
+--- mr-alpha
+  sa/default
+  sa/workload
+  role/workload
+  rolebinding/workload
+  resourcequota/tenant-quota
+  limitrange/tenant-defaults
+  networkpolicy/same-tenant-only
+  secret/mlflow-client
+  secret/s3-client
+  cm/istio-ca-crl
+  cm/istio-ca-root-cert
+  cm/testkit
+  cm/workloads
+--- mr-beta
+  sa/default
+  sa/workload
+  role/workload
+  rolebinding/workload
+  resourcequota/tenant-quota
+  limitrange/tenant-defaults
+  networkpolicy/same-tenant-only
+  secret/mlflow-client
+  secret/s3-client
+  cm/istio-ca-crl
+  cm/istio-ca-root-cert
+  cm/testkit

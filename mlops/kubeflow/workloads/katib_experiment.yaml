@@ -1,0 +1,46 @@
+# Stage 4 (Tune) on Kubeflow: the same 2x2 grid Ray Tune runs in the Ray W3 job,
+# as a Katib experiment. Each trial is a Kubernetes Job; Katib scrapes
+# `accuracy=` from stdout with its metrics-collector sidecar.
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: sensor-fault-hpo
+spec:
+  objective: {type: maximize, objectiveMetricName: accuracy, additionalMetricNames: [roc_auc]}
+  algorithm: {algorithmName: grid}
+  parallelTrialCount: 2
+  maxTrialCount: 4
+  maxFailedTrialCount: 1
+  parameters:
+  - {name: n_estimators, parameterType: categorical, feasibleSpace: {list: ["50", "100"]}}
+  - {name: max_depth, parameterType: categorical, feasibleSpace: {list: ["2", "3"]}}
+  trialTemplate:
+    primaryContainerName: trial
+    trialParameters:
+    - {name: n_estimators, reference: n_estimators}
+    - {name: max_depth, reference: max_depth}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        backoffLimit: 0
+        template:
+          metadata:
+            annotations: {sidecar.istio.io/inject: "false"}
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: trial
+              image: python:3.11-slim
+              command: ["bash", "-c"]
+              args:
+              - pip install --quiet --no-cache-dir pandas==2.2.3 scikit-learn==1.6.1 2>/dev/null &&
+                python /workloads/katib_trial.py --n_estimators=${trialParameters.n_estimators} --max_depth=${trialParameters.max_depth}
+              env: [{name: PYTHONPATH, value: /testkit}]
+              resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+              volumeMounts:
+              - {name: testkit, mountPath: /testkit}
+              - {name: workloads, mountPath: /workloads}
+            volumes:
+            - {name: testkit, configMap: {name: testkit}}
+            - {name: workloads, configMap: {name: workloads}}

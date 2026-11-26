@@ -1,0 +1,38 @@
+host free space: 37G
+
+[1;34m==> Rendering example/kustomization.yaml with kustomize v5.7.1[0m
+render attempt 1 failed: usr/bin/git fetch --depth=1 https://github.com/kubernetes-sigs/jobset HEAD': fatal: unable to access 'https://github.com/kubernetes-sigs/jobset/': Could not resolve host: github.com
+: exit status 128
+
+[1;34m==> Applying (retries until CRDs and webhooks are ready)[0m
+attempt 1: 11 errors, retrying in 20s
+host free space: 36G
+attempt 2: 11 errors, retrying in 20s
+host free space: 36G
+attempt 3: 11 errors, retrying in 20s
+host free space: 36G
+attempt 4: 11 errors, retrying in 20s
+host free space: 36G
+attempt 5: 11 errors, retrying in 20s
+host free space: 36G
+attempt 6: 11 errors, retrying in 20s
+host free space: 36G
+attempt 7: 11 errors, retrying in 20s
+host free space: 35G
+attempt 8: 11 errors, retrying in 20s
+host free space: 35G
+attempt 9: 11 errors, retrying in 20s
+host free space: 35G
+attempt 10: 11 errors, retrying in 20s
+host free space: 35G
+attempt 11: 11 errors, retrying in 20s
+host free space: 35G
+attempt 12: 11 errors, retrying in 20s
+host free space: 34G
+attempt 13: 11 errors, retrying in 20s
+host free space: 34G
+attempt 14: 11 errors, retrying in 20s
+host free space: 34G
+applied cleanly after 14 retries
+
+[exited with code 0]

@@ -1,0 +1,45 @@
+# Long-lived Ray Serve cluster for the W3 model. The pipeline's deploy step
+# re-applies this manifest with a new `model_version`, which makes Ray Serve
+# reconfigure the running replicas in place (no restart, no new cluster).
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: sensor-fault
+spec:
+  serveConfigV2: |
+    applications:
+    - name: sensor-fault
+      import_path: serve_tabular:app
+      route_prefix: /
+      runtime_env:
+        pip: ["mlflow==3.18.0", "scikit-learn==1.6.1", "boto3==1.35.99"]
+      deployments:
+      - name: SensorFault
+        num_replicas: 1
+        user_config:
+          model_version: "MODEL_VERSION_PLACEHOLDER"
+  rayClusterConfig:
+    rayVersion: "2.60.1"
+    headGroupSpec:
+      rayStartParams: {}
+      template:
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.60.1-py311-cpu
+            resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}
+            env:
+            - {name: PYTHONPATH, value: "/workloads:/testkit"}
+            - {name: GIT_PYTHON_REFRESH, value: quiet}
+            envFrom: [{secretRef: {name: mlflow-client}}]
+            volumeMounts:
+            - {name: testkit, mountPath: /testkit}
+            - {name: workloads, mountPath: /workloads}
+          volumes:
+          - {name: testkit, configMap: {name: testkit}}
+          - {name: workloads, configMap: {name: workloads}}

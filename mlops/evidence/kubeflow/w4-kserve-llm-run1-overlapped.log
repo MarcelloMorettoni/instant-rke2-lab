@@ -1,0 +1,10 @@
+python: can't open file '/testkit/llm_client.py': [Errno 2] No such file or directory
+command terminated with exit code 2
+23:14:42 warm request:  
+23:14:42 waiting for scale to zero...
+23:17:56 scaled to zero 194s after the last request
+23:17:57 cold request:  status=200 latency=41.7s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+23:18:38 replicas before load: 2
+23:18:38 load: concurrency=6 duration=180s ok=335 errors=0 p50=3.2s p95=3.4s max=6.5s throughput=1.86 req/s
+replicas during load: 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 
+23:21:41 replicas after load: 2

@@ -1,0 +1,4 @@
+MODEL sensor-fault 1
+  VERSION v1 {'accuracy': 0.864, 'data_fingerprint': 'f485d8685ddc35d0', 'kfp_run_id': '88e22ac3-ee1f-4bbf-8ba0-4344b91d6adb'}
+    ARTIFACT minio://mlpipeline/private-artifacts/kubeflow-user-example-com/v2/artifacts/w3-continuous-training/88e22ac3-ee1f-4bbf-8ba0-4344b91d6adb/train-model/51491d87-f1c1-49c4-82ea-fd9152bf53e9/model sklearn
+PREDICT 200 {"predictions":[1,0,0,1,0]} expected [1, 0, 0, 1, 0]

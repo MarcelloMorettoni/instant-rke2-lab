@@ -1,0 +1,30 @@
+# "Researcher workstation" pod for a project of the MLflow + Ray candidate:
+# test kit on PYTHONPATH, MLflow and S3 credentials from the project's secrets.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: kit, labels: {app: kit}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: kit}}
+  template:
+    metadata: {labels: {app: kit}}
+    spec:
+      serviceAccountName: workload
+      containers:
+      - name: kit
+        image: python:3.11-slim
+        command: ["bash", "-c"]
+        args:
+        - |
+          pip install --quiet --no-cache-dir boto3==1.35.99 pandas==2.2.3 scikit-learn==1.6.1 requests mlflow-skinny==3.18.0 \
+          && touch /tmp/ready && sleep infinity
+        readinessProbe: {exec: {command: ["test", "-f", "/tmp/ready"]}, periodSeconds: 5}
+        env:
+        - {name: PYTHONPATH, value: /testkit}
+        - {name: GIT_PYTHON_REFRESH, value: quiet}
+        envFrom:
+        - secretRef: {name: mlflow-client}
+        - secretRef: {name: s3-client}
+        resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+        volumeMounts: [{name: testkit, mountPath: /testkit}]
+      volumes: [{name: testkit, configMap: {name: testkit}}]

@@ -1,0 +1,29 @@
+# idle footprint 2026-11-25T20:52:10Z (kubectl top, usage not requests)
+auth                         pods= 1 cpu=    1m mem=     8Mi
+cert-manager                 pods= 3 cpu=    4m mem=    90Mi
+istio-system                 pods= 3 cpu=    7m mem=   240Mi
+knative-serving              pods= 6 cpu=   22m mem=   377Mi
+kubeflow                     pods=36 cpu=  277m mem=  3759Mi
+kubeflow-system              pods= 2 cpu=    6m mem=   134Mi
+oauth2-proxy                 pods= 2 cpu=    2m mem=    10Mi
+kubeflow-user-example-com    pods= 0 cpu=    0m mem=     0Mi
+kube-system/istio-cni        pods= 3 cpu=    3m mem=    42Mi
+# idle footprint 2026-11-25T20:52:10Z (kubectl top, usage not requests)
+auth                         pods= 1 cpu=    1m mem=     8Mi
+cert-manager                 pods= 3 cpu=    4m mem=    90Mi
+istio-system                 pods= 3 cpu=    7m mem=   240Mi
+knative-serving              pods= 6 cpu=   22m mem=   377Mi
+kubeflow                     pods=36 cpu=  277m mem=  3759Mi
+kubeflow-system              pods= 2 cpu=    6m mem=   134Mi
+oauth2-proxy                 pods= 2 cpu=    2m mem=    10Mi
+kubeflow-user-example-com    pods= 0 cpu=    0m mem=     0Mi
+kube-system/istio-cni        pods= 3 cpu=    3m mem=    42Mi
+TOTAL pods=56 cpu=322m mem=4660Mi (sum of the rows above)
+{
+  "cpu_m": 3322,
+  "mem_Mi": 8810
+}
+NAME      CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+cp1       123m         3%       3134Mi          39%         
+worker1   144m         2%       3377Mi          21%         
+worker2   135m         2%       3229Mi          20%         

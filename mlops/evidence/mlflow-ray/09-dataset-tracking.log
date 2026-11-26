@@ -1,0 +1,5 @@
+# Stage 1 (Data) on MLflow: dataset tracking with mlflow.data 2026-11-26T00:47:08Z
+2026/11/26 00:47:09 INFO mlflow.tracking.fluent: Experiment with name 'data-tracking-check' does not exist. Creating a new experiment.
+dataset logged on run: w3-batch-001 digest 2640fe7c source {"uri": "s3://mr-alpha/datasets/w3/batch-001.csv"}
+schema: {"mlflow_colspec": [{"type": "double", "name": "temperature", "required": true}, {"type": "double", "name": "v
+what this is: a record (name, digest, schema, source URI) attached to a run; the data itself is not stored or versioned by MLflow

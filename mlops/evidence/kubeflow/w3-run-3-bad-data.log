@@ -1,0 +1,15 @@
+run_id 161f53fe-47ee-4656-91d2-5808d709ed9e
+run 161f53fe-47ee-4656-91d2-5808d709ed9e state=FAILED wall=120s
+  condition-2                  None
+  w3-continuous-training-zm5nb FAILED
+  root                         FAILED
+  evaluate-model               None
+  detect-new-data              SUCCEEDED
+  train-model                  None
+  validate-data                FAILED
+  executor                     FAILED
+  executor                     SUCCEEDED
+  condition-1                  FAILED
+command terminated with exit code 1
+    raise ValueError("data validation failed: " + "; ".join(problems))
+ValueError: data validation failed: null values present

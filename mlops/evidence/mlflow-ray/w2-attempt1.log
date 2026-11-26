@@ -1,0 +1,6 @@
+# W2 attempt 1 2026-11-25T23:37:00Z: cold cluster (image pull 3m+), training OK, model logging failed
+FAILED start=2026-11-25T23:18:06Z end=2026-11-25T23:28:53Z
+[36m(RayTrainWorker pid=190, ip=10.42.2.215)[0m ModuleNotFoundError: No module named 'torchvision'
+[36m(RayTrainWorker pid=190, ip=10.42.2.215)[0m [rank 0] summary {'first_loss': 3.8410484790802, 'final_loss': 3.4263317584991455, 'perplexity': 30.763587251543523, 'steps': 30, 'seconds': 83.1}
+[36m(RayTrainWorker pid=191, ip=10.42.1.244)[0m [rank 1] summary {'first_loss': 3.9133105278015137, 'final_loss': 3.18798565864563, 'perplexity': 24.23955150220426, 'steps': 30, 'seconds': 82.8}
+[36m(TrainController pid=672)[0m ModuleNotFoundError: No module named 'torchvision'[32m [repeated 2x across cluster][0m

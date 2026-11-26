@@ -1,0 +1,30 @@
+secret/model-registry-db-secrets created
+service/model-registry-db created
+service/model-registry-service created
+persistentvolumeclaim/metadata-mysql created
+deployment.apps/model-registry-db created
+deployment.apps/model-registry-deployment created
+destinationrule.networking.istio.io/model-registry-service created
+virtualservice.networking.istio.io/model-registry created
+authorizationpolicy.security.istio.io/model-registry-service created
+
+[1;34m==> Model Registry UI[0m
+serviceaccount/model-registry-ui created
+clusterrole.rbac.authorization.k8s.io/model-registry-create-sars created
+clusterrole.rbac.authorization.k8s.io/model-registry-retrieve-clusterrolebindings created
+clusterrole.rbac.authorization.k8s.io/model-registry-ui-services-reader created
+clusterrolebinding.rbac.authorization.k8s.io/model-registry-create-sars-binding created
+clusterrolebinding.rbac.authorization.k8s.io/model-registry-retrieve-clusterrolebindings-binding created
+clusterrolebinding.rbac.authorization.k8s.io/model-registry-ui-services-reader-binding created
+service/model-registry-ui-service created
+deployment.apps/model-registry-ui created
+destinationrule.networking.istio.io/model-registry-ui created
+virtualservice.networking.istio.io/model-registry-ui created
+authorizationpolicy.security.istio.io/model-registry-ui created
+
+[1;34m==> Dashboard menu link[0m
+Warning: resource configmaps/centraldashboard-config is missing the kubectl.kubernetes.io/last-applied-configuration annotation which is required by kubectl apply. kubectl apply should only be used on resources created declaratively by either kubectl create --save-config or kubectl apply. The missing annotation will be patched automatically.
+configmap/centraldashboard-config configured
+deployment.apps/model-registry-db condition met
+deployment.apps/model-registry-deployment condition met
+deployment.apps/model-registry-ui condition met

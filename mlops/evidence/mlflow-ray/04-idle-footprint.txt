@@ -1,0 +1,17 @@
+# idle footprint of the MLflow + Ray platform services 2026-11-26T00:44:19Z (kubectl top; tenant workloads excluded)
+mlflow       pods= 3 cpu=   12m mem=  2477Mi
+ray-system   pods= 1 cpu=    3m mem=    40Mi
+argo         pods= 1 cpu=    2m mem=    22Mi
+jhub         pods= 2 cpu=    5m mem=   192Mi  (hub + proxy; user notebooks excluded)
+requests:
+  cpu_m=750 mem_Mi=2240
+CRDs added: 4 (ray.io) + Argo CRDs (already present from Kubeflow on this cluster; 8 on a clean cluster)
+PVCs:
+  claim-carol 5Gi
+  hub-db-dir 1Gi
+  mlflow/postgres-data 5Gi
+  mlflow/s3-data 10Gi
+helm releases:
+  argo-workflows argo argo-workflows-0.47.5
+  jupyterhub jhub jupyterhub-4.4.5
+  kuberay-operator ray-system deployed

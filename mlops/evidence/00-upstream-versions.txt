@@ -1,0 +1,15 @@
+# Upstream release state on 2026-11-26 (git ls-remote --tags; PyPI) vs what was tested
+kubeflow/manifests                   latest tags: v1.10.1 v1.10.2 v1.11.0 
+kubeflow/pipelines                   latest tags: 2.18.0 2.18.1 2.18.2 
+kubeflow/trainer                     latest tags: v2.2.1 v2.3.0 v2.4.0 
+kubeflow/katib                       latest tags: v0.17.0 v0.18.0 v0.19.0 
+kserve/kserve                        latest tags: v0.19.0 v0.20.0 v0.21.0 
+kubeflow/model-registry              latest tags: v0.3.16 v0.3.17 v0.3.18 
+argoproj/argo-workflows              latest tags: v4.1.5 v4.1.6 v4.1.7 
+ray-project/kuberay                  latest tags: v1.7.1 v1.7.2 v1.7.3 
+mlflow/mlflow                        latest tags: v3.17.1 v3.17.2 v3.18.0 
+jupyterhub/zero-to-jupyterhub-k8s    latest tags: 4.4.4 4.4.5 v0.3.1 
+ray (PyPI): 2.60.1
+
+Bundled in Kubeflow manifests v1.11.0 (tag date 2025-12-15): Pipelines 2.15.0, Trainer 2.1.0, Katib 0.19.0, KServe 0.15.2, Model Registry 0.3.4, Argo Workflows 3.7.3, Istio 1.28.0, Knative 1.16.2
+Tested for MLflow + Ray: MLflow 3.18.0, Ray 2.60.1, KubeRay 1.7.3, Argo Workflows 3.7.11 (chart 0.47.5), JupyterHub 5.5.5 (chart 4.4.5)

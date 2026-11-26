@@ -1,0 +1,53 @@
+auth                 dex-5b4878995d-vjhhn                                     1/1   Running     1 (13m ago)     13m   10.42.2.24       worker2   <none>   <none>
+cert-manager         cert-manager-676f745766-dx2bl                            1/1   Running     0               13m   10.42.1.228      worker1   <none>   <none>
+cert-manager         cert-manager-cainjector-5fccc767d5-7hcpd                 1/1   Running     0               13m   10.42.2.110      worker2   <none>   <none>
+cert-manager         cert-manager-webhook-86b5f56846-zxqnx                    1/1   Running     0               13m   10.42.1.199      worker1   <none>   <none>
+istio-system         cluster-local-gateway-768f4d667c-ddkm8                   1/1   Running     0               13m   10.42.1.155      worker1   <none>   <none>
+istio-system         istio-ingressgateway-7d7f67576d-xd7cg                    1/1   Running     0               13m   10.42.2.149      worker2   <none>   <none>
+istio-system         istiod-dbdf99468-7qq5m                                   1/1   Running     0               13m   10.42.1.175      worker1   <none>   <none>
+knative-serving      activator-dc995986c-bvk4r                                2/2   Running     0               12m   10.42.1.141      worker1   <none>   <none>
+knative-serving      autoscaler-5f8fbf6f67-vf7r8                              2/2   Running     0               12m   10.42.2.112      worker2   <none>   <none>
+knative-serving      controller-7cb66865cc-tq76x                              2/2   Running     0               12m   10.42.2.233      worker2   <none>   <none>
+knative-serving      net-istio-controller-8c989f95f-7cgrf                     2/2   Running     0               12m   10.42.1.179      worker1   <none>   <none>
+knative-serving      net-istio-webhook-747bb8789-sg9b5                        2/2   Running     0               12m   10.42.2.147      worker2   <none>   <none>
+knative-serving      webhook-9d5b47ddc-vdpmp                                  2/2   Running     0               11m   10.42.1.166      worker1   <none>   <none>
+kubeflow-system      jobset-controller-manager-678f7696bc-d4xxk               1/2   Running     0               11m   10.42.2.248      worker2   <none>   <none>
+kubeflow-system      kubeflow-trainer-controller-manager-7dd486bb88-d2qzq     2/2   Running     0               11m   10.42.1.237      worker1   <none>   <none>
+kubeflow             admission-webhook-deployment-86b465bc64-hgkxs            1/1   Running     0               13m   10.42.2.137      worker2   <none>   <none>
+kubeflow             cache-server-7f88fd85f-mtmrr                             2/2   Running     0               11m   10.42.1.85       worker1   <none>   <none>
+kubeflow             centraldashboard-d7588bc6d-gdpf6                         2/2   Running     0               11m   10.42.2.188      worker2   <none>   <none>
+kubeflow             jupyter-web-app-deployment-6bfb78b9dd-7n2jb              2/2   Running     0               11m   10.42.1.224      worker1   <none>   <none>
+kubeflow             katib-controller-788f5d4d74-qk48w                        1/1   Running     0               13m   10.42.2.129      worker2   <none>   <none>
+kubeflow             katib-db-manager-5ff5b5584b-gmwg5                        1/1   Running     4 (7m55s ago)   13m   10.42.2.127      worker2   <none>   <none>
+kubeflow             katib-mysql-9bf558555-mzpvx                              1/1   Running     0               13m   10.42.2.235      worker2   <none>   <none>
+kubeflow             katib-ui-6b867d986d-vtftq                                2/2   Running     0               11m   10.42.1.218      worker1   <none>   <none>
+kubeflow             kserve-controller-manager-7dc965ff87-9f99w               2/2   Running     0               11m   10.42.2.96       worker2   <none>   <none>
+kubeflow             kserve-localmodel-controller-manager-75c48bd4d4-j46tk    2/2   Running     0               11m   10.42.1.239      worker1   <none>   <none>
+kubeflow             kserve-models-web-app-6789d6689-5tdvj                    2/2   Running     0               11m   10.42.1.183      worker1   <none>   <none>
+kubeflow             kubeflow-pipelines-profile-controller-7d65967879-ffmh9   1/1   Running     0               13m   10.42.2.41       worker2   <none>   <none>
+kubeflow             metacontroller-0                                         1/1   Running     0               13m   10.42.2.51       worker2   <none>   <none>
+kubeflow             metadata-envoy-deployment-5dd85f9668-d7xkt               1/1   Running     0               13m   10.42.1.2        worker1   <none>   <none>
+kubeflow             metadata-grpc-deployment-56784c656c-lbmsp                2/2   Running     6 (3m ago)      11m   10.42.2.213      worker2   <none>   <none>
+kubeflow             metadata-writer-55697c66c5-p4ch8                         2/2   Running     3 (89s ago)     11m   10.42.1.205      worker1   <none>   <none>
+kubeflow             ml-pipeline-c746bfd96-cxnld                              2/2   Running     2 (2m24s ago)   11m   10.42.2.228      worker2   <none>   <none>
+kubeflow             ml-pipeline-persistenceagent-f9f449bd9-9g9qf             2/2   Running     0               11m   10.42.1.230      worker1   <none>   <none>
+kubeflow             ml-pipeline-scheduledworkflow-7979c54b46-xp9gj           2/2   Running     0               11m   10.42.2.218      worker2   <none>   <none>
+kubeflow             ml-pipeline-ui-6b99b54b45-mz92v                          2/2   Running     0               11m   10.42.1.181      worker1   <none>   <none>
+kubeflow             ml-pipeline-viewer-crd-7cd4dd5899-fhgfz                  2/2   Running     0               11m   10.42.1.150      worker1   <none>   <none>
+kubeflow             ml-pipeline-visualizationserver-5669f8c7dd-h2bpt         2/2   Running     0               11m   10.42.2.214      worker2   <none>   <none>
+kubeflow             mysql-554fd974c7-kd8vf                                   2/2   Running     0               11m   10.42.1.39       worker1   <none>   <none>
+kubeflow             notebook-controller-deployment-5598967c5c-dxwfq          2/2   Running     0               11m   10.42.2.20       worker2   <none>   <none>
+kubeflow             profiles-deployment-55b87789bc-bmp6r                     3/3   Running     0               11m   10.42.2.91       worker2   <none>   <none>
+kubeflow             pvcviewer-controller-manager-56767944f6-lgtcq            3/3   Running     0               11m   10.42.0.170      cp1       <none>   <none>
+kubeflow             seaweedfs-d8d6bddf-jbbwv                                 2/2   Running     0               11m   10.42.1.126      worker1   <none>   <none>
+kubeflow             spark-operator-controller-6b48b45d9-sdzns                1/1   Running     0               13m   10.42.2.67       worker2   <none>   <none>
+kubeflow             spark-operator-webhook-6cf88cccfc-m6xlk                  1/1   Running     0               13m   10.42.2.150      worker2   <none>   <none>
+kubeflow             tensorboard-controller-deployment-594f6cc998-5pbbn       3/3   Running     0               11m   10.42.2.229      worker2   <none>   <none>
+kubeflow             tensorboards-web-app-deployment-58bf7d765f-l7z68         2/2   Running     0               11m   10.42.0.136      cp1       <none>   <none>
+kubeflow             volumes-web-app-deployment-6d59986bff-lwhbl              2/2   Running     0               11m   10.42.2.15       worker2   <none>   <none>
+kubeflow             workflow-controller-5cf6dfdc7-7cqpf                      2/2   Running     0               11m   10.42.1.206      worker1   <none>   <none>
+oauth2-proxy         oauth2-proxy-74bdccbc6b-2gkg8                            1/1   Running     0               13m   10.42.2.231      worker2   <none>   <none>
+oauth2-proxy         oauth2-proxy-74bdccbc6b-6tkq6                            1/1   Running     0               13m   10.42.1.13       worker1   <none>   <none>
+istio-cni-node-dt8ns                                    1/1   Running     0             13m
+istio-cni-node-m7glx                                    1/1   Running     0             13m
+istio-cni-node-z8c6n                                    1/1   Running     0             13m

@@ -1,0 +1,15 @@
+All git commands will error until this is rectified.
+
+This initial message can be silenced or aggravated in the future by setting the
+$GIT_PYTHON_REFRESH environment variable. Use one of the following values:
+    - quiet|q|silence|s|silent|none|n|0: for no message or exception
+    - error|e|exception|raise|r|2: for a raised exception
+
+Example:
+    export GIT_PYTHON_REFRESH=quiet
+
+create user: 200 {"user":{"id":2,"is_admin":false,"username":"kubeflow-user"}} 
+🏃 View run smoke at: http://mlflow.mlflow.svc.cluster.local:5000/#/experiments/1/runs/6f6cd239a7d64033b657a4c23fd2f711
+🧪 View experiment at: http://mlflow.mlflow.svc.cluster.local:5000/#/experiments/1
+run 6f6cd239a7d64033b657a4c23fd2f711 artifact_uri mlflow-artifacts:/1/6f6cd239a7d64033b657a4c23fd2f711/artifacts
+artifacts ['a.txt']

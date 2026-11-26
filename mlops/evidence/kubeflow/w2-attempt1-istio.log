@@ -1,0 +1,20 @@
+# W2 attempt 1 (Istio sidecar injected, profile default) 2026-11-25T23:07:01Z: hangs at rendezvous
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE      NOMINATED NODE   READINESS GATES
+w2-lm-finetune-node-0-0-f4vzd   2/2     Running   0          10m   10.42.1.44    worker1   <none>           <none>
+w2-lm-finetune-node-0-1-blmj6   2/2     Running   0          10m   10.42.2.195   worker2   <none>           <none>
+
+[W1125 22:57:53.453010833 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=3, addr=[w2-lm-finetune-node-0-1.w2-lm-finetune.kubeflow-user-example-com.svc.cluster.local]:50210, remote=[w2-lm-finetune-node-0-0.w2-lm-finetune.kubeflow-user-example-com.svc.cluster.local]:29500): failed to recv, got 0 bytes
+Exception raised from recvBytes at /pytorch/torch/csrc/distributed/c10d/Utils.hpp:678 (most recent call first):
+<omitting python frames>
+
+[W1125 22:57:53.455496776 TCPStore.cpp:343] [c10d] TCP client failed to connect/validate to host w2-lm-finetune-node-0-0.w2-lm-finetune:29500 - retrying (try=0, timeout=900000ms, delay=663ms): failed to recv, got 0 bytes
+Exception raised from recvBytes at /pytorch/torch/csrc/distributed/c10d/Utils.hpp:678 (most recent call first):
+<omitting python frames>
+
+[W1125 22:57:54.121196009 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=4, addr=[w2-lm-finetune-node-0-1.w2-lm-finetune.kubeflow-user-example-com.svc.cluster.local]:50224, remote=[w2-lm-finetune-node-0-0.w2-lm-finetune.kubeflow-user-example-com.svc.cluster.local]:29500): failed to recv, got 0 bytes
+Exception raised from recvBytes at /pytorch/torch/csrc/distributed/c10d/Utils.hpp:678 (most recent call first):
+<omitting python frames>
+[2026-11-25T23:02:35.803Z] "- - -" 0 - - - "-" 10 0 31038 - "-" "-" "-" "-" "10.42.1.44:29500" PassthroughCluster 10.42.2.195:53156 10.42.1.44:29500 10.42.2.195:53142 - -
+[2026-11-25T23:03:06.842Z] "- - -" 0 - - - "-" 10 0 53510 - "-" "-" "-" "-" "10.42.1.44:29500" PassthroughCluster 10.42.2.195:55068 10.42.1.44:29500 10.42.2.195:55058 - -
+[2026-11-25T23:05:07.892Z] "- - -" 0 - - - "-" 10 0 50028 - "-" "-" "-" "-" "10.42.1.44:29500" PassthroughCluster 10.42.2.195:58064 10.42.1.44:29500 10.42.2.195:58050 - -
+None ports=

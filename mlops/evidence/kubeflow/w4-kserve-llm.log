@@ -1,0 +1,14 @@
+# run 2 on a quiet cluster (run 1 overlapped with Ray image pulls; kept as w4-kserve-llm-run1-overlapped.log)
+00:54:27 warm request:  status=200 latency=143.6s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+00:56:51 waiting for scale to zero...
+00:58:29 scaled to zero 98s after the last request
+00:58:29 cold request:  status=200 latency=23.4s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+00:58:52 replicas before load: 2
+00:58:52 load: concurrency=6 duration=180s ok=404 errors=0 p50=2.4s p95=6.1s max=6.6s throughput=2.24 req/s
+replicas during load: 2 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 
+01:01:55 replicas after load: 3
+pods at end:
+smollm-predictor-00001-deployment-7879d574dc-8cpp9   2/2   Running   0     3m26s
+smollm-predictor-00001-deployment-7879d574dc-jtqx2   2/2   Running   0     3m26s
+smollm-predictor-00001-deployment-7879d574dc-mzlkj   2/2   Running   0     3m1s
+desired=3 actual=3

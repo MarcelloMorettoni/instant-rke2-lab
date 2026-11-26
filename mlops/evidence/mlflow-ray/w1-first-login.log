@@ -1,0 +1,12 @@
+# W1 first login as carol (new user) via JupyterHub 2026-11-26T00:27:38Z
+00:27:39 sign-up -> 200
+00:27:39 login -> 200 http://localhost:8081/hub/spawn-pending/carol
+sign-up + login round trip: .467954539s
+<title>JupyterHub
+  hub-7d6f4b6596-26v8k Running
+  proxy-6654d97c4-j6cdz Running
+00:29:16 first spawn attempt failed: hub could not reach the Kubernetes API (chart NetworkPolicy vs Cilium); CiliumNetworkPolicy added
+deployment "hub" successfully rolled out
+carol opens JupyterLab (OAuth hand-off hub -> server): 200 http://localhost:8081/user/carol/lab title=<title>JupyterLab
+after hand-off, API status: {"connections": 0, "kernels": 0, "last_activity": "2026-11-26T00:32:25.783042Z", "started"
+anonymous JupyterLab: 302 (redirect to login)

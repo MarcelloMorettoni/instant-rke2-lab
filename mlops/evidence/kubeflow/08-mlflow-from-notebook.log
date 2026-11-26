@@ -1,0 +1,4 @@
+# MLflow alongside Kubeflow: tracking from a Kubeflow notebook (carol/first, Istio sidecar injected) 2026-11-26T00:45:23Z
+2026/11/26 00:45:46 INFO mlflow.tracking.fluent: Experiment with name 'kubeflow-notebook-carol' does not exist. Creating a new experiment.
+run logged: 6d31ce3ac97b498aba20ed4f6918a00c experiment 6
+note: MLflow URL and credentials had to be passed by hand; Kubeflow has no per-profile MLflow wiring (a PodDefault + secret per profile would be the wrapper)

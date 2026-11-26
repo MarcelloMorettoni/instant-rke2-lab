@@ -1,0 +1,25 @@
+# Backup and restore of metadata: dump -> restore into a scratch database -> compare row counts 2026-11-26T00:44:57Z
+## Kubeflow Pipelines (MySQL 8.4 in kubeflow/mysql; root has an empty password by default: confirmed)
+  dump of mlpipeline: 2.7M
+  run_details: live=11 restored=11
+  pipelines: live=2 restored=2
+  pipeline_versions: live=2 restored=2
+  experiments: live=1 restored=1
+  jobs: live=0 restored=0
+  tasks: live=145 restored=145
+## Kubeflow Model Registry (MySQL 8.3 in kubeflow/model-registry-db)
+  dump of metadb: 24K
+  Context: live=6 restored=6
+  Artifact: live=4 restored=4
+  ContextProperty: live=33 restored=33
+  other state to back up for Kubeflow: katib-mysql (PVC 10Gi), SeaweedFS artifacts (PVC 20Gi), Profiles/Notebooks/InferenceServices (CRs in etcd), Dex config; 4 stores + cluster state, no bundled backup tool
+## MLflow (PostgreSQL 17 in mlflow/postgres)
+  dump: 160.0K
+NOTICE:  database "restore_test" does not exist, skipping
+  runs: live=21 restored=21
+  metrics: live=151 restored=151
+  params: live=67 restored=67
+  experiments: live=5 restored=5
+  model_versions: live=4 restored=4
+  registered_models: live=2 restored=2
+  other state to back up for MLflow + Ray: mlflow_auth database (same PostgreSQL), S3 bucket with artifacts (PVC 10Gi), JupyterHub sqlite PVC, RayService/CronWorkflow CRs; Ray clusters themselves are stateless

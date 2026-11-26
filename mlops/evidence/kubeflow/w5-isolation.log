@@ -1,0 +1,50 @@
+# W5 isolation checks 2026-11-25T21:27:16Z
+## RBAC (user alice / SA team-alpha:default-editor acting in team-beta)
+alice@example.com                                list pods                                    own=yes other=no
+alice@example.com                                get secrets                                  own=yes other=no
+alice@example.com                                create notebooks.kubeflow.org                own=yes other=no
+alice@example.com                                list inferenceservices.serving.kserve.io     own=yes other=no
+system:serviceaccount:team-alpha:default-editor  list pods                                    own=yes other=no
+system:serviceaccount:team-alpha:default-editor  get secrets                                  own=yes other=no
+system:serviceaccount:team-alpha:default-editor  create notebooks.kubeflow.org                own=yes other=no
+system:serviceaccount:team-alpha:default-editor  list inferenceservices.serving.kserve.io     own=yes other=no
+## Network: team-alpha client -> target
+web-mesh     -> web-mesh.team-alpha    ALLOWED 200
+web-mesh     -> web-mesh.team-beta     BLOCKED HTTP Error 403: Forbidden
+web-mesh     -> web-nomesh.team-beta   ALLOWED 200
+web-nomesh   -> web-mesh.team-alpha    BLOCKED HTTP Error 403: Forbidden
+web-nomesh   -> web-mesh.team-beta     BLOCKED HTTP Error 403: Forbidden
+web-nomesh   -> web-nomesh.team-beta   ALLOWED 200
+## Network: team-alpha client -> platform services
+web-nomesh   -> ml-pipeline.kubeflow                     ALLOWED 200
+web-nomesh   -> model-registry-service.kubeflow          ALLOWED 200
+web-nomesh   -> minio-service.kubeflow                   BLOCKED HTTP Error 403: Forbidden
+web-nomesh   -> mysql.kubeflow                           BLOCKED <urlopen error timed out>
+## Quota
+{"limits.cpu":"2400m","limits.memory":"1280Mi","persistentvolumeclaims":"0","pods":"2","requests.cpu":"110m","requests.memory":"168Mi","requests.nvidia.com/gpu":"0"}
+Error from server (Forbidden): pods "noreq" is forbidden: failed quota: kf-resource-quota: must specify limits.cpu for: noreq; limits.memory for: noreq; requests.cpu for: noreq; requests.memory for: noreq
+Error from server (Forbidden): pods "toobig" is forbidden: exceeded quota: kf-resource-quota, requested: limits.cpu=5,requests.cpu=3010m, used: limits.cpu=2400m,requests.cpu=110m, limited: limits.cpu=4,requests.cpu=2
+No resources found in team-beta namespace.
+## Object store and Pipelines API across tenants (credentials of kubeflow-user-example-com)
+s3 put  private/kubeflow-user-example-com/x                ALLOWED
+s3 put  private/team-alpha/x                               DENIED  An error occurred (AccessDenied) when calling the PutObject operation:
+s3 list private-artifacts/team-alpha/                      DENIED  An error occurred (AccessDenied) when calling the ListObjectsV2 operat
+s3 get  private-artifacts/team-alpha/anything              DENIED  An error occurred (AccessDenied) when calling the GetObject operation:
+s3 put  shared/x (shared prefix)                           ALLOWED
+kfp list_runs namespace=kubeflow-user-example-com          ALLOWED
+kfp list_runs namespace=team-alpha                         DENIED  (403)
+Reason: Forbidden
+HTTP response headers: HTTPHeaderDict({'conten
+kfp list_experiments namespace=team-alpha                  DENIED  (403)
+Reason: Forbidden
+HTTP response headers: HTTPHeaderDict({'conten
+## Resources on pipeline step pods (matter under a limits quota)
+wait: {}
+main: {"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"64Mi"}}
+driver/wait: {}
+driver/main: {"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"64Mi"}}
+## Pipelines under a project quota (team-alpha has kf-resource-quota with limits.cpu/limits.memory, no LimitRange)
+workflow.argoproj.io/quota-probe created
+workflow phase: Error
+error in entry template execution: pods "quota-probe" is forbidden: failed quota: kf-resource-quota: must specify limits.cpu for: init,wait; limits.memory for: init,wait; requests.cpu for: init,wait; requests.memory for: init,wait
+pods "quota-probe" is forbidden: failed quota: kf-resource-quota: must specify limits.cpu for: init,wait; limits.memory for: init,wait; requests.cpu for: init,wait; requests.memory for: init,wait

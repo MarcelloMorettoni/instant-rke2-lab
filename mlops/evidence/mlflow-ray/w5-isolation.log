@@ -1,0 +1,45 @@
+# W5 isolation checks (MLflow + Ray) 2026-11-26T00:34:41Z
+## RBAC (ServiceAccount mr-alpha:workload acting in mr-beta; the candidate has no end-user identity at Kubernetes level)
+system:serviceaccount:mr-alpha:workload      list pods                      own=yes other=no
+system:serviceaccount:mr-alpha:workload      get secrets                    own=no other=no
+system:serviceaccount:mr-alpha:workload      create rayjobs.ray.io          own=yes other=no
+system:serviceaccount:mr-alpha:workload      create workflows.argoproj.io   own=no other=no
+## Network: mr-alpha client -> target (NetworkPolicy same-tenant-only; no mesh in these namespaces)
+web-mesh     -> web-mesh.mr-alpha      ALLOWED 200
+web-mesh     -> web-mesh.mr-beta       BLOCKED <urlopen error timed out>
+web-mesh     -> web-nomesh.mr-beta     BLOCKED <urlopen error timed out>
+web-mesh     -> sensor-fault serve (own) ALLOWED 200
+mr-beta pod  -> alpha's serve endpoint BLOCKED <urlopen error timed out>
+mr-beta pod  -> alpha's Ray dashboard  BLOCKED <urlopen error timed out>
+## Platform services from a tenant pod
+mr-beta      -> mlflow.mlflow:5000/health                            ALLOWED 200
+mr-beta      -> mlflow.mlflow:5000/api/2.0/mlflow/experiments/search?max_results=1 BLOCKED HTTP Error 401: Unauthorized
+mr-beta      -> s3.mlflow:8333/                                      BLOCKED HTTP Error 403: Forbidden
+mr-beta      -> postgres.mlflow:5432/                                BLOCKED Remote end closed connection without response
+## MLflow and object store across projects (credentials of mr-beta)
+2026/11/26 00:35:13 INFO mlflow.tracking.fluent: Experiment with name 'beta-exp' does not exist. Creating a new experiment.
+mlflow search_experiments (what beta can see)                  ALLOWED []
+mlflow get_experiment_by_name(w3-continuous-training)          DENIED  API request to endpoint /api/2.0/mlflow/experiments/get-by-n
+mlflow search_runs in alpha experiment id 3                    ALLOWED 0
+mlflow search_registered_models                                ALLOWED []
+mlflow get_registered_model(sensor-fault)                      DENIED  API request to endpoint /api/2.0/mlflow/registered-models/ge
+mlflow get_model_version_by_alias(sensor-fault, champion)      DENIED  API request to endpoint /api/2.0/mlflow/registered-models/al
+mlflow load sklearn model models:/sensor-fault/1               DENIED  403 Client Error: Forbidden for url: http://mlflow.mlflow.sv
+🏃 View run polite-dolphin-628 at: http://mlflow.mlflow.svc.cluster.local:5000/#/experiments/5/runs/1863e6f6fdd84f6d8d7396ce999317de
+🧪 View experiment at: http://mlflow.mlflow.svc.cluster.local:5000/#/experiments/5
+mlflow create own experiment + run                             ALLOWED beta-exp
+artifact proxy: list root of the shared artifact store         DENIED  403 Permission denied
+artifact proxy: list alpha experiment 3 artifacts              DENIED  403 Permission denied
+s3 put own bucket mr-beta                                      DENIED  An error occurred (InternalError) when calling the PutObject
+s3 list bucket mr-alpha                                        DENIED  An error occurred (AccessDenied) when calling the ListObject
+s3 get mr-alpha/datasets/w3/batch-001.csv                      DENIED  An error occurred (AccessDenied) when calling the GetObject 
+s3 list bucket mlflow (artifact store)                         DENIED  An error occurred (AccessDenied) when calling the ListObject
+## Quota
+{"persistentvolumeclaims":"0","pods":"3","requests.cpu":"200m","requests.memory":"384Mi","requests.nvidia.com/gpu":"0"}
+pod/noreq created
+  (LimitRange filled in: {"limits":{"cpu":"1","memory":"1Gi"},"requests":{"cpu":"100m","memory":"128Mi"}})
+Error from server (Forbidden): pods "toobig" is forbidden: exceeded quota: tenant-quota, requested: requests.cpu=3, used: requests.cpu=300m, limited: requests.cpu=2
+s3 put own bucket mr-beta: still failing An error occurred (InvalidAccessKeyId) when calling the PutObject operation: The
+s3 get mr-alpha object: DENIED An error occurred (InvalidAccessKeyId) when callin
+(after fixing the lab object-store config) s3 put own bucket mr-beta: ALLOWED
+s3 get mr-alpha object: DENIED An error occurred (AccessDenied) when calling the 

@@ -1,0 +1,7 @@
+# Katib grid search (4 trials, 2 parallel): wall 84s
+trials: 4 succeeded: 4 failed: 0
+best: n_estimators=100 max_depth=2 -> accuracy=0.8840 roc_auc=0.9567
+  sensor-fault-hpo-66j59fgb n_estimators=100 max_depth=2 accuracy=0.8840 roc_auc=0.9567 Succeeded
+  sensor-fault-hpo-7lqw7vv2 n_estimators=100 max_depth=3 accuracy=0.8640 roc_auc=0.9527 Succeeded
+  sensor-fault-hpo-lm2txcm8 n_estimators=50 max_depth=2 accuracy=0.8680 roc_auc=0.9521 Succeeded
+  sensor-fault-hpo-rrhz64c4 n_estimators=50 max_depth=3 accuracy=0.8600 roc_auc=0.9455 Succeeded

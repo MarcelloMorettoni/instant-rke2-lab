@@ -1,0 +1,13 @@
+# The chart's hub NetworkPolicy allows the Kubernetes API by ipBlock. Cilium
+# classifies the API server as an entity, which ipBlock rules never match, so
+# without this the hub cannot create user pods (spawn times out).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: hub-to-kube-apiserver
+  namespace: jhub
+spec:
+  endpointSelector:
+    matchLabels: {app: jupyterhub, component: hub}
+  egress:
+  - toEntities: [kube-apiserver]

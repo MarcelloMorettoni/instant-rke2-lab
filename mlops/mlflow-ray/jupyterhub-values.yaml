@@ -1,0 +1,42 @@
+# JupyterHub fills the "Develop" gap of the MLflow + Ray candidate.
+# Kept minimal: no pre-pullers, placeholders or custom scheduler.
+hub:
+  config:
+    JupyterHub:
+      authenticator_class: nativeauthenticator.NativeAuthenticator
+    # Self-service sign-up stands in for SRAM in the lab. With SRAM this block
+    # becomes GenericOAuthenticator (OIDC) — not tested here.
+    NativeAuthenticator:
+      open_signup: true
+      minimum_password_length: 10
+    Authenticator:
+      allow_all: true
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+proxy:
+  service:
+    type: ClusterIP
+  chp:
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+singleuser:
+  cpu: {guarantee: 0.5, limit: 0.6}
+  memory: {guarantee: 1G, limit: 1.2G}
+  storage:
+    capacity: 5Gi
+  # What a notebook needs to reach the rest of the stack. One shared MLflow
+  # identity for every hub user: per-user or per-project credentials would need
+  # a custom spawner hook (not built).
+  extraEnv:
+    MLFLOW_TRACKING_URI: http://mlflow.mlflow.svc.cluster.local:5000
+  networkPolicy:
+    enabled: true
+prePuller:
+  hook: {enabled: false}
+  continuous: {enabled: false}
+scheduling:
+  userScheduler: {enabled: false}
+  userPlaceholder: {enabled: false}
+cull:
+  enabled: true
+  timeout: 3600

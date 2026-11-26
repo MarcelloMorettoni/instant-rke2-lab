@@ -1,0 +1,13 @@
+# Minor version upgrade test (MLflow + Ray side): KubeRay operator 1.7.2 -> 1.7.3 while RayServices are serving 2026-11-26T01:02:50Z
+# (a first attempt with --reuse-values left the image at 1.7.3 and was discarded)
+STATUS: deployed
+step 1 (downgrade to prepare): chart kuberay-operator-1.7.2, image quay.io/kuberay/operator:v1.7.2
+STATUS: deployed
+step 2 (upgrade): took 14s; chart kuberay-operator-1.7.3, image quay.io/kuberay/operator:v1.7.3
+requests to the running RayService during the upgrade:      60 ok 
+sensor-fault   Running   1
+smollm         Running   1
+  sensor-fault-zqdjz-head-5fjct Running restarts=0
+  smollm-8fspf-head-67vqd Running restarts=0
+operator error log lines after upgrade: 0
+note: helm upgrade does not upgrade CRDs (Helm limitation); a release that changes CRDs needs a separate kubectl apply of the CRDs.

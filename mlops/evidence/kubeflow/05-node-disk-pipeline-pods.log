@@ -1,0 +1,35 @@
+# 2026-11-25T21:28:31Z node disk before/after deleting finished pipeline pods
+finished step pods: 40
+{"name":"TTL_SECONDS_AFTER_WORKFLOW_FINISH","value":"86400"}
+before worker1: 22G
+before worker2: 19G
+after  worker1: 21G
+456MB ghcr.io/kubeflow/kfp-metadata-writer:2.15.0
+256MB docker.io/rancher/mirrored-cilium-cilium:v1.20.4
+231MB docker.io/library/mysql:8.4
+198MB docker.io/kserve/storage-initializer:v0.15.2
+183MB docker.io/library/mysql:8.3
+181MB docker.io/kserve/sklearnserver:<none>
+163MB ghcr.io/kubeflow/kfp-frontend:2.15.0
+115MB ghcr.io/kubeflow/kfp-metadata-envoy:2.15.0
+107MB gcr.io/istio-release/proxyv2:1.28.0
+105MB docker.io/rancher/rke2-runtime:v1.36.6-rke2r1
+98.2MB ghcr.io/kubeflow/kubeflow/jupyter-web-app:v1.10.0
+94.5MB ghcr.io/kserve/models-web-app:0.15.0
+after  worker2: 19G
+1.48GB ghcr.io/kubeflow/kfp-visualization-server:2.15.0
+804MB ghcr.io/kubeflow/spark-operator/controller:2.4.0
+323MB docker.io/alpine/k8s:1.32.3
+256MB docker.io/rancher/mirrored-cilium-cilium:v1.20.4
+234MB docker.io/library/mysql:8.0
+133MB ghcr.io/kubeflow/kfp-api-server:2.15.0
+107MB gcr.io/istio-release/proxyv2:1.28.0
+105MB docker.io/rancher/rke2-runtime:v1.36.6-rke2r1
+98MB ghcr.io/kubeflow/kubeflow/volumes-web-app:v1.10.0
+93.6MB gcr.io/istio-release/install-cni:1.28.0
+70.7MB gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0
+65.5MB ghcr.io/kubeflow/kubeflow/central-dashboard:v1.10.0
+# Follow-up (root du on the workers after the cleanup):
+#   containerd = ~12G unpacked snapshots + 2.9-4.2G compressed content per worker, 40 images each
+#   => the platform's own images are ~15G per worker; 40 finished step pods held ~4G on worker1.
+# Host /data: 40G free before the install, 30G after it, 18G after the W3/W5 runs.

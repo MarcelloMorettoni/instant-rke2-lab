@@ -1,0 +1,19 @@
+# Unplanned control-plane stall 2026-11-26T00:09:19Z
+# cp1 (8 GiB) unresponsive ~23:40-00:05 UTC: API timeouts, etcd disk on a saturated USB HDD + memory pressure.
+# After cp1 recovered, restart counts per platform pod (controllers lost leader election and restarted):
+ray-system kuberay-operator-7bddc69d96-2b2jn restarts=2 Running
+kubeflow workflow-controller-5cf6dfdc7-7cqpf restarts=10 Running
+kubeflow-system kubeflow-trainer-controller-manager-7dd486bb88-d2qzq restarts=10 Running
+kubeflow-system jobset-controller-manager-678f7696bc-d4xxk restarts=9 CrashLoopBackOff
+kubeflow spark-operator-webhook-6cf88cccfc-m6xlk restarts=13 Running
+kubeflow spark-operator-controller-6b48b45d9-sdzns restarts=3 Running
+kubeflow pvcviewer-controller-manager-56767944f6-lgtcq restarts=2 Running
+kubeflow model-registry-deployment-6794d64c89-t9zzc restarts=1 Running
+kubeflow ml-pipeline-c746bfd96-cxnld restarts=2 Running
+kubeflow metadata-writer-55697c66c5-p4ch8 restarts=10 Running
+kubeflow metadata-grpc-deployment-56784c656c-lbmsp restarts=6 Running
+kubeflow kserve-controller-manager-7dc965ff87-9f99w restarts=10 Running
+kubeflow katib-db-manager-5ff5b5584b-gmwg5 restarts=4 Running
+kubeflow cache-server-7f88fd85f-mtmrr restarts=3 Running
+cert-manager cert-manager-cainjector-5fccc767d5-7hcpd restarts=9 CrashLoopBackOff
+cert-manager cert-manager-676f745766-dx2bl restarts=2 Running

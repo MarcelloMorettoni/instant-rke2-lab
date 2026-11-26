@@ -1,0 +1,34 @@
+# W1 first login as carol@example.com (new user, no Profile) 2026-11-25T21:31:27Z
+oauth2/start -> 200 http://localhost:8080/dex/auth/local/login
+dex form: /dex/auth/local/login
+login -> 200 http://localhost:8080/
+<title>Kubeflow Central Dashboard
+workgroup/exists: {"hasAuth":true,"user":"carol","hasWorkgroup":false,"registrationFlowAllowed":true}
+login round trip: .166435579s
+21:31:37.153 registration flow: create workspace 'carol'
+{"message":"Created namespace carol"}
+21:31:37.262 workspace ready after .109171389s: [{"user":"carol@example.com","namespace":"carol","role":"owner"}]
+{"owner":{"kind":"User","name":"carol@example.com"},"resourceQuotaSpec":{}}
+{"image":"ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0","options":6,"cpu":"0.5","memory":"1.0Gi","gpus":[{"limitsKey":"nvidia.com/gpu","uiName":"NVIDIA"},{"limitsKey":"amd.com/gpu","uiName":"AMD"},{"limitsKey":"habana.ai/gaudi","uiName":"Intel Gaudi"}],"workspaceVolume":"5Gi"}
+21:31:50 spawn notebook 'first' (image ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter:v1.10.0, 0.5 CPU, 1Gi, 5Gi workspace PVC, no GPU)
+{"message":"Notebook created successfully.","status":200,"success":true,"user":"carol@example.com"}
+
+pod/first-0 condition met
+21:32:58 notebook pod Ready after 68s
+60s         Normal    Pulling                 notebook/first                          Reissued from pod/first-0: Pulling image "ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter:v1.10.0"
+0s          Normal    Pulled                  pod/first-0                             Successfully pulled image "ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter:v1.10.0" in 1m0.441s (1m0.441s including waiting). Image
+0s          Normal    Pulled                  notebook/first                          Reissued from pod/first-0: Successfully pulled image "ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter:v1.10.0" in 1m0.441s (1m0.441
+21:32:58 GET /notebook/carol/first/api/status -> 503
+no healthy upstream
+anonymous (no cookie) -> 401
+21:33:10 notebook API as carol -> 200 {"connections": 0, "kernels": 0, "last_activity": "2026-11-25T21:32:59.748937Z", "started": "2026-11-25T21:32:59.748937Z
+alice sees namespaces: ["team-alpha"]
+alice -> carol's notebook: 403
+alice -> list carol's notebooks via web app: {"log":"User 'alice@example.com' is not authorized to list kubeflow.org/v1beta1/notebooks in namespace 'carol'","status":403,"success":false,"user":"alice@examp
+in-notebook: KFP token mounted? ls: cannot access '/var/run/secrets/kubeflow/pipelines/token': No such file or directory
+PodDefaults in carol: No resources found in carol namespace.
+3.11.11
+jupyterlab                4.3.5
+6
+1000
+persistentvolumeclaim/first-workspace   Bound   pvc-c59717c9-55d5-4dfd-a852-34d4fe16b847   5Gi   RWO   local-path   <uns

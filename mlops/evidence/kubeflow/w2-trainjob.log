@@ -1,0 +1,23 @@
+# W2 attempt 2 (sidecar disabled) completed in 195s wall, 2 nodes on worker1+worker2
+[rank 0/2] host=w2-lm-finetune-node-0-0 node=worker1
+2026/11/25 23:08:45 WARNING mlflow.utils.git_utils: Failed to import Git (the Git executable is probably not on your PATH), so Git SHA is not available. Error: Failed to initialize: Bad git executable.
+2026/11/25 23:08:45 WARNING mlflow.utils.git_utils: Failed to import Git (the Git executable is probably not on your PATH), so Git branch is not available. Error: Failed to initialize: Bad git executable.
+2026/11/25 23:08:45 WARNING mlflow.utils.git_utils: Failed to import Git (the Git executable is probably not on your PATH), so Git repository URL is not available. Error: Failed to initialize: Bad git executable.
+step 5 loss 3.5821
+step 10 loss 3.3244
+step 15 loss 3.2613
+step 20 loss 3.3282
+step 25 loss 3.5419
+step 30 loss 3.4263
+[rank 0] summary {'first_loss': 3.8410484790802, 'final_loss': 3.4263317584991455, 'perplexity': 30.763587251543523, 'steps': 30, 'seconds': 85.2}
+model uploaded to s3://mlpipeline/private/kubeflow-user-example-com/models/w2/w2-lm-finetune
+registered smollm2-135m-shakespeare v1
+[rank 1/2] host=w2-lm-finetune-node-0-1 node=worker2
+[rank 1] summary {'first_loss': 3.9133105278015137, 'final_loss': 3.18798565864563, 'perplexity': 24.23955150220426, 'steps': 30, 'seconds': 84.9}
+## Model Registry
+smollm2-135m-shakespeare v1 {'final_loss': 3.4263317584991455, 'mlflow_run_id': '3814b6a2ce62483faa2e97b4c899e0ba', 'trainjob': 'w2-lm-finetune', 'world_size': '2'}
+   ['s3://mlpipeline/private/kubeflow-user-example-com/models/w2/w2-lm-finetune']
+## MLflow run
+w2-lm-finetune FINISHED {'loss': 3.426, 'first_loss': 3.841, 'final_loss': 3.426, 'perplexity': 30.764, 'seconds': 85.2} {'steps': '30', 'model': 'HuggingFaceTB/SmolLM2-135M', 'world_size': '2', 'backend': 'kubeflow-trainer/torchrun-ddp'} {'model_registry_version': 'v1', 'model_uri': 's3://mlpipeline/private/kubeflow-user-example-com/models/w2/w2-lm-finetune'}
+  loss history points: 30
+smoke FINISHED {'m': 0.5} {} {}

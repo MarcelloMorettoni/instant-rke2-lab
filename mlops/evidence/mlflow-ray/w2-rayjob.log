@@ -1,0 +1,27 @@
+# W2 attempt 2 (warm image cache, Ray pods on workers, worker disks on USB HDD): SUCCEEDED, wall 353s submit->done
+jobStatus=SUCCEEDED start=2026-11-26T00:09:21Z end=2026-11-26T00:15:14Z cluster=w2-lm-finetune-4l4hl
+2026-11-25T23:18:06Z   CreatedRayCluster        w2-lm-finetune
+2026-11-25T23:18:06Z   CreatedService           w2-lm-finetune-dqwrr
+2026-11-25T23:18:06Z   CreatedHeadPod           w2-lm-finetune-dqwrr
+2026-11-25T23:18:06Z   CreatedWorkerPod         w2-lm-finetune-dqwrr
+2026-11-25T23:21:11Z   Created                  w2-lm-finetune-dqwrr-cpu-worker-wb986
+2026-11-25T23:21:12Z   Started                  w2-lm-finetune-dqwrr-cpu-worker-wb986
+2026-11-25T23:21:28Z   Created                  w2-lm-finetune-dqwrr-cpu-worker-l6bwx
+2026-11-25T23:21:28Z   Started                  w2-lm-finetune-dqwrr-cpu-worker-l6bwx
+(TrainController pid=717) - (ip=10.42.2.104, pid=190) world_rank=0, local_rank=0, node_rank=0
+(TrainController pid=717) - (ip=10.42.1.30, pid=191) world_rank=1, local_rank=0, node_rank=1
+(RayTrainWorker pid=190, ip=10.42.2.104) [rank 0/2] host=w2-lm-finetune-4l4hl-cpu-worker-r56gc node=worker2
+(RayTrainWorker pid=191, ip=10.42.1.30) [rank 1/2] host=w2-lm-finetune-4l4hl-cpu-worker-5mh82 node=worker1
+(RayTrainWorker pid=190, ip=10.42.2.104) step 10 loss 3.3244
+(RayTrainWorker pid=190, ip=10.42.2.104) step 20 loss 3.3282
+(RayTrainWorker pid=191, ip=10.42.1.30) [rank 1] summary {'first_loss': 3.9133105278015137, 'final_loss': 3.18798565864563, 'perplexity': 24.23955150220426, 'steps': 30, 'seconds': 85.0}
+(RayTrainWorker pid=190, ip=10.42.2.104) step 30 loss 3.4263
+(RayTrainWorker pid=190, ip=10.42.2.104) Successfully registered model 'smollm2-135m-shakespeare'.
+(RayTrainWorker pid=190, ip=10.42.2.104) [rank 0] summary {'first_loss': 3.8410484790802, 'final_loss': 3.4263317584991455, 'perplexity': 30.763587251543523, 'steps': 30, 'seconds': 85.3}
+(RayTrainWorker pid=190, ip=10.42.2.104) registered smollm2-135m-shakespeare version 1 run d5021f8d7bc34c498a812ffad19a75f7
+result metrics: None
+2026-11-25 16:15:12,346	SUCC cli.py:67 -- Job 'w2-lm-finetune-qm5z8' succeeded
+## MLflow (as tenant mr-alpha)
+registry: smollm2-135m-shakespeare v1 READY run d5021f8d source models:/m-4d16befc4509472da313583ce2621516
+run: w2-lm-finetune FINISHED {'loss': 3.426, 'first_loss': 3.841, 'final_loss': 3.426, 'perplexity': 30.764, 'seconds': 85.3} {'steps': '30', 'world_size': '2', 'backend': 'ray-train'} loss points: 30
+artifacts: []

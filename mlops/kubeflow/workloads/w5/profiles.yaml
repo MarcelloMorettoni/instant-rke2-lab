@@ -1,0 +1,19 @@
+# W5: two projects side by side. A Profile is Kubeflow's unit of tenancy: one
+# namespace, an owner, RBAC, Istio policy, object-store credentials and a quota.
+apiVersion: kubeflow.org/v1
+kind: Profile
+metadata:
+  name: team-alpha
+spec:
+  owner: {kind: User, name: alice@example.com}
+  resourceQuotaSpec:
+    hard: {requests.cpu: "4", requests.memory: 8Gi, limits.cpu: "8", limits.memory: 16Gi, pods: "30", persistentvolumeclaims: "5", requests.nvidia.com/gpu: "0"}
+---
+apiVersion: kubeflow.org/v1
+kind: Profile
+metadata:
+  name: team-beta
+spec:
+  owner: {kind: User, name: bob@example.com}
+  resourceQuotaSpec:
+    hard: {requests.cpu: "2", requests.memory: 4Gi, limits.cpu: "4", limits.memory: 8Gi, pods: "15", persistentvolumeclaims: "3", requests.nvidia.com/gpu: "0"}

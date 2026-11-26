@@ -34,3 +34,6 @@ __pycache__/
 # Claude Code
 .claude
 CLAUDE.md
+
+# MLOps lab: upstream sources cloned at install time
+/mlops/.cache/

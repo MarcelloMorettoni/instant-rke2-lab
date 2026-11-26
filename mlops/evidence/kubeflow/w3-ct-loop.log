@@ -1,0 +1,20 @@
+recurring_run_id 7e628028-b911-48e1-b0d5-e1642d2543c9
+21:11:56 new data uploaded (2 drifted batches), fingerprint c77225ab318f3dcd
+(first schedule attempt above ran without the dataset prefix parameter - driver bug, discarded)
+== 21:23:23 schedule recurring run every 2 min (batches 3+4 already waiting)
+recurring_run_id b804516d-13d6-409c-a93d-b1a88f73507f
+== wait for v2 (trained on batches 1-4)
+command terminated with exit code 137
+21:28:59 v2 present after 335 s
+== measured loop: new batch -> v3
+21:29:00 uploaded batch-005.csv, dataset fingerprint 41374ef854d9f704
+21:35:05 model v3 registered 365s after the data arrived: {'accuracy': 0.8928, 'data_fingerprint': '41374ef854d9f704', 'kfp_run_id': '9c20d2f4-7342-41e3-b9b8-2e34cccad820'}
+21:29:50 RUNNING w3-ct-every-2mins9gf7-2-886628637 9c20d2f4-7342-41e3-b9b8-2e34cccad820
+21:24:25 SUCCEEDED w3-ct-every-2mins9gf7-1-836295780 92977f26-956b-47a5-95f9-4613c7fa2219
+21:20:25 FAILED w3-ct-every-2minph628-5-4089770446 484d27b2-82f4-4b8c-a89b-2c640d545cfc
+21:18:25 FAILED w3-ct-every-2minph628-4-4106548065 0d32eac8-85ba-4677-9451-807c9bd7f03f
+21:16:25 FAILED w3-ct-every-2minph628-3-4123325684 221b67b0-a975-4c93-ae1a-4937ea338656
+21:14:25 FAILED w3-ct-every-2minph628-2-4140103303 0b09f7a7-4b2f-4f24-a5e4-9b5911032cb0
+21:12:08 FAILED w3-ct-every-2minph628-1-4156880922 24078126-6118-40a8-9577-692c7494b6fe
+21:09:34 FAILED w3-run-3-bad-data 161f53fe-47ee-4656-91d2-5808d709ed9e
+deleted w3-ct-every-2min

@@ -1,0 +1,39 @@
+NAME                        OWNER               CREATED
+kubeflow-user-example-com   user@example.com    2026-11-25T20:44:14Z
+team-alpha                  alice@example.com   2026-11-25T21:23:41Z
+team-beta                   bob@example.com     2026-11-25T21:23:41Z
+--- team-alpha (ns created 2026-11-25T21:23:41Z, s3 secret created 2026-11-25T21:23:41Z)
+  sa/default
+  sa/default-editor
+  sa/default-viewer
+  rolebinding/default-editor
+  rolebinding/default-viewer
+  rolebinding/namespaceAdmin
+  resourcequota/kf-resource-quota
+  authorizationpolicy/ns-owner-access-istio
+  secret/mlpipeline-minio-artifact
+  cm/artifact-repositories
+  cm/istio-ca-crl
+  cm/istio-ca-root-cert
+  cm/kfp-launcher
+  cm/kube-root-ca.crt
+  cm/metadata-grpc-configmap
+--- team-beta (ns created 2026-11-25T21:23:41Z, s3 secret created 2026-11-25T21:23:41Z)
+  sa/default
+  sa/default-editor
+  sa/default-viewer
+  rolebinding/default-editor
+  rolebinding/default-viewer
+  rolebinding/namespaceAdmin
+  resourcequota/kf-resource-quota
+  authorizationpolicy/ns-owner-access-istio
+  secret/mlpipeline-minio-artifact
+  cm/artifact-repositories
+  cm/istio-ca-crl
+  cm/istio-ca-root-cert
+  cm/kfp-launcher
+  cm/kube-root-ca.crt
+  cm/metadata-grpc-configmap
+{"limits.cpu":"8","limits.memory":"16Gi","persistentvolumeclaims":"5","pods":"30","requests.cpu":"4","requests.memory":"8Gi","requests.nvidia.com/gpu":"0"}
+{"rules":[{"from":[{"source":{"principals":["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account","cluster.local/ns/kubeflow/sa/ml-pipeline-ui"]}}],"when":[{"key":"request.headers[kubeflow-userid]","values":["alice@example.com"]}]},{"when":[{"key":"source.namespace","values":["team-alpha"]}]},{"to":[{"operation":{"paths":["/healthz","/metrics","/wait-for-drain"]}}]},{"from":[{"source":{"principals":["cluster.local/ns/kubeflow/sa/notebook-controller-service-account"]}}],"to":[{"operation":{"methods":["GET"],"paths":["*/api/kernels"]}}]}]}
+[{"apiGroup":"rbac.authorization.k8s.io","kind":"User","name":"alice@example.com"}] -> kubeflow-admin

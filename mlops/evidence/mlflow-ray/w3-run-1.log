@@ -1,0 +1,13 @@
+workflow w3-run-1-initial phase=Failed wall=166s
+  detect Succeeded 00:17:29-00:17:54 
+  validate Succeeded 00:18:04-00:18:23 
+  train Failed 00:18:33-00:20:05 main: Error (exit code 64): failure condition '{status.jobStatus == [FAILED]}' evaluated t
+(attempt 1 failed in the Ray step: MLflow basic-auth 403 race on experiment creation + skops untrusted type; fixed in w3_ray_train.py)
+workflow w3-run-1-initial phase=Succeeded wall=282s
+  detect Succeeded 00:21:35-00:22:06 
+  validate Succeeded 00:22:16-00:22:36 
+  train Succeeded 00:22:46-00:24:29 
+  deploy Succeeded 00:24:38-00:25:04 
+  verify(0) Failed 00:25:13-00:25:28 main: Error (exit code 1)
+  verify Succeeded 00:25:13-00:26:14 
+  verify(1) Succeeded 00:25:48-00:26:04 

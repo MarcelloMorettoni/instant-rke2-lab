@@ -1,0 +1,64 @@
+# W4 on MLflow + Ray: LLM endpoint on Ray Serve with autoscaling from zero.
+# Serve replicas scale 0..3 on request load; the Ray autoscaler adds and removes
+# worker pods to match. The head pod (which also runs the HTTP proxy) always stays.
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: smollm
+spec:
+  serveConfigV2: |
+    proxy_location: HeadOnly
+    applications:
+    - name: smollm
+      import_path: serve_llm:app
+      route_prefix: /
+      runtime_env:
+        pip:
+          packages: ["torch==2.7.1", "transformers==4.53.2", "mlflow==3.18.0", "boto3==1.35.99"]
+          pip_install_options: ["--extra-index-url", "https://download.pytorch.org/whl/cpu"]
+  rayClusterConfig:
+    rayVersion: "2.60.1"
+    enableInTreeAutoscaling: true
+    autoscalerOptions:
+      idleTimeoutSeconds: 60
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: 500m, memory: 512Mi}}
+    headGroupSpec:
+      rayStartParams: {num-cpus: "0"}
+      template:
+        spec:
+          affinity: &workers-only
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.60.1-py311-cpu
+            resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}
+            env: &env
+            - {name: PYTHONPATH, value: "/workloads:/testkit"}
+            - {name: GIT_PYTHON_REFRESH, value: quiet}
+            envFrom: [{secretRef: {name: mlflow-client}}]
+            volumeMounts: &mounts
+            - {name: testkit, mountPath: /testkit}
+            - {name: workloads, mountPath: /workloads}
+          volumes: &volumes
+          - {name: testkit, configMap: {name: testkit}}
+          - {name: workloads, configMap: {name: workloads}}
+    workerGroupSpecs:
+    - groupName: llm
+      replicas: 0
+      minReplicas: 0
+      maxReplicas: 3
+      rayStartParams: {}
+      template:
+        spec:
+          affinity: *workers-only
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.60.1-py311-cpu
+            resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}
+            env: *env
+            envFrom: [{secretRef: {name: mlflow-client}}]
+            volumeMounts: *mounts
+          volumes: *volumes

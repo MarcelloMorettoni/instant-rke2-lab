@@ -1,0 +1,33 @@
+# Day-2 static checks 2026-11-26T00:44:38Z
+## Kubeflow
+Prometheus/Grafana shipped: 0 monitoring CRDs, 0 prometheus/grafana pods
+metrics endpoints (annotated pods): 27 of 36 pods in kubeflow
+pipeline step logs archived to object store: 
+notebook idle culling: {"ENABLE_CULLING":"ENABLE_CULLING","CULL_IDLE_TIME":"CULL_IDLE_TIME"}
+  CULL_IDLE_TIME=1440
+  ENABLE_CULLING=false
+default credentials shipped: Dex static user user@example.com with the documented default password = bcrypt hash of the README default (not rotated by install); object store keys in kubeflow ns default: yes
+Pod Security Standards on namespaces: auth=restricted carol=baseline cert-manager=restricted istio-system=restricted knative-serving=restricted kubeflow=restricted kubeflow-system=restricted kubeflow-user-example-com=baseline mr-alpha=baseline mr-beta=baseline oauth2-proxy=restricted team-alpha=baseline team-beta=baseline
+image scanning / signature policy shipped: none (no admission policy objects: 1 VAPs; no Kyverno/Gatekeeper)
+upgrade guidance in manifests README:
+  | ## Upgrading and Extending
+  | For modifications and in-place upgrades of the Kubeflow platform, we provide a rough description for advanced users:
+  | - Never edit the manifests directly; use Kustomize overlays and [components](https://github.com/kubernetes-sigs/kustomize/blob/master/examples/components.md) on top of the [example.yaml](https://github.com/kubeflow/manifests/blob/master/example/kustomization.y
+  | - This allows you to upgrade by just referencing the new manifests, building with Kustomize, and running `kubectl apply` again.
+  | - You might have to adjust your overlays and components if needed.
+  | - You might need to prune old resources. For that, you would add [labels](https://kubectl.docs.kubernetes.io/references/kustomize/kustomization/labels/) to all your resources from the start.
+  | - With labels, you can use `kubectl apply` with `--prune` and `--dry-run` to list prunable resources.
+  | - Sometimes there are major changes; for example, in the 1.9 release, we switched to oauth2-proxy, which needs additional attention (cleanup istio-system once); or 1.9.1 -> 1.10 `kubectl delete clusterrolebinding meta-controller-cluster-role-binding`
+  | - Nevertheless, with a bit of Kubernetes knowledge, one should be able to upgrade.
+  | ### Kubernetes upgrade fails due to `PodDisruptionBudget`
+  | To work around this remove these `PodDisruptionBudget`s for the time of the upgrade.
+  | You can most easily find them via the `k9s` pdb overview of this resource, alternatively with this command:
+  | ```
+  | $ kubectl get --all-namespaces PodDisruptionBudget
+## MLflow + Ray
+Ray head Prometheus endpoint + dashboard: client dashboard gcs-server metrics serve
+   sensor-fault-head-svc:8080/metrics 200 410438 bytes # HELP python_gc_objects_collected_total Objects collected d
+   sensor-fault-head-svc:8265/api/version 200 155 bytes {"version": "4", "ray_version": "2.60.1", "ray_commit": "359
+MLflow /metrics: HTTP Error 401: Unauthorized (needs --expose-prometheus)
+JupyterHub idle culling: cull:   adminUsers: true   concurrency: 10   enabled: true   every: 600 
+MLflow default admin password rotated at install: yes (auth.ini); basic-auth marked experimental by MLflow: 2 log warnings

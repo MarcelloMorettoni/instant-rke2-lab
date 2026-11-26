@@ -1,0 +1,10 @@
+00:44:03 state before first request: worker pods=0 deployment=HEALTHY
+00:44:03 first request: status=200 latency=110.2s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+00:45:53 warm request:  status=200 latency=1.0s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+00:45:54 waiting for scale to zero (no Ray worker pods)...
+00:49:16 worker pods at zero 202s after the last request; still running: 1 head pod
+00:49:16 cold request:  status=200 latency=109.4s text=" window breaks?\nWhat side's this, or which by the way?\n\nCORIOLANUS:\n"
+00:51:06 worker pods before load: 1
+00:51:06 load: concurrency=6 duration=180s ok=217 errors=0 p50=3.6s p95=9.2s max=11.6s throughput=1.21 req/s
+worker pods during load: 1 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 
+00:54:08 worker pods after load: 2
