@@ -1,0 +1,66 @@
+# Training copy of kubeflow/workloads/w2_trainjob.yaml: same job, renamed, and asking for half a CPU
+# per node instead of 2 so it fits next to everything else that now runs on the lab, and kept off
+# the control-plane VM.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: training-finetune
+spec:
+  runtimeRef: {name: torch-distributed}
+  trainer:
+    image: python:3.11-slim
+    numNodes: 2
+    numProcPerNode: 1
+    command: ["bash", "-c"]
+    args:
+    - |
+      pip install --quiet --no-cache-dir torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu \
+      && pip install --quiet --no-cache-dir transformers==4.53.2 mlflow-skinny==3.18.0 boto3==1.35.99 model-registry==0.3.4 \
+      && torchrun /workloads/w2_train.py
+    resourcesPerNode:
+      requests: {cpu: 500m, memory: 3Gi}
+      limits: {cpu: "3", memory: 5Gi}
+    env:
+    - {name: PYTHONPATH, value: /testkit}
+    - {name: OMP_NUM_THREADS, value: "2"}
+    - {name: TRAINJOB_NAME, value: training-finetune}
+    - {name: S3_ENDPOINT, value: "http://minio-service.kubeflow.svc.cluster.local:9000"}
+    - name: NODE_NAME
+      valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom: {secretKeyRef: {name: mlpipeline-minio-artifact, key: accesskey}}
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom: {secretKeyRef: {name: mlpipeline-minio-artifact, key: secretkey}}
+    - name: MLFLOW_TRACKING_URI
+      valueFrom: {secretKeyRef: {name: mlflow-client, key: MLFLOW_TRACKING_URI}}
+    - name: MLFLOW_TRACKING_USERNAME
+      valueFrom: {secretKeyRef: {name: mlflow-client, key: MLFLOW_TRACKING_USERNAME}}
+    - name: MLFLOW_TRACKING_PASSWORD
+      valueFrom: {secretKeyRef: {name: mlflow-client, key: MLFLOW_TRACKING_PASSWORD}}
+  podTemplateOverrides:
+  - targetJobs: [{name: node}]
+    # Required in a Kubeflow profile: with the Istio sidecar injected (strict
+    # mTLS), torchrun's pod-to-pod rendezvous on :29500 is reset and the job hangs.
+    metadata:
+      annotations: {sidecar.istio.io/inject: "false"}
+    spec:
+      # One training node per Kubernetes node (the override API has no
+      # topologySpreadConstraints, so anti-affinity it is).
+      affinity:
+        # Training copy only: stay off the small control-plane VM.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions: [{key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: kubernetes.io/hostname
+            labelSelector: {matchLabels: {jobset.sigs.k8s.io/jobset-name: training-finetune}}
+      containers:
+      - name: node
+        volumeMounts:
+        - {name: testkit, mountPath: /testkit}
+        - {name: workloads, mountPath: /workloads}
+      volumes:
+      - {name: testkit, configMap: {name: testkit}}
+      - {name: workloads, configMap: {name: workloads}}

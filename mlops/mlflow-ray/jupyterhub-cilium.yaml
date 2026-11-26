@@ -11,3 +11,21 @@ spec:
     matchLabels: {app: jupyterhub, component: hub}
   egress:
   - toEntities: [kube-apiserver]
+---
+# The chart's singleuser NetworkPolicy blocks every cluster-internal address, so
+# a notebook cannot reach MLflow or the object store that holds its artifacts.
+# NetworkPolicies add up: this one opens just those two ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: singleuser-to-mlflow
+  namespace: jhub
+spec:
+  podSelector:
+    matchLabels: {app: jupyterhub, component: singleuser-server}
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: mlflow}
+    ports: [{port: 5000}, {port: 8333}]

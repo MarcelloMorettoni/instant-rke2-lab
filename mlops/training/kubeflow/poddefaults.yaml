@@ -1,0 +1,34 @@
+# Two options that appear under "Advanced options > Configurations" when you
+# create a notebook in this project. Tick both.
+#
+# The first is the standard Kubeflow one: it mounts a token the KFP client uses.
+# The second is ours: Kubeflow has no MLflow wiring, so this injects the
+# project's MLflow address and credentials from the Secret `mlflow-client`.
+apiVersion: kubeflow.org/v1alpha1
+kind: PodDefault
+metadata:
+  name: access-ml-pipeline
+spec:
+  desc: Allow access to Kubeflow Pipelines
+  selector:
+    matchLabels: {access-ml-pipeline: "true"}
+  env:
+  - {name: KF_PIPELINES_SA_TOKEN_PATH, value: /var/run/secrets/kubeflow/pipelines/token}
+  volumeMounts:
+  - {name: volume-kf-pipeline-token, mountPath: /var/run/secrets/kubeflow/pipelines, readOnly: true}
+  volumes:
+  - name: volume-kf-pipeline-token
+    projected:
+      sources:
+      - serviceAccountToken: {path: token, expirationSeconds: 7200, audience: pipelines.kubeflow.org}
+---
+apiVersion: kubeflow.org/v1alpha1
+kind: PodDefault
+metadata:
+  name: mlflow-client
+spec:
+  desc: MLflow tracking server and credentials
+  selector:
+    matchLabels: {mlflow-client: "true"}
+  envFrom:
+  - secretRef: {name: mlflow-client}

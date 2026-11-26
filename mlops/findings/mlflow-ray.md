@@ -93,6 +93,7 @@ Deviations from the documentation:
 - `ghcr.io/mlflow/mlflow` has no PostgreSQL driver, no S3 client and no auth extras; we install them when the container starts. A real setup would build an image.
 - MLflow 3.18 with its default four workers was OOM-killed at a 2 GiB limit. Runs with two workers and 3 GiB.
 - The JupyterHub chart's hub NetworkPolicy allows the Kubernetes API by IP range, which Cilium does not match, so spawning times out. Added a CiliumNetworkPolicy (`mlflow-ray/jupyterhub-cilium.yaml`).
+- Found later, while preparing the training (26 Nov): the same chart's notebook NetworkPolicy blocks every cluster-internal address, so a JupyterHub notebook could not reach MLflow. Added a NetworkPolicy for MLflow and its object store to the same file. The POC had only tested tracking from a Kubeflow notebook.
 - The project NetworkPolicy must let the KubeRay operator reach each Ray head on port 8265, or RayJobs never report status.
 
 ## 3. Reference workloads
