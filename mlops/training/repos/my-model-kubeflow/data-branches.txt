@@ -1,0 +1,5 @@
+# Data branches of the lakeFS repository to train on, one per line.
+# Every branch gets its own model, endpoint and 2-minute schedule:
+#   main        -> my-model
+#   experiment  -> my-model-experiment
+main

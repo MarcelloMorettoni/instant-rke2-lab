@@ -1,0 +1,91 @@
+# Makes the shared Model Registry show up in the Kubeflow console for one project.
+#
+# The registry (server + MySQL) runs once, in the namespace `kubeflow`. The
+# console's Model Registry page only lists registries it finds as a Service with
+# the label component=model-registry in the namespace selected at the top of the
+# dashboard, so in a project namespace it shows "Deploy a model registry".
+#
+# This puts such a Service in the project, in front of a tiny nginx that forwards
+# to the shared registry. One registry, one database; the pipelines keep writing
+# to model-registry-service.kubeflow as before.
+#
+#   kubectl -n kubeflow-user-example-com apply -f mlops/kubeflow/model-registry-in-project.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-registry-gateway
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      location / {
+        proxy_pass http://model-registry-service.kubeflow.svc.cluster.local:8080;
+        proxy_set_header Host model-registry-service.kubeflow.svc.cluster.local;
+        proxy_http_version 1.1;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-registry-gateway
+  labels: {app: model-registry-gateway}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: model-registry-gateway}
+  template:
+    metadata:
+      labels: {app: model-registry-gateway}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      containers:
+      - name: nginx
+        image: nginxinc/nginx-unprivileged:1.27-alpine
+        ports:
+        - {containerPort: 8080, name: http-api}
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 64Mi}
+        volumeMounts:
+        - {name: conf, mountPath: /etc/nginx/conf.d}
+      volumes:
+      - name: conf
+        configMap: {name: model-registry-gateway}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-registry
+  labels:
+    component: model-registry        # what the console looks for
+  annotations:
+    displayName: Lab Model Registry
+    description: The shared registry of the lab (runs in the namespace kubeflow)
+spec:
+  selector: {app: model-registry-gateway}
+  ports:
+  - {name: http-api, port: 8080, targetPort: 8080, protocol: TCP, appProtocol: http}
+---
+# The project's default Istio policy only admits the project's own users and
+# pods. The console's registry backend runs in `kubeflow` without an Istio sidecar,
+# so it has no mesh identity to name here: this rule admits any caller inside the
+# cluster to the gateway. That matches the registry itself, which is open to every
+# pod in the cluster in this lab. Do not copy this to a shared cluster.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: model-registry-gateway
+spec:
+  action: ALLOW
+  selector:
+    matchLabels: {app: model-registry-gateway}
+  rules:
+  - to:
+    - operation:
+        ports: ["8080"]

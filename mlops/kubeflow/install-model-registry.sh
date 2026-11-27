@@ -22,3 +22,7 @@ fi
 
 kubectl -n kubeflow wait --for=condition=available --timeout=5m \
   deployment/model-registry-db deployment/model-registry-deployment deployment/model-registry-ui
+
+log "Registry visible in the console for the training project"
+kubectl -n kubeflow-user-example-com apply -f "${MLOPS_ROOT}/kubeflow/model-registry-in-project.yaml"
+kubectl -n kubeflow-user-example-com rollout status deployment/model-registry-gateway --timeout=3m

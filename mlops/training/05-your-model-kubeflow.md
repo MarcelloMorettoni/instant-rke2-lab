@@ -30,6 +30,7 @@ and endpoint.
 | 5.8 | Commit broken data | lakeFS | Fails once at validation, endpoint untouched |
 | 5.9 | Revert the data | lakeFS | Trains and deploys by itself |
 | 5.10 | Trace a model back | all | |
+| 5.11 | Add a second data branch | lakeFS, JupyterLab | Trains and serves one model per branch |
 
 The consoles, all from `mlops/training/lab.sh logins`:
 
@@ -57,12 +58,14 @@ Read three files:
 
 - `pipeline.py`: the pipeline. Each `@dsl.component` is one step.
   `train_model` holds your training code: the three lines between the dashed
-  comments are what you change later. `my_pipeline` at the bottom wires the
-  steps, with two conditions: *did something change?* and *is the accuracy
-  high enough?*
+  comments are what you change later. At the bottom are two pipelines.
+  `my_pipeline` is the training pipeline: seven steps in one straight line,
+  where a step that fails stops the ones after it. `watch_pipeline` has one
+  step, which looks for a new data commit and then starts the training
+  pipeline.
 - `ci/deploy.py`: what happens on every push. It compiles `pipeline.py`,
-  uploads it to Kubeflow Pipelines as a new version named after the git commit,
-  starts a run, and points the schedule at the new version.
+  uploads both pipelines to Kubeflow Pipelines as a new version named after
+  the git commit, starts a training run, and schedules the watch pipeline.
 - `.gitea/workflows/train.yaml`: the trigger. Every push to `main` runs
   `ci/deploy.py` in a small CI pod inside your Kubeflow project.
 
@@ -108,10 +111,9 @@ lakectl commit lakefs://kf-my-data/main -m "Batch 1"
    pipeline version `commit-…`, a run started, the schedule created. The job
    takes about a minute.
 3. Kubeflow → **Runs**: a run named `commit-<first 8 characters of the commit>`.
-   Open it. The graph shows `detect-change` and a box `something-changed`;
-   click the icon on the right edge of that box to see the steps inside:
-   `validate-data`, `train-model`, `evaluate-model`, then `quality-gate` with
-   `register-model` and `deploy-model` inside it.
+   Open it. The graph is one line of seven steps, each turning green in
+   turn: `detect-change`, `validate-data`, `train-model`, `evaluate-model`,
+   `quality-gate`, `register-model`, `deploy-model`.
 4. Click a step while it runs: **Logs** shows its output, **Input/Output** its
    artifacts. On `evaluate-model`, **Output Parameters** is the accuracy.
 
@@ -120,13 +122,14 @@ first.
 
 What it produced:
 
-- Kubeflow → **Pipelines**: `my-model-training`, with one version per commit.
+- Kubeflow → **Pipelines**: `my-model-training` and `my-model-watch`, each
+  with one version per commit.
 - Kubeflow → **KServe Endpoints**: `my-model`.
 - lakeFS → `kf-my-data` → **Commits**: the commit `Batch 1` now carries two
   tags, `tried-my-model-…` (a run picked it up) and `trained-my-model-v…` (a
   model version was trained on it).
-- The model version. The Model Registry page in the Kubeflow menu lists
-  nothing for a project user (finding 4 on the Kubeflow page), so ask its API:
+- The model version. Kubeflow → **Model Registry** → `my-model` → the newest
+  version shows its properties. The same from the terminal:
 
   ```bash
   kf-kit - my-model < mlops/training/kubeflow/registry.py
@@ -147,13 +150,14 @@ Expected: `status 200`, and `predicted` mostly equal to `expected`.
 ## 5.4 The schedule
 
 Kubeflow → **Recurring Runs**: `my-model-watch-data`, `ENABLED`, every 2
-minutes. CI created it. Kubeflow Pipelines has no "run when data arrives", so a
-scheduled run asks lakeFS for the newest commit and stops when that commit was
-already tried.
+minutes. CI created it. Kubeflow Pipelines has no "run when data arrives", so
+the schedule runs the small pipeline `my-model-watch`: its one step,
+`watch-data`, asks lakeFS for the newest commit on the branch. If that commit
+was not tried yet, the step starts a run of `my-model-training` on it.
 
 Back in **Runs** you see one `my-model-watch-data…` run every 2 minutes, each
-about a minute long, with only `detect-change` green. That is the pipeline
-saying "nothing new".
+under a minute, a single green box. Open one and read the **Logs** of
+`watch-data`: `nothing to do`.
 
 ## 5.5 Change the data
 
@@ -162,9 +166,9 @@ New readings arrive, and the sensors have drifted.
 1. lakeFS → `kf-my-data` → **Upload**, destination `datasets/w3/`, file
    `batch-002.csv`, **Upload Files**.
 2. **Commit**, message `Batch 2`.
-3. Do nothing else. Kubeflow → **Runs**: the next scheduled run (within 2
-   minutes) does not stop after `detect-change`. Open it and watch all six
-   steps.
+3. Do nothing else. Kubeflow → **Runs**: within 2 minutes a new run appears,
+   named `data-<first 8 characters of the lakeFS commit>`. The watch step
+   started it; its log says so. Open the run and watch the seven steps.
 
 About 5 minutes later:
 
@@ -205,19 +209,19 @@ in the left bar):
 Now watch it travel:
 
 1. Gitea → **Actions**: a run with your commit message.
-2. Kubeflow → **Runs**: `commit-<your commit>`. The data did not change, but CI
-   starts the run with `retrain=yes`, so it trains.
-3. After about 4 minutes the run is green, but `register-model` and
-   `deploy-model` never ran. Open `evaluate-model` → **Input/Output** →
-   *Output Parameters*: 0.756, below the gate of 0.80.
+2. Kubeflow → **Runs**: `commit-<your commit>`. The data did not change, but
+   the code did, so CI starts a training run.
+3. After about 4 minutes the run is red, at `quality-gate`. Its **Logs** end
+   with `quality gate FAILED: accuracy 0.7560 is below 0.8`. `register-model`
+   and `deploy-model` never started.
 
 ```bash
 kf-kit - my-model < mlops/training/kubeflow/registry.py | grep -c VERSION
 ```
 
 The same number of versions as before, and the endpoint is unchanged. The gate
-kept a bad model out of production. Note the run is green: "blocked by the
-gate" is not a failure in Kubeflow Pipelines, you have to look at the graph.
+kept a bad model out of production, and the red run in the list tells you so
+without opening anything.
 
 ## 5.7 Change the code, well
 
@@ -234,7 +238,7 @@ with
 ```
 
 Save, stage, commit (`Random forest`), push. Same path: Gitea **Actions**,
-then Kubeflow **Runs** → `commit-<your commit>`, this time through all six
+then Kubeflow **Runs** → `commit-<your commit>`, this time through all seven
 steps (about 5 minutes).
 
 ```bash
@@ -256,13 +260,13 @@ A sensor fails: 50 temperature readings are empty.
    `batch-003-broken.csv`, **Upload Files**.
 2. **Commit**, message `Batch 3`.
 
-The next scheduled run in Kubeflow turns red at `validate-data`. Its **Logs**
-end with `data validation failed: null values present`. Nothing was trained;
-the endpoint still serves the previous version.
+Within 2 minutes a run `data-<commit>` appears and turns red at
+`validate-data`. Its **Logs** end with `data validation failed: null values
+present`. Nothing was trained; the endpoint still serves the previous version.
 
-The runs after it are green and short again: the commit carries a
-`tried-my-model-…` tag, so the schedule does not try it a second time. One red
-run per bad commit, not one every two minutes.
+The watch runs after it say `nothing to do` again: the commit carries a
+`tried-my-model-…` tag, so it is not started a second time. One red run per
+bad commit, not one every two minutes.
 
 ## 5.9 Fix the data
 
@@ -271,8 +275,8 @@ Undo the bad commit the lakeFS way:
 1. lakeFS → `kf-my-data` → **Commits** → **Revert**.
 2. Tick `Batch 3`, **Continue (1)**, **Apply**, **Yes**.
 
-A new commit `Revert commit …` is on top. Do nothing else: within 2 minutes a
-scheduled run picks it up and trains (about 5 minutes).
+A new commit `Revert commit …` is on top. Do nothing else: within 2 minutes
+the watch starts a run `data-<commit>` for it, which trains (about 5 minutes).
 
 ```bash
 kf-kit - my-model < mlops/training/kubeflow/registry.py | grep VERSION | tail -1
@@ -294,6 +298,72 @@ in three fields:
 
 That is the end-to-end chain: a change in git or in lakeFS becomes a model
 version that names both.
+
+## 5.11 Two data branches, two models, both served
+
+lakeFS branches let you keep two variants of the data side by side. The
+pipeline has a parameter `data_branch`, and every branch gets its own model:
+`main` trains `my-model`, a branch `experiment` trains `my-model-experiment`.
+Each has its own versions in the Model Registry, its own endpoint and its own
+2-minute schedule.
+
+1. Make the branch and put different data on it. In the lakeFS console:
+   `kf-my-data` → **Branches** → **Create Branch**, name `experiment`, from
+   `main`; then switch to it in **Objects**, upload a changed file to
+   `datasets/w3/` and **Commit**. Or from a notebook:
+
+   ```python
+   exp = repo.branch("experiment").create(source_reference="main")
+   clean = df[df.temperature.abs() < 1.0]
+   exp.object("datasets/w3/batch-001.csv").upload(data=clean.to_csv(index=False), mode="w")
+   exp.commit(message="Keep readings within 1 standard deviation")
+   ```
+
+   A branch needs at least 200 rows and both classes, or the run stops at
+   `validate-data`.
+
+2. Tell the pipeline about the branch. In JupyterLab open
+   `data-branches.txt` in your clone, add a line `experiment` under `main`,
+   save, and commit and push it from the Git panel (message `Train on the
+   experiment branch too`).
+
+3. Gitea → **Actions**: the job now starts two runs. Kubeflow → **Runs**:
+   `commit-<commit>` (branch `main`) and `commit-<commit>-experiment`. Open
+   both graphs; the log of `detect-change` names the branch, the commit and
+   the model.
+   About 6 minutes for the pair.
+
+4. Kubeflow → **Recurring Runs**: `my-model-watch-data` and
+   `my-model-watch-data-experiment`. From now on a commit on either branch
+   retrains only that branch's model.
+
+Both models, with the branch and commit each was trained on:
+
+```bash
+kf-kit - my-model < mlops/training/kubeflow/registry.py
+```
+
+```bash
+kf-kit - my-model-experiment < mlops/training/kubeflow/registry.py
+```
+
+Both endpoints (Kubeflow → **KServe Endpoints** lists them):
+
+```bash
+kf-kit - my-model < mlops/training/kubeflow/predict.py
+```
+
+```bash
+kf-kit - my-model-experiment < mlops/training/kubeflow/predict.py
+```
+
+To train a branch once without a schedule, skip step 2: Kubeflow → **Runs**
+→ **Create run**, pipeline `my-model-training`, experiment `my-model`, and
+set the run parameter `data_branch`.
+
+To stop training a branch, remove its line and push: its schedule goes, the
+model and endpoint stay. Merging `experiment` into `main` in lakeFS is a new
+commit on `main`, so `my-model` retrains on the merged data by itself.
 
 ## What you saw
 

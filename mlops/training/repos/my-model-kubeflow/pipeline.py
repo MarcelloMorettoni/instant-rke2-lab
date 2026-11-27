@@ -1,6 +1,9 @@
-"""my-model on Kubeflow: the continuous-training pipeline.
+"""my-model on Kubeflow: two pipelines.
 
-  detect change -> validate -> train -> evaluate -> quality gate -> register -> deploy
+  my-model-training   detect -> validate -> train -> evaluate -> quality gate -> register -> deploy
+                      One straight line, so the console shows every step side by side.
+  my-model-watch      one step, run every 2 minutes per data branch: when the branch
+                      has a new lakeFS commit it starts my-model-training on it.
 
 Each @dsl.component is one step and runs as its own pod. `train_model` is the
 step you change in the lesson. Every push to `main` compiles this file and
@@ -8,40 +11,44 @@ starts a run (see .gitea/workflows/train.yaml and ci/deploy.py).
 """
 import os
 import sys
+from typing import NamedTuple
 
 from kfp import compiler, dsl, kubernetes
 
 BASE_IMAGE = "python:3.11-slim"
 PACKAGES = ["pandas==2.2.3", "scikit-learn==1.6.1", "boto3==1.35.99", "joblib==1.4.2"]
+LIGHT = ["boto3==1.35.99"]  # for the steps that only talk to lakeFS
 # Fixed when the pipeline is compiled (KFP only accepts literal env values).
 S3_ENDPOINT = "http://minio-service.kubeflow.svc.cluster.local:9000"
 LAKEFS_ENDPOINT = "http://lakefs.lakefs.svc.cluster.local"
 DATA_STORE = os.environ.get("DATA_STORE", "lakefs")
 
 
-@dsl.component(base_image=BASE_IMAGE, packages_to_install=PACKAGES)
-def detect_change(repository: str, prefix: str, model_name: str, retrain: str) -> str:
-    """Returns the data version to train on, or "" when there is nothing to do.
+@dsl.component(base_image=BASE_IMAGE, packages_to_install=LIGHT)
+def detect_change(
+    repository: str, prefix: str, model_name: str, data_branch: str, data_version: str
+) -> NamedTuple("Outputs", [("version", str), ("model", str)]):
+    """Picks the data to train on and the model it belongs to.
 
-    The data version is the newest lakeFS commit. A run that picks it up marks it
-    with a tag tried-<model>-<commit>, so the schedule tries every commit once,
-    also when that run fails. retrain=yes trains anyway: CI sets it, because then
-    the code changed.
+    The data is the lakeFS commit in `data_version`, or the newest commit on
+    `data_branch` when that is empty. The commit gets a tag tried-<model>-<commit>,
+    which is how the watch pipeline knows not to start it again.
+
+    Every data branch has its own model and endpoint: `main` is <model_name>,
+    any other branch is <model_name>-<branch>.
     """
+    import re
     import sys
+    from collections import namedtuple
 
     sys.path.insert(0, "/testkit")
-    import dataset
     import lakefs
 
-    ds = dataset.Dataset(repository, prefix)
-    current = ds.version()
-    tried = current in lakefs.tags(repository, f"tried-{model_name}-").values()
-    print(f"data {ds.uri(current)} already tried={tried} retrain={retrain}")
-    if tried and retrain != "yes":
-        return ""
-    lakefs.tag(repository, f"tried-{model_name}-{current[:12]}", current)
-    return current
+    model = model_name if data_branch == "main" else f"{model_name}-" + re.sub("[^a-z0-9]+", "-", data_branch.lower()).strip("-")
+    version = data_version or lakefs.head(repository, data_branch)
+    lakefs.tag(repository, f"tried-{model}-{version[:12]}", version)
+    print(f"model {model}: training on lakefs://{repository}/{version}/{prefix}/ (branch {data_branch})")
+    return namedtuple("Outputs", ["version", "model"])(version, model)
 
 
 @dsl.component(base_image=BASE_IMAGE, packages_to_install=PACKAGES)
@@ -107,6 +114,15 @@ def evaluate_model(model: dsl.Input[dsl.Model], test_set: dsl.Input[dsl.Dataset]
     return scores["accuracy"]
 
 
+@dsl.component(base_image=BASE_IMAGE)
+def quality_gate(accuracy: float, minimum: float) -> float:
+    """Stops the pipeline when the model is not good enough: this step fails, so nothing is registered or deployed."""
+    if accuracy < minimum:
+        raise SystemExit(f"quality gate FAILED: accuracy {accuracy:.4f} is below {minimum}; the model is not registered")
+    print(f"quality gate passed: accuracy {accuracy:.4f} >= {minimum}")
+    return accuracy
+
+
 @dsl.component(base_image=BASE_IMAGE, packages_to_install=["model-registry==0.3.4", "boto3==1.35.99"])
 def register_model(
     model: dsl.Input[dsl.Model],
@@ -116,6 +132,7 @@ def register_model(
     git_commit: str,
     repository: str,
     prefix: str,
+    data_branch: str,
     run_id: str,
 ) -> str:
     """New version in Kubeflow Model Registry, with what made it: data, code, run."""
@@ -141,7 +158,13 @@ def register_model(
         model_format_name="sklearn",
         model_format_version="1.6.1",
         description="my-model training pipeline",
-        metadata={"accuracy": accuracy, "data_uri": ds.uri(data_version), "git_commit": git_commit, "kfp_run_id": run_id},
+        metadata={
+            "accuracy": accuracy,
+            "data_uri": ds.uri(data_version),
+            "data_branch": data_branch,
+            "git_commit": git_commit,
+            "kfp_run_id": run_id,
+        },
     )
     ds.mark_trained(model_name, data_version, version)  # lakeFS tag trained-<model>-<version>
     print(f"registered {model_name} {version} -> {model.uri}")
@@ -158,7 +181,7 @@ def deploy_model(model: dsl.Input[dsl.Model], model_name: str, version: str):
     body = {
         "apiVersion": "serving.kserve.io/v1beta1",
         "kind": "InferenceService",
-        "metadata": {"name": model_name, "annotations": {"sidecar.istio.io/inject": "false"}, "labels": {"model-version": version}},
+        "metadata": {"name": model_name, "annotations": {"sidecar.istio.io/inject": "false"}, "labels": {"model-version": version, "trained-by": "my-model-training"}},
         "spec": {
             "predictor": {
                 "serviceAccountName": "kserve-s3",
@@ -201,34 +224,106 @@ def _wire(task):
     return task
 
 
-@dsl.pipeline(name="my-model-training", description="Detect change -> validate -> train -> evaluate -> gate -> register -> deploy")
+@dsl.component(base_image=BASE_IMAGE, packages_to_install=LIGHT)
+def watch_data(
+    repository: str, model_name: str, data_branch: str, git_commit: str, experiment_id: str, pipeline_id: str, pipeline_version_id: str
+) -> str:
+    """The only step of the watch pipeline, which a schedule runs every 2 minutes per data branch.
+
+    New commit on the branch -> starts one run of the training pipeline on exactly
+    that commit and returns its name. Nothing new -> returns "". The tag
+    tried-<model>-<commit> is set before the run starts, so a commit is tried once,
+    also when its training fails.
+    """
+    import json
+    import os
+    import re
+    import sys
+    import urllib.request
+
+    sys.path.insert(0, "/testkit")
+    import lakefs
+
+    suffix = "" if data_branch == "main" else "-" + re.sub("[^a-z0-9]+", "-", data_branch.lower()).strip("-")
+    model = model_name + suffix
+    head = lakefs.head(repository, data_branch)
+    if head in lakefs.tags(repository, f"tried-{model}-").values():
+        print(f"{model}: branch {data_branch} is still at {head[:12]}, nothing to do")
+        return ""
+    lakefs.tag(repository, f"tried-{model}-{head[:12]}", head)
+    name = f"data-{head[:8]}{suffix}"
+    body = {
+        "display_name": name,
+        "experiment_id": experiment_id,
+        "pipeline_version_reference": {"pipeline_id": pipeline_id, "pipeline_version_id": pipeline_version_id},
+        "runtime_config": {"parameters": {
+            "repository": repository, "model_name": model_name, "data_branch": data_branch, "data_version": head, "git_commit": git_commit,
+        }},
+    }
+    request = urllib.request.Request(
+        "http://ml-pipeline.kubeflow.svc.cluster.local:8888/apis/v2beta1/runs",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + open(os.environ["KF_PIPELINES_SA_TOKEN_PATH"]).read()},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        run_id = json.load(response)["run_id"]
+    print(f"{model}: new data commit {head[:12]} on branch {data_branch} -> started training run {name} ({run_id})")
+    return name
+
+
+@dsl.pipeline(name="my-model-training", description="detect -> validate -> train -> evaluate -> quality gate -> register -> deploy")
 def my_pipeline(
     repository: str = "kf-my-data",
     prefix: str = "datasets/w3",
     model_name: str = "my-model",
     accuracy_gate: float = 0.80,
-    retrain: str = "no",
+    git_commit: str = "",
+    data_branch: str = "main",
+    data_version: str = "",
+):
+    """One straight line: every step is a box in the graph, and a step that fails stops the ones after it."""
+    detect = _wire(detect_change(repository=repository, prefix=prefix, model_name=model_name, data_branch=data_branch, data_version=data_version))
+    version, model = detect.outputs["version"], detect.outputs["model"]
+    data = _wire(validate_data(repository=repository, prefix=prefix, version=version))
+    trained = _wire(train_model(dataset=data.outputs["dataset"]))
+    scored = _wire(evaluate_model(model=trained.outputs["model"], test_set=trained.outputs["test_set"]))
+    gate = _wire(quality_gate(accuracy=scored.outputs["Output"], minimum=accuracy_gate))
+    registered = _wire(
+        register_model(
+            model=trained.outputs["model"],
+            model_name=model,
+            data_version=version,
+            accuracy=gate.output,  # taking the gate's output makes this step wait for the gate
+            git_commit=git_commit,
+            repository=repository,
+            prefix=prefix,
+            data_branch=data_branch,
+            run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
+        )
+    )
+    _wire(deploy_model(model=trained.outputs["model"], model_name=model, version=registered.output))
+
+
+@dsl.pipeline(name="my-model-watch", description="Checks one lakeFS branch for a new commit and starts my-model-training on it")
+def watch_pipeline(
+    experiment_id: str,
+    pipeline_id: str,
+    pipeline_version_id: str,
+    repository: str = "kf-my-data",
+    model_name: str = "my-model",
+    data_branch: str = "main",
     git_commit: str = "",
 ):
-    detect = _wire(detect_change(repository=repository, prefix=prefix, model_name=model_name, retrain=retrain))
-    with dsl.If(detect.output != "", name="something-changed"):
-        data = _wire(validate_data(repository=repository, prefix=prefix, version=detect.output))
-        trained = _wire(train_model(dataset=data.outputs["dataset"]))
-        scored = _wire(evaluate_model(model=trained.outputs["model"], test_set=trained.outputs["test_set"]))
-        with dsl.If(scored.outputs["Output"] >= accuracy_gate, name="quality-gate"):
-            registered = _wire(
-                register_model(
-                    model=trained.outputs["model"],
-                    model_name=model_name,
-                    data_version=detect.output,
-                    accuracy=scored.outputs["Output"],
-                    git_commit=git_commit,
-                    repository=repository,
-                    prefix=prefix,
-                    run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
-                ))
-            _wire(deploy_model(model=trained.outputs["model"], model_name=model_name, version=registered.output))
+    watch = _wire(
+        watch_data(
+            repository=repository, model_name=model_name, data_branch=data_branch, git_commit=git_commit,
+            experiment_id=experiment_id, pipeline_id=pipeline_id, pipeline_version_id=pipeline_version_id,
+        )
+    )
+    kubernetes.add_pod_label(watch, "access-ml-pipeline", "true")  # the project's PodDefault then mounts a Pipelines API token
 
 
 if __name__ == "__main__":
+    # python pipeline.py [training.yaml [watch.yaml]]
     compiler.Compiler().compile(my_pipeline, sys.argv[1] if len(sys.argv) > 1 else "pipeline.yaml")
+    compiler.Compiler().compile(watch_pipeline, sys.argv[2] if len(sys.argv) > 2 else "watch.yaml")

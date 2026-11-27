@@ -115,12 +115,13 @@ for r in c.list_runs(experiment_id=e.experiment_id, page_size=50, sort_by="creat
             pass
 for j in c.list_recurring_runs(experiment_id=e.experiment_id, page_size=100).recurring_runs or []:
     c.delete_recurring_run(j.recurring_run_id); print("schedule deleted:", j.display_name)
-for pid in [p.pipeline_id for p in c.list_pipelines(namespace=ns, page_size=100).pipelines or [] if p.display_name == "my-model-training"]:
+for pid in [p.pipeline_id for p in c.list_pipelines(namespace=ns, page_size=100).pipelines or [] if p.display_name in ("my-model-training", "my-model-watch")]:
     for v in c.list_pipeline_versions(pid, page_size=100).pipeline_versions or []:
         c.delete_pipeline_version(pid, v.pipeline_version_id)
-    c.delete_pipeline(pid); print("pipeline my-model-training deleted")
+    c.delete_pipeline(pid); print("pipeline deleted")
 PY
   kubectl -n "${kf}" delete inferenceservice my-model --ignore-not-found
+  kubectl -n "${kf}" delete inferenceservice -l trained-by=my-model-training --ignore-not-found   # models of other data branches
   # Lesson 6: schedule, pipeline, endpoint, code, and the model in MLflow
   kubectl -n "${mr}" delete cronworkflow my-ct-every-2min --ignore-not-found
   kubectl -n "${mr}" get workflows -o name | grep -E '/(commit-|my-ct-every-2min-)' | xargs -r kubectl -n "${mr}" delete >/dev/null || true
